@@ -2,6 +2,15 @@
 
 Newest first. One entry per decision: what was decided, why, and what it rules out.
 
+## 2026-10-09 · M4: one PM flat is "partial", not "no trade"
+
+SPEC §7 says opposite directions mean no trade and §8 caps "PMs disagree" at 1x without borrowing. Long-versus-flat is treated as that disagreement: the directional PM's proposal proceeds with conviction capped below 0.5, so the risk engine applies the 1x rule. Long-versus-short stays a hard no. Consensus geometry (entry zone, stop, target, hold time) is the conviction-weighted mean of the two proposals when they agree, with conviction equal to the lower of the two.
+Rules out: trading on a single PM at leverage.
+
+## 2026-10-09 · M4: alternate-provider PMs run every cycle in shadow mode
+
+Both PMs also run on the swapped providers (`[models.shadow_alt]`) and their proposals are stored with `variant = "alt"`. They never influence the decision; M9's tuning compares them. Cost about $0.17 per cycle.
+
 ## 2026-10-09 · M3 agents: model reads data, code scores
 
 - Polymarket: the model only maps markets to (asset, threshold, direction) once a day; scoring is the implied median plus the 24h shift in code. Gamma `tag_id=21` (crypto) and `102000` (macro) with pagination; `tag_slug` is ignored by the API.

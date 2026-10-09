@@ -183,6 +183,91 @@ class LLMCall(Base):
     output: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
+class Cycle(Base):
+    """One decision cycle: scheduled every 4 hours or triggered (SPEC §7)."""
+
+    __tablename__ = "cycles"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    kind: Mapped[str] = mapped_column(String(12))  # scheduled | triggered
+    trigger: Mapped[str | None] = mapped_column(String(80))
+    mode: Mapped[str] = mapped_column(String(8))  # shadow | live
+    status: Mapped[str] = mapped_column(String(12))  # running | done | failed
+    error: Mapped[str | None] = mapped_column(Text)
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=0)
+
+
+class AgentOutputRecord(Base):
+    __tablename__ = "agent_outputs"
+    __table_args__ = (Index("ix_agent_outputs_cycle", "cycle_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    cycle_id: Mapped[int] = mapped_column(ForeignKey("cycles.id", ondelete="CASCADE"))
+    agent: Mapped[str] = mapped_column(String(20))
+    asset: Mapped[str] = mapped_column(String(10))
+    variant: Mapped[str] = mapped_column(String(10), default="main")  # main | alt (shadow swap)
+    score: Mapped[float]
+    confidence: Mapped[float]
+    horizon: Mapped[str] = mapped_column(String(6))
+    evidence: Mapped[list[Any]]
+    risk_flags: Mapped[list[Any]]
+    data_age_min: Mapped[int] = mapped_column(Integer)
+    valid: Mapped[bool] = mapped_column(Boolean)
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PMProposalRecord(Base):
+    """What one portfolio manager proposed for one asset, exactly as validated."""
+
+    __tablename__ = "pm_proposals"
+    __table_args__ = (Index("ix_pm_proposals_cycle", "cycle_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    cycle_id: Mapped[int] = mapped_column(ForeignKey("cycles.id", ondelete="CASCADE"))
+    pm: Mapped[str] = mapped_column(String(10))  # pm_1 | pm_2
+    variant: Mapped[str] = mapped_column(String(10), default="main")
+    model: Mapped[str] = mapped_column(String(60))
+    asset: Mapped[str] = mapped_column(String(10))
+    direction: Mapped[str] = mapped_column(String(6))  # long | flat | short
+    entry_low: Mapped[Decimal | None]
+    entry_high: Mapped[Decimal | None]
+    stop: Mapped[Decimal | None]
+    target: Mapped[Decimal | None]
+    max_hold_hours: Mapped[int | None] = mapped_column(Integer)
+    score: Mapped[float]
+    conviction: Mapped[float]
+    reasons: Mapped[list[Any]]
+    weighted_up: Mapped[list[Any]]
+    weighted_down: Mapped[list[Any]]
+
+
+class DecisionRecord(Base):
+    """The consensus per asset per cycle, before the risk engine (M5) sizes it."""
+
+    __tablename__ = "decisions"
+    __table_args__ = (Index("ix_decisions_asset_cycle", "asset", "cycle_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    cycle_id: Mapped[int] = mapped_column(ForeignKey("cycles.id", ondelete="CASCADE"))
+    asset: Mapped[str] = mapped_column(String(10))
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    spot: Mapped[Decimal | None]
+    valid_agents: Mapped[int] = mapped_column(Integer)
+    formula_score: Mapped[float | None]
+    pm1_direction: Mapped[str | None] = mapped_column(String(6))
+    pm2_direction: Mapped[str | None] = mapped_column(String(6))
+    agreement: Mapped[str] = mapped_column(String(10))  # agree | partial | opposite | failed
+    consensus_score: Mapped[float | None]
+    direction: Mapped[str] = mapped_column(String(6))  # long | flat | short
+    conviction: Mapped[float | None]
+    proposal: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # merged entry/stop/target/hold
+    reason: Mapped[str] = mapped_column(String(120))
+    risk_rule_hits: Mapped[list[Any]] = mapped_column(JSONB, default=list)  # filled by M5
+    action: Mapped[str] = mapped_column(String(12), default="none")  # none | open | close | adjust
+
+
 class DataSource(Base):
     """Freshness per source; the agents refuse inputs older than 30 minutes (SPEC §6)."""
 
