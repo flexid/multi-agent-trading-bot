@@ -11,9 +11,9 @@ table{font-size:.85rem}th{color:var(--pico-muted-color);font-weight:500}td,th{pa
 .badge{display:inline-block;padding:.1rem .6rem;border:1px solid #fe7e1c;border-radius:999px;font-size:.72rem;color:#fe7e1c;margin-left:.5rem;vertical-align:middle}.badge.neon{border-color:#b6ff00;color:#b6ff00}.badge.down{border-color:#ff5c5c;color:#ff5c5c}.badge.warn{border-color:#f7c97a;color:#f7c97a}
 .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.9rem}.tile{background:#161616;border:1px solid #222;border-radius:10px;padding:.9rem 1rem}.tile .k{color:var(--pico-muted-color);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em}.tile .v{font-size:1.35rem;font-weight:650;margin-top:.15rem}
 form.inline{display:inline-block;margin:0 .3rem .3rem 0}form.inline input{width:auto;display:inline-block;margin:0 .3rem 0 0}form.inline button{width:auto;display:inline-block;margin:0}button.danger{--pico-background-color:#ff5c5c;--pico-border-color:#ff5c5c;--pico-color:#0a0a0a}
-pre{white-space:pre-wrap;font-size:.78rem;color:var(--pico-muted-color)}.overflow{overflow-x:auto}
+pre{white-space:pre-wrap;font-size:.78rem;color:var(--pico-muted-color)}.overflow{overflow-x:auto}.wordmark{display:block;width:min(520px,90vw);margin:2.5rem auto 1rem}.wordmark img{width:100%;height:auto;display:block}
 </style></head><body><main class="container">
-<nav><ul><li><a href="/"><img class="avatar" src="/static/avatar-96.png?v=6d8a4f25" alt="dorkbot"></a></li><li><a href="/">Overview</a></li><li><a href="/decisions">Decisions</a></li><li><a href="/params">Parameters &amp; audit</a></li></ul>
-<ul>{% if user %}<li><form class="inline" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="outline secondary">Logout {{ user }}</button></form></li>{% endif %}</ul></nav>
+{% if user %}<nav><ul><li><a href="/"><img class="avatar" src="/static/avatar-96.png?v=6d8a4f25" alt="dorkbot"></a></li><li><a href="/">Overview</a></li><li><a href="/decisions">Decisions</a></li><li><a href="/params">Parameters &amp; audit</a></li></ul>
+<ul><li><form class="inline" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="outline secondary">Logout {{ user }}</button></form></li></ul></nav>{% endif %}
 {% block body %}{% endblock %}
 </main></body></html>

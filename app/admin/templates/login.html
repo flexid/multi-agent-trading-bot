@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% block body %}
-<article style="max-width:420px;margin:2rem auto"><header>Sign in</header>
+<a class="wordmark" href="/login"><img src="/static/logo-1200.png?v=6d8a4f25" alt="dorkbot"></a>
+<article style="max-width:420px;margin:0 auto 2rem"><header>Sign in</header>
 {% if error %}<p class="down">{{ error }}</p>{% endif %}
 <form method="post" action="/login"><input name="username" placeholder="username" autocomplete="username" required>
 <input name="password" type="password" placeholder="password" autocomplete="current-password" required>
