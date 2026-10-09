@@ -196,6 +196,11 @@ class Executor:
             if req.kind == "kill":
                 kill, self.frozen = True, True
                 req.result = "closing all positions, frozen"
+                self._alert(
+                    "dorkbot: kill switch applied",
+                    f"Requested by {req.source}. Reason: {req.reason or '-'}. "
+                    "All positions are being closed; the executor is frozen until resume.",
+                )
             elif req.kind == "pause":
                 self.frozen = True
                 req.result = "frozen: no new positions"
@@ -595,11 +600,44 @@ class Executor:
         )
         session.commit()
 
+    def _alert(self, subject: str, body: str) -> None:
+        """Owner email via the admin's notify module; never raises into the trading loop."""
+        from app.admin import notify
+
+        try:
+            notify.send(subject, body)
+        except Exception as exc:
+            log.warning("alert failed: %s", exc)
+
     def risk_close_all(self, session: Session, now: datetime) -> bool:
         """Honour the engine's close-all states: day lock, drawdown pause, emergency brake."""
         state = session.get(RiskState, 1)
         if state is None:
             return False
+        alerted = getattr(self, "_alerted", set())
+        self._alerted = alerted
+        for flag, cond, subject in (
+            ("brake", state.emergency_brake, "dorkbot: EMERGENCY BRAKE, waiting for you"),
+            (
+                "pause",
+                bool(state.paused_until and state.paused_until > now),
+                "dorkbot: drawdown pause, closing everything for 72 h",
+            ),
+            (
+                "daylock",
+                bool(state.day_locked_until and state.day_locked_until > now),
+                "dorkbot: day loss stop, closed everything until 00:00 UTC",
+            ),
+        ):
+            if cond and flag not in alerted:
+                alerted.add(flag)
+                self._alert(
+                    subject,
+                    f"{subject}. Reason: {state.brake_reason or 'risk rule'}. Mode {self.mode}. "
+                    "Resume from the admin when you are ready.",
+                )
+            if not cond:
+                alerted.discard(flag)
         if state.emergency_brake:
             self.frozen = True
             return True
