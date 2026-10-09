@@ -691,8 +691,14 @@ class Executor:
 
     @staticmethod
     def _reason_for(d: DecisionRecord) -> str | None:
-        reasons = (d.proposal or {}).get("reasons") or []
-        return str(reasons[0])[:120] if reasons else None
+        """First PM reason that passes the post whitelist; indicator readings never pass."""
+        from app.social.whitelist import check
+
+        for r in (d.proposal or {}).get("reasons") or []:
+            text = str(r)[:120].rstrip(".")
+            if check(text).ok:
+                return text
+        return None
 
     async def post(
         self, session: Session, row: Position, kind: str, reason: str | None, now: datetime

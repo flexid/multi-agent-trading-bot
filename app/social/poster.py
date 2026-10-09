@@ -79,24 +79,25 @@ async def compose(
         return fallback, "template", True, "dry-run: template only"
     record = {k: (str(v) if isinstance(v, Decimal) else v) for k, v in facts.__dict__.items()}
     try:
-        draft = await complete(
-            "post_writer",
-            Draft,
-            prompt=load_prompt("post_writer"),
-            user_text=f'{{"kind": "{kind}", "record": {record}, "style": {style!r}}}',
-        )
-        text = tpl.enforce_marker(draft.parsed.text.strip(), facts.paper)
-        audit = await complete(
-            "post_auditor",
-            Audit,
-            prompt=load_prompt("post_auditor"),
-            user_text=f'{{"draft": {text!r}, "record": {record}}}',
-        )
-        wl = check(text)
-        ok = audit.parsed.ok and wl.ok and len(text) <= MAX_LEN
-        if ok:
-            return text, "writer", True, None
-        notes = "; ".join(audit.parsed.violations + wl.problems) or "too long"
+        notes = ""
+        for attempt in (1, 2):  # one rewrite with the auditor's objections, then a template
+            request = {"kind": kind, "record": record, "style": style}
+            if notes:
+                request["previous_draft_rejected_because"] = notes
+            draft = await complete(
+                "post_writer", Draft, prompt=load_prompt("post_writer"), user_text=str(request)
+            )
+            text = tpl.enforce_marker(draft.parsed.text.strip(), facts.paper)
+            audit = await complete(
+                "post_auditor",
+                Audit,
+                prompt=load_prompt("post_auditor"),
+                user_text=f'{{"draft": {text!r}, "record": {record}}}',
+            )
+            wl = check(text)
+            if audit.parsed.ok and wl.ok and len(text) <= MAX_LEN:
+                return text, "writer", True, None if attempt == 1 else f"rewrite after: {notes}"
+            notes = "; ".join(audit.parsed.violations + wl.problems) or "too long"
     except LLMError as exc:
         notes = f"writer/auditor failed: {exc}"[:300]
     fallback = tpl.render_open(facts) if kind == "open" else tpl.render_close(facts)
