@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { pct, tick, type Snapshot } from "./snapshot";
+import { monthYear, pct, tick, type Snapshot } from "./snapshot";
 
 /* Hand-rolled SVG charts: no chart library, so nothing leaves the page but the snapshot.
    Geometry is computed in pixel space from the element's measured width, so text and
@@ -215,7 +215,7 @@ export function DetailOverlay({ s, onClose }: { s: Snapshot; onClose: () => void
     <div className="overlay" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="overlay-panel">
         <div className="overlay-head">
-          <h2>Details since {p.since.slice(0, 10)}</h2>
+          <h2>Details since {monthYear(p.since)}</h2>
           <div className="muted small">drag to zoom · double-click to reset{range && <> · <button className="link" onClick={() => setRange(null)}>reset</button></>}</div>
           <button className="close" onClick={onClose} aria-label="close">✕</button>
         </div>

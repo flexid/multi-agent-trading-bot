@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { DetailOverlay, EquityChart } from "./charts";
-import { cls, loadSnapshot, num, pct, tick, type Snapshot } from "./snapshot";
+import { cls, loadSnapshot, monthYear, num, pct, tick, type Snapshot } from "./snapshot";
 
 /** "long" in green, "short" in red, everywhere they appear. */
 function Side({ d }: { d: string }) {
@@ -63,7 +63,7 @@ export default function Page() {
     <>
       <h1><span className={`badge ${s.mode === "live" ? "neon" : ""}`}>{s.mode}</span>{!s.heartbeat_ok && <span className="badge">stale</span>}</h1>
       <p className="muted">A bot trading its own bag on Bybit, five assets, <Side d="long" /> and <Side d="short" />. Every trade goes to <a href={`https://x.com/${s.handle}`}>@{s.handle}</a> after it fills. Paper trades are labelled paper. Updated {new Date(s.generated_at).toUTCString().slice(5, 22)} UTC.</p>
-      <h2>Performance since {p.since.slice(0, 10)}</h2>
+      <h2>Performance since {monthYear(p.since)}</h2>
       <div className="row">
         <div className="tile"><div className="k">dorkbot</div><div className={`v ${cls(p.bot_pct)}`}>{pct(p.bot_pct, 2)}</div></div>
         <div className="tile"><div className="k">BTC buy &amp; hold</div><div className={`v ${cls(p.btc_hold_pct)}`}>{pct(p.btc_hold_pct, 2)}</div></div>

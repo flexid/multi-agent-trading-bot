@@ -39,3 +39,5 @@ export async function shareUrl(): Promise<string> {
 }
 
 export const tick = (cashtag: string) => cashtag.replace(/^\$/, "");  // tickers without the dollar sign on the site (owner, 2026-10-09)
+
+export const monthYear = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });  // "October 2026"
