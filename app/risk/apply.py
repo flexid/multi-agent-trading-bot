@@ -29,6 +29,7 @@ from app.db.models import (
     RiskState,
 )
 from app.decision.consensus import Agreement, Consensus
+from app.decision.evidence import spot_and_atr
 from app.decision.pm import Direction, Proposal
 from app.risk import engine
 
@@ -65,10 +66,10 @@ def account_state(session: Session, cfg: Config, mode: str, now: datetime) -> en
             select(AccountSnapshot).order_by(AccountSnapshot.ts.desc()).limit(1)
         ).scalar_one_or_none()
         exchange_equity = Decimal(str(snap.total_equity or 0)) if snap else Decimal(0)
-        # Live: start at 10% of capital_max, never beyond what the subaccount actually holds.
-        equity = min(
-            exchange_equity, cfg.trading.capital_max_usdt * cfg.trading.live_start_fraction
-        )
+        # Live: the capital ramp's share of capital_max (10% at the start), never beyond
+        # what the subaccount actually holds.
+        fraction = state.capital_fraction or cfg.trading.live_start_fraction
+        equity = min(exchange_equity, cfg.trading.capital_max_usdt * fraction)
     else:
         paper = session.get(PaperAccount, 1)
         equity = paper.equity if paper and paper.equity > 0 else cfg.trading.capital_max_usdt
@@ -183,8 +184,10 @@ def market_state(
     )
 
 
-def _plan_dict(p: engine.TradePlan) -> dict[str, Any]:
-    return {
+def _plan_dict(p: engine.TradePlan, atr: float | None = None) -> dict[str, Any]:
+    """The executor's instructions. ``atr`` (14 × 4h) sizes the exchange-side backup
+    stop; it is absent when there are too few candles."""
+    plan: dict[str, Any] = {
         "entry": str(p.entry),
         "stop": str(p.stop),
         "target": str(p.target),
@@ -194,6 +197,9 @@ def _plan_dict(p: engine.TradePlan) -> dict[str, Any]:
         "notional": str(p.notional),
         "margin": str(p.margin),
     }
+    if atr:
+        plan["atr"] = f"{atr:.10g}"
+    return plan
 
 
 def margin_terms(session: Session, coin: str) -> tuple[Decimal, Decimal]:
@@ -278,22 +284,11 @@ def apply_risk(
         ]
         d.risk_rule_hits = hits
         d.action = "open" if a.allowed else "none"
+        _, atr = spot_and_atr(session, cfg.symbol(d.asset))
         if a_max is not None and a_max.plan is not None:
-            d.proposal = {**(d.proposal or {}), "plan_max": _plan_dict(a_max.plan)}
+            d.proposal = {**(d.proposal or {}), "plan_max": _plan_dict(a_max.plan, atr)}
         if a.plan is not None:
-            d.proposal = {
-                **(d.proposal or {}),
-                "plan": {
-                    "entry": str(a.plan.entry),
-                    "stop": str(a.plan.stop),
-                    "target": str(a.plan.target),
-                    "max_hold_hours": a.plan.max_hold_hours,
-                    "leverage": str(a.plan.leverage),
-                    "borrow": a.plan.borrow,
-                    "notional": str(a.plan.notional),
-                    "margin": str(a.plan.margin),
-                },
-            }
+            d.proposal = {**(d.proposal or {}), "plan": _plan_dict(a.plan, atr)}
         for h in a.hits:
             if h.effect in ("cap", "block") and h.rule not in {x.rule for x in account_hits}:
                 session.add(

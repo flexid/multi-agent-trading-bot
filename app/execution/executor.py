@@ -6,12 +6,20 @@
 Every ``TICK_S`` seconds it: refreshes quotes, applies control requests (kill, pause,
 resume), closes positions whose stop, target, trailing stop, time-stop or liquidation
 hit, opens positions for decisions with ``action = "open"`` that have no position yet,
-accrues interest, writes the paper ledger and an equity snapshot, and heartbeats.
+accrues interest, writes the paper ledger and an equity snapshot, and heartbeats. With
+the WebSocket price feed, exits are also checked every ``FAST_S`` between full passes.
 
 Mode is checked here, by this process, from config: ``live`` needs ``live_allowed``
 and the go-live checker's verdict (M9); until then every order is paper, whatever the
-decision row says. Live orders go through ``BybitClient`` with an ``orderLinkId`` and
-are reconciled against the exchange every pass.
+decision row says. Real orders go through ``BybitGateway`` with an ``orderLinkId``.
+
+Each position row carries its own mode, and that decides the gateway: a paper row never
+reaches the exchange, whatever mode the process runs in. In pilot mode the paper tracks
+keep running next to the pilot, so the shadow record (and the X storyline) continues.
+
+Exits are never post-only and are retried every pass until the position is flat. Every
+real position also has a stop resting on the exchange, ``BACKUP_ATR_MULT`` ATR beyond
+the bot's own stop, moved whenever that stop moves and cancelled before the bot exits.
 """
 
 from __future__ import annotations
@@ -40,12 +48,22 @@ from app.db.models import (
 from app.db.session import new_session
 from app.execution import simulator as sim
 from app.execution.bybit_client import BybitClient
-from app.execution.gateway import Gateway, Outcome, PaperGateway
+from app.execution.gateway import Gateway, OrderOutcome, Outcome, PaperGateway
 from app.execution.simulator import ExitReason, Quote, Side
+from app.execution.ws_feed import QuoteFeed
 from app.social import poster, style
 
 log = logging.getLogger("executor")
 TICK_S = 10
+FAST_S = 1  # exit checks between full passes, only on the WebSocket feed
+BACKUP_ATR_MULT = Decimal("0.5")  # backup stop sits this many ATR beyond the bot's stop
+EXIT_ALERT_AFTER = 3  # passes an exit may stay unfinished before the owner is emailed
+# Which tracks run in each process mode, and the mode their positions are stored with.
+TRACKS: dict[str, dict[str, str]] = {
+    "paper": {"primary": "paper", "max": "paper"},
+    "pilot": {"primary": "paper", "max": "paper", "pilot": "pilot"},
+    "live": {"primary": "live"},
+}
 TAKER_FEE = {"USDT": Decimal("0.001"), "USDC": Decimal("0.0005")}
 QTY_STEP_FALLBACK = Decimal("0.000001")
 HOURLY_BORROW_FALLBACK = Decimal("0.000005")
@@ -74,10 +92,12 @@ class Executor:
                 allow_orders=True,
             )
             gateway = BybitGateway(self._client)
-        self.gateway: Gateway = gateway or PaperGateway(
-            TAKER_FEE.get(cfg.exchange.quote, Decimal("0.001"))
-        )
+        self.paper_gateway = PaperGateway(TAKER_FEE.get(cfg.exchange.quote, Decimal("0.001")))
+        self.gateway: Gateway = gateway or self.paper_gateway
         self.feed = feed  # False in tests: quotes are injected
+        self.ws: QuoteFeed | None = None
+        if feed and cfg.exchange.price_feed == "ws":
+            self.ws = QuoteFeed([cfg.symbol(a) for a in cfg.trading.assets])
         self.quotes: dict[str, Quote] = {}
         self.quotes_stale = False
         self.qty_steps: dict[str, Decimal] = {}
@@ -104,6 +124,12 @@ class Executor:
             return "pilot"
         return "paper"
 
+    def gateway_for(self, row_mode: str) -> Gateway:
+        """Paper rows fill on the paper book even while the process trades for real."""
+        if row_mode == "paper" and self.mode != "paper":
+            return self.paper_gateway
+        return self.gateway
+
     # --- market data ------------------------------------------------------------
 
     async def client(self) -> BybitClient:
@@ -117,8 +143,9 @@ class Executor:
         return self._client
 
     async def refresh_quotes(self) -> None:
-        """Pull quotes; on failure keep the last ones and mark them stale. Stops stay
-        armed on the last known quote and fire on the next fresh one (feed-drop rule)."""
+        """Quotes from the WebSocket feed, or the REST ticker when the stream has gone
+        quiet (or is not configured). On failure keep the last ones and mark them stale.
+        Stops stay armed on the last known quote and fire on the next fresh one."""
         if not self.feed:
             return
         client = await self.client()
@@ -126,25 +153,45 @@ class Executor:
         failures = 0
         for asset in self.cfg.trading.assets:
             symbol = self.cfg.symbol(asset)
-            try:
-                t = await client.ticker(symbol)
-            except Exception as exc:
-                failures += 1
-                log.warning("ticker %s failed: %s", symbol, exc)
-                continue
-            self.quotes[symbol] = Quote(t.bid1_price, t.ask1_price, now)
+            pushed = self.ws.fresh(symbol, now) if self.ws is not None else None
+            if pushed is not None:
+                self.quotes[symbol] = pushed
+            else:
+                try:
+                    t = await client.ticker(symbol)
+                except Exception as exc:
+                    failures += 1
+                    log.warning("ticker %s failed: %s", symbol, exc)
+                    continue
+                self.quotes[symbol] = Quote(t.bid1_price, t.ask1_price, now)
             if symbol not in self.qty_steps:
-                inst = await client.instrument(symbol)
-                if inst is not None:
-                    self.qty_steps[symbol] = inst.lot_size_filter.base_precision
-                margin = await client.margin_coin(inst.base_coin if inst else asset)
-                self.borrow_rates[symbol] = (
-                    margin.hourly_borrow_rate if margin else HOURLY_BORROW_FALLBACK
-                )
-                self.collateral_ratios[symbol] = (
-                    margin.collateral_ratio if margin else Decimal("0.98")
-                )
+                try:
+                    await self._load_terms(client, asset, symbol)
+                except Exception as exc:
+                    log.warning("instrument terms %s failed: %s", symbol, exc)
         self.quotes_stale = failures == len(self.cfg.trading.assets)
+
+    def refresh_pushed(self) -> bool:
+        """Fast pass: take what the stream has. False when no quote is fresh."""
+        if self.ws is None:
+            return False
+        now = datetime.now(UTC)
+        fresh = 0
+        for asset in self.cfg.trading.assets:
+            symbol = self.cfg.symbol(asset)
+            pushed = self.ws.fresh(symbol, now)
+            if pushed is not None:
+                self.quotes[symbol] = pushed
+                fresh += 1
+        return fresh > 0
+
+    async def _load_terms(self, client: BybitClient, asset: str, symbol: str) -> None:
+        inst = await client.instrument(symbol)
+        margin = await client.margin_coin(inst.base_coin if inst else asset)
+        self.borrow_rates[symbol] = margin.hourly_borrow_rate if margin else HOURLY_BORROW_FALLBACK
+        self.collateral_ratios[symbol] = margin.collateral_ratio if margin else Decimal("0.98")
+        if inst is not None:
+            self.qty_steps[symbol] = inst.lot_size_filter.base_precision
 
     # --- ledger ---------------------------------------------------------------------
 
@@ -263,8 +310,10 @@ class Executor:
     # --- positions ----------------------------------------------------------------
 
     async def manage_open(
-        self, session: Session, now: datetime, kill: bool, close_all: bool
+        self, session: Session, now: datetime, kill: bool, close_all: bool, *, fast: bool = False
     ) -> None:
+        """Evaluate and work every exit. ``fast``: the in-between pass on pushed quotes;
+        it skips the backup-stop housekeeping, which the full pass does."""
         if self.quotes_stale:
             log.warning("quotes stale: stops stay armed, no exits evaluated this tick")
             return
@@ -275,6 +324,7 @@ class Executor:
             quote = self.quotes.get(row.symbol)
             if quote is None:
                 continue
+            gw = self.gateway_for(row.mode)
             pos = self._to_sim(row)
             pos = sim.accrue_interest(
                 pos, now, self.borrow_rates.get(row.symbol, HOURLY_BORROW_FALLBACK), quote.mid
@@ -288,99 +338,218 @@ class Executor:
             row.interest, row.trail_stop, row.updated_at = pos.interest, pos.trail_stop, now
             row.liquidation_price = pos.liquidation_price
             if reason is None:
-                continue
-            result = await self.gateway.close(
-                row.symbol, Side(row.direction), row.qty, f"{row.order_link_id}-x", quote
-            )
-            if result.outcome is Outcome.UNREACHABLE:
+                if not fast and row.mode != "paper":
+                    # The exchange may have triggered the backup while we were away.
+                    if await self._backup_triggered(row, gw, quote, now):
+                        reason = ExitReason.STOP
+                    else:
+                        await self._sync_backup_stop(row, gw)
+                if reason is None:
+                    continue
+            if row.status != "closing":
                 row.status, row.close_reason = "closing", reason.value
-                log.error("%s: exit (%s) could not reach the venue; retrying", row.asset, reason)
+            if not await self._clear_backup_stop(row, gw, quote):
+                # The stop still rests and protects; sending our own exit next to it
+                # could sell twice. Try again next pass.
+                self._exit_pending(row, reason, "backup stop could not be cancelled")
                 continue
-            if result.outcome is Outcome.PARTIAL and result.filled_qty < row.qty:
-                # Book the filled part, keep the remainder open with the same stops.
-                remainder = row.qty - result.filled_qty
-                pos = sim.PaperPosition(**{**pos.__dict__, "qty": result.filled_qty})
-                row.qty, row.margin = (
-                    remainder,
-                    row.margin * remainder / (remainder + result.filled_qty),
+            remaining = row.qty - row.exit_filled_qty
+            if remaining > 0:
+                result = await gw.close(
+                    row.symbol, Side(row.direction), remaining, f"{row.order_link_id}-x", quote
                 )
-                row.notional = remainder * (row.entry_price or quote.mid)
-                row.status, row.close_reason = "open", None
-                exit_quote = Quote(
-                    result.avg_price or quote.bid, result.avg_price or quote.ask, now
-                )
-                fill = sim.close_position(pos, exit_quote, Decimal(0), reason)
-                fill = sim.Fill(
-                    fill.price,
-                    result.fee,
-                    fill.gross_pnl,
-                    fill.net_pnl - result.fee,
-                    fill.pnl_price_pct,
-                    fill.pnl_margin_pct,
-                )
-                acct = self.ledger(session, now, row.track)
-                acct.cash += pos.margin + fill.net_pnl
-                acct.realized_pnl += fill.net_pnl
-                log.warning(
-                    "%s: partial exit %s of %s",
-                    row.asset,
-                    result.filled_qty,
-                    row.qty + result.filled_qty,
-                )
-                continue
-            exit_quote = (
-                Quote(result.avg_price, result.avg_price, now) if result.avg_price else quote
-            )
-            fill = sim.close_position(pos, exit_quote, Decimal(0), reason)
-            fill = sim.Fill(
-                fill.price,
-                result.fee,
-                fill.gross_pnl,
-                fill.net_pnl - result.fee,
-                fill.pnl_price_pct,
-                (fill.net_pnl - result.fee) / pos.margin if pos.margin else Decimal(0),
-            )
-            row.status, row.closed_at, row.close_reason = "closed", now, reason.value
-            row.exit_price, row.fees = fill.price, row.fees + fill.fee
-            if row.track == "primary":
-                await self.post(session, row, "close", None, now)
-            row.pnl, row.pnl_price_pct, row.pnl_margin_pct = (
-                fill.net_pnl,
-                fill.pnl_price_pct,
-                fill.pnl_margin_pct,
-            )
-            acct = self.ledger(session, now, row.track)
-            acct.cash += row.margin + fill.net_pnl
-            acct.realized_pnl += fill.net_pnl
-            acct.fees_paid += fill.fee
-            acct.interest_paid += row.interest
-            if reason is ExitReason.LIQUIDATION:
-                acct.liquidations += 1
-            log.info(
-                "closed %s %s %s at %s: %.2f (%s)",
-                row.mode,
-                row.asset,
-                row.direction,
-                fill.price,
-                fill.net_pnl,
-                reason.value,
+                self._add_exit_fill(row, result, quote)
+                if result.outcome is not Outcome.FILLED and row.exit_filled_qty < row.qty:
+                    self._exit_pending(row, reason, f"{result.outcome.value} {result.detail}")
+                    continue
+            await self._book_exit(
+                session, row, pos, quote, ExitReason(row.close_reason or reason.value), now
             )
         session.commit()
+
+    def _exit_pending(self, row: Position, reason: ExitReason, detail: str) -> None:
+        """An exit that is not flat yet stays ``closing`` and is retried every pass."""
+        row.exit_attempts += 1
+        log.error(
+            "%s %s: exit (%s) not flat after %d pass(es), %s of %s filled: %s",
+            row.mode,
+            row.asset,
+            reason.value,
+            row.exit_attempts,
+            row.exit_filled_qty,
+            row.qty,
+            detail.strip(),
+        )
+        key = f"exit:{row.id}"
+        if (
+            row.mode != "paper"
+            and row.exit_attempts >= EXIT_ALERT_AFTER
+            and key not in self._alerted
+        ):
+            self._alerted.add(key)
+            self._alert(
+                f"dorkbot: {row.asset} exit not filled",
+                f"The {reason.value} exit on {row.asset} ({row.mode}) is still open after "
+                f"{row.exit_attempts} passes: {row.exit_filled_qty} of {row.qty} filled. "
+                f"Last answer: {detail.strip()}. The executor keeps retrying every pass.",
+            )
+
+    @staticmethod
+    def _add_exit_fill(row: Position, result: OrderOutcome, quote: Quote) -> None:
+        if result.filled_qty <= 0:
+            return
+        price = result.avg_price or (quote.bid if row.direction == "long" else quote.ask)
+        row.exit_filled_qty += result.filled_qty
+        row.exit_value += result.filled_qty * price
+        row.exit_fee += result.fee
+
+    async def _book_exit(
+        self,
+        session: Session,
+        row: Position,
+        pos: sim.PaperPosition,
+        quote: Quote,
+        reason: ExitReason,
+        now: datetime,
+    ) -> None:
+        """The position is flat: book it once, at the average of everything that filled."""
+        if row.exit_filled_qty > 0:
+            price = row.exit_value / row.exit_filled_qty
+            exit_quote = Quote(price, price, now)
+        else:
+            exit_quote = quote
+        # A real position that our liquidation guard closed is booked at its real fill,
+        # not at the modelled liquidation price with the whole margin gone.
+        calc = (
+            ExitReason.STOP if reason is ExitReason.LIQUIDATION and row.mode != "paper" else reason
+        )
+        fill = sim.close_position(pos, exit_quote, Decimal(0), calc)
+        net = fill.net_pnl - row.exit_fee
+        row.status, row.closed_at, row.close_reason = "closed", now, reason.value
+        row.exit_price, row.fees = fill.price, row.fees + row.exit_fee
+        if row.track == "primary":
+            await self.post(session, row, "close", None, now)
+        row.pnl, row.pnl_price_pct, row.pnl_margin_pct = (
+            net,
+            fill.pnl_price_pct,
+            net / pos.margin if pos.margin else Decimal(0),
+        )
+        acct = self.ledger(session, now, row.track)
+        acct.cash += row.margin + net
+        acct.realized_pnl += net
+        acct.fees_paid += row.exit_fee
+        acct.interest_paid += row.interest
+        if reason is ExitReason.LIQUIDATION and row.mode == "paper":
+            acct.liquidations += 1
+        self._alerted.discard(f"exit:{row.id}")
+        log.info(
+            "closed %s %s %s at %s: %.2f (%s)",
+            row.mode,
+            row.asset,
+            row.direction,
+            fill.price,
+            net,
+            reason.value,
+        )
+
+    # --- exchange-side backup stop ---------------------------------------------------
+
+    @staticmethod
+    def backup_trigger(row: Position) -> Decimal:
+        """``BACKUP_ATR_MULT`` ATR beyond the stop the bot itself enforces (the trailing
+        stop once armed). Without an ATR on the row, the stop distance stands in for it."""
+        assert row.entry_price is not None
+        atr = row.atr if row.atr and row.atr > 0 else abs(row.entry_price - row.stop)
+        offset = BACKUP_ATR_MULT * atr
+        if row.direction == "long":
+            stop = max(row.stop, row.trail_stop) if row.trail_stop is not None else row.stop
+            return stop - offset
+        stop = min(row.stop, row.trail_stop) if row.trail_stop is not None else row.stop
+        return stop + offset
+
+    async def _sync_backup_stop(self, row: Position, gw: Gateway) -> None:
+        """Place the backup stop, or move it when the bot's stop moved. Cancel first, then
+        place: two resting stops could both trigger. If the new one does not land the
+        position is without a backup until the next pass, with the bot's own stop live."""
+        if not (gw.supports_backup_stop and self.cfg.exchange.backup_stop):
+            return
+        if row.status != "open":
+            return
+        want = self.backup_trigger(row)
+        if row.backup_stop_link is not None and row.backup_stop_price == want:
+            return
+        if row.backup_stop_link is not None:
+            if not await gw.cancel_backup_stop(row.symbol, row.backup_stop_link):
+                return  # the old one still rests; try again next pass
+            row.backup_stop_link = row.backup_stop_price = None
+        link = f"bk-{uuid.uuid4().hex[:24]}"
+        qty = row.qty - row.exit_filled_qty
+        if await gw.place_backup_stop(row.symbol, Side(row.direction), qty, want, link):
+            row.backup_stop_link, row.backup_stop_price = link, want
+            self._alerted.discard(f"backup:{row.id}")
+            return
+        key = f"backup:{row.id}"
+        if key not in self._alerted:
+            self._alerted.add(key)
+            self._alert(
+                f"dorkbot: no backup stop on {row.asset}",
+                f"The exchange-side backup stop for {row.asset} ({row.mode}) could not be "
+                "placed. The bot's own stop is active; the executor retries every pass.",
+            )
+
+    async def _backup_triggered(
+        self, row: Position, gw: Gateway, quote: Quote, now: datetime
+    ) -> bool:
+        """True when the exchange filled the backup stop; the fill is taken onto the row."""
+        if row.backup_stop_link is None:
+            return False
+        fill = await gw.backup_stop_fill(row.symbol, row.backup_stop_link)
+        if fill is None or fill.outcome is Outcome.UNREACHABLE:
+            return False
+        self._add_exit_fill(row, fill, quote)
+        row.backup_stop_link = row.backup_stop_price = None
+        log.error("%s %s: the exchange-side backup stop triggered", row.mode, row.asset)
+        self._alert(
+            f"dorkbot: backup stop triggered on {row.asset}",
+            f"The exchange-side stop on {row.asset} ({row.mode}) filled {fill.filled_qty} at "
+            f"{fill.avg_price}. The bot's own stop did not act first; check the executor.",
+        )
+        return True
+
+    async def _clear_backup_stop(self, row: Position, gw: Gateway, quote: Quote) -> bool:
+        """Before the bot exits: cancel the backup, then read whether it had filled.
+        False means its state is unknown and no exit order may be sent this pass."""
+        link = row.backup_stop_link
+        if link is None:
+            return True
+        if not await gw.cancel_backup_stop(row.symbol, link):
+            return False
+        fill = await gw.backup_stop_fill(row.symbol, link)
+        if fill is not None and fill.outcome is Outcome.UNREACHABLE:
+            return False
+        if fill is not None:
+            self._add_exit_fill(row, fill, quote)
+        row.backup_stop_link = row.backup_stop_price = None
+        return True
 
     async def open_new(self, session: Session, now: datetime) -> None:
         if self.frozen or self.quotes_stale:
             return
-        tracks = {"paper": ["primary", "max"], "pilot": ["pilot"], "live": ["primary"]}[self.mode]
-        for track in tracks:
-            await self._open_track(session, now, track)
+        for track, track_mode in TRACKS[self.mode].items():
+            await self._open_track(session, now, track, track_mode)
 
-    async def _open_track(self, session: Session, now: datetime, track: str) -> None:
+    async def _open_track(
+        self, session: Session, now: datetime, track: str, track_mode: str
+    ) -> None:
+        gw = self.gateway_for(track_mode)
         fee = TAKER_FEE.get(self.cfg.exchange.quote, Decimal("0.001"))
         acct = self.ledger(session, now, track)
         plan_key = "plan_max" if track == "max" else "plan"
         open_assets = set(
             session.scalars(
-                select(Position.asset).where(Position.status == "open", Position.track == track)
+                select(Position.asset).where(
+                    Position.status.in_(["open", "closing"]), Position.track == track
+                )
             ).all()
         )
         recent = now - timedelta(hours=self.cfg.trading.cycle_hours)
@@ -440,10 +609,8 @@ class Executor:
             except ValueError as exc:
                 log.warning("%s: %s", d.asset, exc)
                 continue
-            link = f"{'paper' if self.mode == 'paper' else 'live'}-{uuid.uuid4().hex[:20]}"
-            result = await self.gateway.open(
-                symbol, side, pos.qty, bool(plan.get("borrow")), link, quote
-            )
+            link = f"{'paper' if track_mode == 'paper' else 'live'}-{uuid.uuid4().hex[:20]}"
+            result = await gw.open(symbol, side, pos.qty, bool(plan.get("borrow")), link, quote)
             if result.outcome is Outcome.UNREACHABLE:
                 log.error("%s: venue unreachable; entry retried next tick", d.asset)
                 continue
@@ -473,7 +640,7 @@ class Executor:
             row = Position(
                 decision_id=d.id,
                 cycle_id=d.cycle_id,
-                mode=self.mode,
+                mode=track_mode,
                 track=track,
                 asset=d.asset,
                 symbol=symbol,
@@ -492,11 +659,14 @@ class Executor:
                 fees=pos.fees,
                 liquidation_price=pos.liquidation_price,
                 order_link_id=link,
+                atr=Decimal(plan["atr"]) if plan.get("atr") else None,
                 created_at=now,
                 updated_at=now,
             )
             session.add(row)
             session.flush()
+            if track_mode != "paper":
+                await self._sync_backup_stop(row, gw)
             if track == "primary":
                 await self.post(session, row, "open", self._reason_for(d), now)
             acct.cash -= pos.margin + pos.fees
@@ -504,7 +674,7 @@ class Executor:
             open_assets.add(d.asset)
             log.info(
                 "opened %s %s %s qty %s at %s, %sx, stop %s target %s",
-                self.mode,
+                track_mode,
                 d.asset,
                 side.value,
                 pos.qty,
@@ -527,6 +697,8 @@ class Executor:
     async def post(
         self, session: Session, row: Position, kind: str, reason: str | None, now: datetime
     ) -> None:
+        if row.mode == "pilot" or row.track != "primary":
+            return  # the pilot is an execution test, not part of the X storyline
         try:
             await poster.enqueue(
                 session,
@@ -566,13 +738,13 @@ class Executor:
 
     def snapshot(self, session: Session, now: datetime) -> None:
         summary = []
-        for track in {"paper": ["primary", "max"], "pilot": ["pilot"], "live": ["primary"]}[
-            self.mode
-        ]:
+        for track, track_mode in TRACKS[self.mode].items():
             acct = self.ledger(session, now, track)
             unreal = margin_total = gross = Decimal(0)
             rows = session.scalars(
-                select(Position).where(Position.status == "open", Position.track == track)
+                select(Position).where(
+                    Position.status.in_(["open", "closing"]), Position.track == track
+                )
             ).all()
             for row in rows:
                 quote = self.quotes.get(row.symbol)
@@ -588,7 +760,7 @@ class Executor:
             session.merge(
                 EquitySnapshot(
                     ts=now,
-                    mode=f"{self.mode}:{track}" if self.mode != "live" else self.mode,
+                    mode=f"{track_mode}:{track}" if track_mode != "live" else track_mode,
                     equity=acct.equity,
                     cash=acct.cash,
                     open_positions=len(rows),
@@ -663,7 +835,19 @@ class Executor:
             except Exception:
                 log.exception("poster flush failed")
 
+    async def fast_tick(self) -> None:
+        """Between full passes, on pushed quotes only: stops, targets, trailing stops,
+        time-stops and pending exits. Controls, entries and accounting wait for the
+        full pass."""
+        if self.quotes_stale or not self.refresh_pushed():
+            return
+        now = datetime.now(UTC)
+        with new_session() as session:
+            await self.manage_open(session, now, False, False, fast=True)
+
     async def run(self, once: bool = False) -> None:
+        if self.ws is not None and not once:
+            self.ws.start()
         while True:
             try:
                 await self.tick()
@@ -671,7 +855,18 @@ class Executor:
                 log.exception("tick failed")
             if once:
                 break
-            await asyncio.sleep(TICK_S)
+            if self.ws is None:
+                await asyncio.sleep(TICK_S)
+                continue
+            for _ in range(TICK_S // FAST_S - 1):
+                await asyncio.sleep(FAST_S)
+                try:
+                    await self.fast_tick()
+                except Exception:
+                    log.exception("fast tick failed")
+            await asyncio.sleep(FAST_S)
+        if self.ws is not None:
+            await self.ws.stop()
         if self._client is not None:
             await self._client.aclose()
 

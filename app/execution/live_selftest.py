@@ -1,12 +1,15 @@
-"""SPEC §10 live self-test at minimal size on the real gateway: order, margin borrow,
-close, kill switch. Records ``risk_state.live_selftest_at`` on success.
+"""SPEC §10 live self-test at minimal size on the real gateway: order, backup stop,
+margin borrow, close, kill switch. Records ``risk_state.live_selftest_at`` on success.
 
     python -m app.execution.live_selftest --confirm yes      # on the server (IP-bound key)
 
-Sequence on BTCUSDT: (1) long: post-only buy of the minimum amount at the bid, wait,
-sell it back; (2) short: sell the minimum amount with auto-borrow (isLeverage=1), buy it
-back so the borrow repays; (3) kill switch: queue a kill request and confirm the executor
-would act (control request applied flag). Every step is logged; any failure stops it.
+Sequence on BTCUSDT: (1) long: post-only buy of the minimum amount at the bid; while it
+is open, an exchange-side backup stop is placed far from the market, found resting,
+moved, cancelled and confirmed gone; then the long is sold back with the IOC exit;
+(2) short: sell the minimum amount with auto-borrow (isLeverage=1), the same backup-stop
+check on the buy side, then buy it back so the borrow repays; (3) kill switch: queue a
+kill request and confirm the executor would act (control request applied flag). Every
+step is logged; any failure stops it.
 """
 
 from __future__ import annotations
@@ -22,9 +25,47 @@ from app.config import get_config, get_secrets
 from app.db.models import ControlRequest, RiskState
 from app.db.session import new_session
 from app.execution.bybit_client import BybitClient
-from app.execution.bybit_gateway import BybitGateway
+from app.execution.bybit_gateway import STOP_FILTER, BybitGateway
 from app.execution.gateway import Outcome
 from app.execution.simulator import Quote, Side
+
+
+async def check_backup_stop(
+    client: BybitClient, gw: BybitGateway, symbol: str, side: Side, qty: Decimal, quote: Quote
+) -> bool:
+    """Place, find, move, cancel. The triggers sit 10% and 12% from the market, on the
+    losing side, so nothing can fire during the test."""
+
+    async def resting(link: str) -> bool:
+        orders = await client.open_orders(symbol, STOP_FILTER)
+        return any(o.order_link_id == link for o in orders)
+
+    away = (
+        (Decimal("0.90"), Decimal("0.88"))
+        if side is Side.LONG
+        else (Decimal("1.10"), Decimal("1.12"))
+    )
+    first, second = (f"st-bk-{uuid.uuid4().hex[:12]}" for _ in range(2))
+    if not await gw.place_backup_stop(symbol, side, qty, quote.mid * away[0], first):
+        print("      backup stop: the exchange refused it")
+        return False
+    if not await resting(first):
+        print("      backup stop: accepted but not found resting")
+        return False
+    moved = await gw.cancel_backup_stop(symbol, first) and await gw.place_backup_stop(
+        symbol, side, qty, quote.mid * away[1], second
+    )
+    if not moved or await resting(first) or not await resting(second):
+        print("      backup stop: could not be moved")
+        return False
+    if not await gw.cancel_backup_stop(symbol, second) or await resting(second):
+        print("      backup stop: could not be cancelled")
+        return False
+    if await gw.backup_stop_fill(symbol, second) is not None:
+        print("      backup stop: reports a fill it cannot have had")
+        return False
+    print("      backup stop: placed, found, moved, cancelled")
+    return True
 
 
 async def run() -> int:
@@ -44,11 +85,13 @@ async def run() -> int:
         print(f"      entry: {r.outcome.value} filled {r.filled_qty} avg {r.avg_price} fee {r.fee}")
         if r.outcome not in (Outcome.FILLED, Outcome.PARTIAL) or r.filled_qty <= 0:
             return 1
+        held = r.filled_qty
         t = await client.ticker(symbol)
         quote = Quote(t.bid1_price, t.ask1_price, datetime.now(UTC))
-        r = await gw.close(symbol, Side.LONG, r.filled_qty, f"st-{uuid.uuid4().hex[:12]}", quote)
-        print(f"      exit: {r.outcome.value} filled {r.filled_qty} avg {r.avg_price}")
-        if r.outcome not in (Outcome.FILLED, Outcome.PARTIAL):
+        backup_ok = await check_backup_stop(client, gw, symbol, Side.LONG, held, quote)
+        r = await gw.close(symbol, Side.LONG, held, f"st-{uuid.uuid4().hex[:12]}-x", quote)
+        print(f"      exit (IOC): {r.outcome.value} filled {r.filled_qty} avg {r.avg_price}")
+        if r.outcome is not Outcome.FILLED:
             return 1
         t = await client.ticker(symbol)
         quote = Quote(t.bid1_price, t.ask1_price, datetime.now(UTC))
@@ -57,16 +100,27 @@ async def run() -> int:
         print(f"      entry: {r.outcome.value} filled {r.filled_qty} avg {r.avg_price} {r.detail}")
         if r.outcome not in (Outcome.FILLED, Outcome.PARTIAL) or r.filled_qty <= 0:
             return 1
+        owed = r.filled_qty
         t = await client.ticker(symbol)
         quote = Quote(t.bid1_price, t.ask1_price, datetime.now(UTC))
-        r = await gw.close(symbol, Side.SHORT, r.filled_qty, f"st-{uuid.uuid4().hex[:12]}", quote)
-        print(f"      cover: {r.outcome.value} filled {r.filled_qty} avg {r.avg_price}")
-        if r.outcome not in (Outcome.FILLED, Outcome.PARTIAL):
+        backup_ok = (
+            await check_backup_stop(client, gw, symbol, Side.SHORT, owed, quote) and backup_ok
+        )
+        r = await gw.close(symbol, Side.SHORT, owed, f"st-{uuid.uuid4().hex[:12]}-x", quote)
+        print(f"      cover (IOC): {r.outcome.value} filled {r.filled_qty} avg {r.avg_price}")
+        if r.outcome is not Outcome.FILLED:
             return 1
         wallet = await client.wallet_balance()
         borrows = [c.coin for c in wallet.coin if c.borrow_amount and c.borrow_amount > 0]
         print(f"      open borrows after cover: {borrows or 'none'}")
         if borrows:
+            return 1
+        if cfg.exchange.backup_stop and not backup_ok:
+            print(
+                "backup stop not verified: positions are flat, but the self-test fails. If "
+                "Bybit does not offer conditional orders on spot margin, set "
+                "[exchange] backup_stop = false and run again."
+            )
             return 1
     print("[3/3] kill switch: queueing a kill request for the executor")
     with new_session() as s:

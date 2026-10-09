@@ -29,6 +29,8 @@ quote = "USDT"                  # quote coin of every traded pair
 alt_quote = "USDC"              # compared in the self-test report only, never traded
 recv_window_ms = 5000
 extra_candle_symbols = ["ETHBTC", "SOLBTC"]  # dominance proxies, never traded
+backup_stop = true               # conditional stop-market on Bybit, 0.5 ATR beyond the bot's stop; the live self-test verifies it
+price_feed = "ws"                # executor quotes: public WebSocket, REST ticker as fallback; "rest" = 10 s polling
 
 [exchange.base_coin]            # asset -> exchange base coin, where they differ
 SPX6900 = "SPX"

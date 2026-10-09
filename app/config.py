@@ -6,6 +6,7 @@ import tomllib
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -50,6 +51,8 @@ class ExchangeConfig(_Section):
     recv_window_ms: int = 5000
     base_coin: dict[str, str] = Field(default_factory=dict)
     extra_candle_symbols: list[str] = Field(default_factory=list)  # e.g. ETHBTC, SOLBTC
+    price_feed: Literal["ws", "rest"] = "rest"  # executor quotes; go-live requires "ws"
+    backup_stop: bool = True  # exchange-side stop behind every real position
 
 
 class PostingConfig(_Section):

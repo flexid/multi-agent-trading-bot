@@ -56,6 +56,15 @@ class BybitAPIError(BybitError):
         self.ret_msg = ret_msg
 
 
+class BybitTransportError(BybitError):
+    """The request did not complete: timeout, connection reset, DNS. For an order this
+    means "unknown", not "not placed": the exchange may have received it."""
+
+    def __init__(self, path: str, cause: Exception) -> None:
+        super().__init__(f"{path}: {type(cause).__name__}: {cause}")
+        self.path = path
+
+
 class OrdersDisabledError(BybitError):
     """Raised when an order call is made on a client not built for trading."""
 
@@ -146,15 +155,19 @@ class BybitClient:
             try:
                 headers = self._auth_headers(query) if auth else {}
                 return self._unwrap(path, await self._http.get(url, headers=headers))
-            except httpx.TransportError:
+            except httpx.TransportError as exc:
                 if attempt == 2:
-                    raise
+                    raise BybitTransportError(path, exc) from exc
         raise AssertionError("unreachable")
 
     async def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         raw = json.dumps(body, separators=(",", ":"))
         headers = {**self._auth_headers(raw), "Content-Type": "application/json"}
-        return self._unwrap(path, await self._http.post(path, content=raw, headers=headers))
+        try:
+            response = await self._http.post(path, content=raw, headers=headers)
+        except httpx.TransportError as exc:  # writes are never retried here
+            raise BybitTransportError(path, exc) from exc
+        return self._unwrap(path, response)
 
     # --- public market data ----------------------------------------------
 
@@ -235,11 +248,39 @@ class BybitClient:
         result = await self._get("/v5/user/query-sub-members", auth=True)
         return len(result.get("subMembers") or [])
 
-    async def open_orders(self, symbol: str | None = None) -> list[Order]:
+    async def open_orders(
+        self, symbol: str | None = None, order_filter: str | None = None
+    ) -> list[Order]:
+        """Resting orders. Conditional stops only show with ``order_filter="StopOrder"``."""
         result = await self._get(
-            "/v5/order/realtime", {"category": CATEGORY, "symbol": symbol}, auth=True
+            "/v5/order/realtime",
+            {"category": CATEGORY, "symbol": symbol, "orderFilter": order_filter},
+            auth=True,
         )
         return [Order.model_validate(row) for row in result.get("list") or []]
+
+    async def order_history(self, symbol: str, order_link_id: str) -> Order | None:
+        """One of our orders by ``orderLinkId``; None when the exchange does not know it."""
+        result = await self._get(
+            "/v5/order/history",
+            {"category": CATEGORY, "symbol": symbol, "orderLinkId": order_link_id},
+            auth=True,
+        )
+        rows = result.get("list") or []
+        return Order.model_validate(rows[0]) if rows else None
+
+    async def find_order(self, symbol: str, order_link_id: str) -> Order | None:
+        """Our order by ``orderLinkId``, live or just finished. The realtime endpoint
+        answers at once and also returns recently closed orders; history is the fallback."""
+        result = await self._get(
+            "/v5/order/realtime",
+            {"category": CATEGORY, "symbol": symbol, "orderLinkId": order_link_id},
+            auth=True,
+        )
+        rows = result.get("list") or []
+        if rows:
+            return Order.model_validate(rows[0])
+        return await self.order_history(symbol, order_link_id)
 
     # --- orders ----------------------------------------------------------
 
@@ -251,7 +292,11 @@ class BybitClient:
         self._require_orders()
         return OrderAck.model_validate(await self._post("/v5/order/create", request.payload()))
 
-    async def cancel_order(self, symbol: str, order_link_id: str) -> OrderAck:
+    async def cancel_order(
+        self, symbol: str, order_link_id: str, order_filter: str | None = None
+    ) -> OrderAck:
         self._require_orders()
         body = {"category": CATEGORY, "symbol": symbol, "orderLinkId": order_link_id}
+        if order_filter:
+            body["orderFilter"] = order_filter
         return OrderAck.model_validate(await self._post("/v5/order/cancel", body))

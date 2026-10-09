@@ -10,7 +10,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-NUMBER = re.compile(r"(?<![A-Za-z@#_/])[-+]?\$?\d[\d,]*(?:\.\d+)?(?:k|K|M|B)?(?![A-Za-z0-9_@#])")
+NUMBER = re.compile(
+    r"(?<![A-Za-z0-9@#_/.])[-+]?\$?\d[\d,]*(?:\.\d+)?(?:k|K|M|B)?(?![A-Za-z0-9_@#])"
+)
 # What may follow or precede a number for it to count as an allowed kind.
 PCT = re.compile(r"^[-+]?\d[\d,]*(?:\.\d+)?%$")
 LEVERAGE = re.compile(r"^\d+(?:\.\d+)?x$", re.I)

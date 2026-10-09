@@ -281,8 +281,8 @@ class Position(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     decision_id: Mapped[int | None] = mapped_column(BigInteger)
     cycle_id: Mapped[int | None] = mapped_column(BigInteger)
-    mode: Mapped[str] = mapped_column(String(8))  # paper | live
-    track: Mapped[str] = mapped_column(String(8), default="primary")  # primary | max (shadow)
+    mode: Mapped[str] = mapped_column(String(8))  # paper | pilot | live
+    track: Mapped[str] = mapped_column(String(8), default="primary")  # primary | max | pilot
     asset: Mapped[str] = mapped_column(String(10))
     symbol: Mapped[str] = mapped_column(String(20))
     direction: Mapped[str] = mapped_column(String(6))  # long | short
@@ -309,6 +309,16 @@ class Position(Base):
     liquidation_price: Mapped[Decimal | None]
     order_link_id: Mapped[str | None] = mapped_column(String(36), unique=True)
     x_post_id: Mapped[str | None] = mapped_column(String(32))  # M7
+    atr: Mapped[Decimal | None]  # ATR(14, 4h) at entry; sizes the backup stop's offset
+    # Exchange-side backup stop (real orders only): the trigger it rests at and its
+    # orderLinkId. The link stays on a closed row until the cancel is confirmed.
+    backup_stop_price: Mapped[Decimal | None]
+    backup_stop_link: Mapped[str | None] = mapped_column(String(36))
+    # An exit in progress: what has filled so far. Booked once, when the position is flat.
+    exit_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    exit_filled_qty: Mapped[Decimal] = mapped_column(default=0, server_default="0")
+    exit_value: Mapped[Decimal] = mapped_column(default=0, server_default="0")  # quote
+    exit_fee: Mapped[Decimal] = mapped_column(default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -487,6 +497,9 @@ class RiskState(Base):
     leverage_ceiling: Mapped[Decimal] = mapped_column(Numeric(4, 1), default=2)  # ramps per §8
     mode: Mapped[str] = mapped_column(String(8), default="shadow")  # shadow | live (M9 decides)
     live_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Capital ramp after go-live: the share of capital_max_usdt in use and when it last moved.
+    capital_fraction: Mapped[Decimal | None] = mapped_column(Numeric(4, 2))
+    capital_step_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     live_selftest_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_golive_check: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     golive_report: Mapped[list[Any] | None] = mapped_column(JSONB)

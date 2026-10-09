@@ -12,12 +12,12 @@ from pathlib import Path
 from sqlalchemy import func, select
 
 from app.config import Config, get_secrets
+from app.costs import SERVER_USD_PER_MONTH, X_POST_USD, X_READ_USD
 from app.db.models import LLMCall, XPostOut, XPostRecord
 from app.db.session import new_session
 
 log = logging.getLogger("ops")
 BACKUP_DIR = Path("/app/logs/backups")
-SERVER_USD_PER_MONTH = Decimal(24)  # DigitalOcean 2 vCPU / 4 GB droplet
 KEEP_BACKUPS = 14
 
 
@@ -49,11 +49,12 @@ def backup() -> Path | None:
 
 
 def golive_check(cfg: Config) -> None:
-    from app.risk.golive import decide, ramp
+    from app.risk.golive import capital_ramp, decide, ramp
 
     with new_session() as s:
         verdict = decide(s, cfg)
         ramp(s)
+        capital_ramp(s, cfg)
     log.info(
         "go-live check: %s (%d/%d criteria)",
         "READY" if verdict.ready else "not yet",
@@ -96,7 +97,7 @@ def cost_report(now: datetime | None = None) -> str:
             .where(XPostOut.posted_at >= since, XPostOut.dry_run.is_(False))
         ).scalar_one()
     llm_total = sum(Decimal(str(r[4] or 0)) for r in by_model)
-    x_total = Decimal(reads) * Decimal("0.005") + Decimal(posts) * Decimal("0.015")
+    x_total = Decimal(reads) * X_READ_USD + Decimal(posts) * X_POST_USD
     lines = [
         f"# Running costs, 30 days to {now:%Y-%m-%d}",
         "",
@@ -107,8 +108,8 @@ def cost_report(now: datetime | None = None) -> str:
         tokens = f"{tin or 0:,} in / {tout or 0:,} out tokens"
         lines.append(f"| LLM {model} | {n} calls, {tokens} | ${Decimal(str(cost or 0)):.2f} |")
     lines += [
-        f"| X reads | {reads} | ${Decimal(reads) * Decimal('0.005'):.2f} |",
-        f"| X posts | {posts} | ${Decimal(posts) * Decimal('0.015'):.2f} |",
+        f"| X reads | {reads} | ${Decimal(reads) * X_READ_USD:.2f} |",
+        f"| X posts | {posts} | ${Decimal(posts) * X_POST_USD:.2f} |",
         f"| Server (DigitalOcean) | 1 droplet | ${SERVER_USD_PER_MONTH:.2f} |",
         f"| **Total** | | **${llm_total + x_total + SERVER_USD_PER_MONTH:.2f}** |",
         "",

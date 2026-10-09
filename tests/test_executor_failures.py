@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import delete, select
 
 from app.config import get_config, get_secrets
-from app.db.models import Cycle, DecisionRecord, PaperAccount, Position
+from app.db.models import Cycle, DecisionRecord, PaperAccount, Position, XPostOut
 from app.execution.executor import Executor
 from app.execution.gateway import OrderOutcome, Outcome, ScriptedGateway
 from app.execution.simulator import Quote
@@ -35,6 +35,7 @@ def db() -> Iterator[None]:
     from app.db.session import new_session
 
     with new_session() as s:
+        s.execute(delete(XPostOut))
         s.execute(delete(Position))
         s.execute(delete(DecisionRecord))
         s.execute(delete(Cycle))
@@ -42,6 +43,7 @@ def db() -> Iterator[None]:
         s.commit()
     yield
     with new_session() as s:
+        s.execute(delete(XPostOut))
         s.execute(delete(Position))
         s.execute(delete(DecisionRecord))
         s.execute(delete(Cycle))
@@ -50,7 +52,11 @@ def db() -> Iterator[None]:
 
 
 def seed_decision(
-    direction: str = "long", entry: str = "100", stop: str = "98", target: str = "106"
+    direction: str = "long",
+    entry: str = "100",
+    stop: str = "98",
+    target: str = "106",
+    atr: str | None = None,
 ) -> int:
     from app.db.session import new_session
 
@@ -81,6 +87,7 @@ def seed_decision(
                     "borrow": True,
                     "notional": "2000",
                     "margin": "1000",
+                    **({"atr": atr} if atr else {}),
                 },
                 "plan_max": {
                     "entry": entry,

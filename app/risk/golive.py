@@ -1,9 +1,14 @@
-"""Go-live checker and leverage ramp (SPEC §10, §8; owner rules 2026-10-09).
+"""Go-live checker, leverage ramp and capital ramp (SPEC §10, §8; owner rules 2026-10-09).
 
 The bot decides itself. ``evaluate`` returns every criterion with its value and pass/fail
 on the primary paper track; ``decide`` flips ``risk_state.mode`` to live only when all
-pass AND ``trading.live_allowed`` is true AND the live self-test has passed. The ramp
-moves ``risk_state.leverage_ceiling`` 2x → 5x → 10x and back down on underperformance.
+pass AND ``trading.live_allowed`` is true AND the live self-test has passed. The leverage
+ramp moves ``risk_state.leverage_ceiling`` 2x → 5x → 10x and back down on
+underperformance; the capital ramp moves ``risk_state.capital_fraction`` 10% → 25% → 50%
+→ 100% of ``capital_max_usdt`` and one step back after a drawdown pause.
+
+"Net" everywhere in this module means after ALL costs: trading P&L net of fees and
+borrow interest, minus what the bot spends on itself (LLM, X, server; ``app.costs``).
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Config
+from app.costs import running_costs
 from app.db.models import (
     Candle,
     EquitySnapshot,
@@ -32,6 +38,8 @@ MIN_PROFIT_FACTOR = Decimal("1.3")
 MAX_DRAWDOWN = Decimal("0.10")
 INCIDENT_WINDOW_DAYS = 14
 INCIDENT_ERRORS_IN_ROW = 6  # 90 minutes of a source failing counts as an incident
+CAPITAL_STEPS = (Decimal("0.25"), Decimal("0.50"), Decimal("1.00"))  # after the start fraction
+CAPITAL_STEP_DAYS = 21
 
 
 @dataclass(frozen=True)
@@ -116,7 +124,9 @@ def evaluate(session: Session, cfg: Config, now: datetime | None = None) -> Verd
     losses = -sum(float(p.pnl) for p in closed if p.pnl and p.pnl < 0)
     pf = Decimal(str(wins / losses)) if losses > 0 else (Decimal(99) if wins > 0 else Decimal(0))
     acct = session.get(PaperAccount, 1)
-    net = (acct.equity - acct.starting_capital) if acct else Decimal(0)
+    trading_net = (acct.equity - acct.starting_capital) if acct else Decimal(0)
+    costs = running_costs(session, start, now)
+    net = trading_net - costs.total
     peak, dd = Decimal(0), Decimal(0)
     for _, eq in series:
         peak = max(peak, eq)
@@ -138,7 +148,11 @@ def evaluate(session: Session, cfg: Config, now: datetime | None = None) -> Verd
         Criterion(
             "closed primary trades ≥ 100", str(len(closed)), len(closed) >= MIN_CLOSED_TRADES
         ),
-        Criterion("net positive after fees and interest", f"{net:+.2f}", net > 0),
+        Criterion(
+            "net positive after all costs (fees, interest, LLM, X, server)",
+            f"{net:+.2f} = trading {trading_net:+.2f} - costs {costs.total:.2f}",
+            net > 0,
+        ),
         Criterion("profit factor ≥ 1.3", f"{pf:.2f}", pf >= MIN_PROFIT_FACTOR),
         Criterion(
             "sharpe above BTC buy-and-hold",
@@ -156,6 +170,11 @@ def evaluate(session: Session, cfg: Config, now: datetime | None = None) -> Verd
             "live self-test passed (order, borrow, close, kill)",
             "yes" if selftest_ok else "no",
             selftest_ok,
+        ),
+        Criterion(
+            "executor price feed is the public WebSocket",
+            cfg.exchange.price_feed,
+            cfg.exchange.price_feed == "ws",
         ),
         Criterion(
             "live_allowed = true in config", str(cfg.trading.live_allowed), cfg.trading.live_allowed
@@ -176,6 +195,8 @@ def decide(session: Session, cfg: Config, now: datetime | None = None) -> Verdic
     if verdict.ready and state.mode != "live":
         state.mode, state.live_since = "live", now
         state.leverage_ceiling = Decimal(2)
+        state.capital_fraction = cfg.trading.live_start_fraction
+        state.capital_step_at = now
         state.starting_capital = None  # the executor sets it from the first live equity
     session.commit()
     return verdict
@@ -184,18 +205,30 @@ def decide(session: Session, cfg: Config, now: datetime | None = None) -> Verdic
 # --- leverage ramp (§8) -------------------------------------------------------------------
 
 
+def _live_net(session: Session, since: datetime, until: datetime) -> Decimal:
+    """Live P&L of trades closed in the window, after all costs of that window."""
+    trading = sum(
+        (
+            p.pnl or Decimal(0)
+            for p in _closed(session, mode="live")
+            if p.closed_at and since <= p.closed_at < until
+        ),
+        Decimal(0),
+    )
+    return trading - running_costs(session, since, until).total
+
+
 def ramp(session: Session, now: datetime | None = None) -> Decimal:
     """2x at live start; 5x after 4 weeks within all limits; 10x after 3 months net-positive
-    after costs. Drops back a step on a drawdown pause or a losing month."""
+    after all costs. Drops back a step on a drawdown pause or a losing month."""
     now = now or datetime.now(UTC)
     state = session.get(RiskState, 1)
     if state is None or state.mode != "live" or not state.live_since:
         return Decimal(2)
     weeks = (now - state.live_since).total_seconds() / (7 * 86400)
-    closed = _closed(session, mode="live")
     month_ago = now - timedelta(days=30)
-    net_month = sum(float(p.pnl or 0) for p in closed if p.closed_at and p.closed_at >= month_ago)
-    net_all = sum(float(p.pnl or 0) for p in closed)
+    net_month = _live_net(session, max(month_ago, state.live_since), now)
+    net_all = _live_net(session, state.live_since, now)
     recent_pause = bool(state.last_pause_at and state.last_pause_at >= month_ago)
     ceiling = Decimal(2)
     if weeks >= 4 and not recent_pause and net_month >= 0:
@@ -205,3 +238,57 @@ def ramp(session: Session, now: datetime | None = None) -> Decimal:
     state.leverage_ceiling = ceiling
     session.commit()
     return ceiling
+
+
+# --- capital ramp (§10) -------------------------------------------------------------------
+
+
+def capital_steps(start: Decimal) -> list[Decimal]:
+    return [start, *(s for s in CAPITAL_STEPS if s > start)]
+
+
+def next_capital_fraction(
+    current: Decimal,
+    start: Decimal,
+    *,
+    days_in_step: float,
+    paused_in_step: bool,
+    braked: bool,
+    net_in_step: Decimal,
+) -> Decimal:
+    """The capital ramp as arithmetic. One step back after a drawdown pause (never below
+    the start); one step up after ``CAPITAL_STEP_DAYS`` within limits and net positive
+    after all costs; otherwise unchanged. A fraction off the ladder snaps to the step
+    below it."""
+    steps = capital_steps(start)
+    index = max((i for i, s in enumerate(steps) if s <= current), default=0)
+    if paused_in_step or braked:
+        return steps[max(0, index - 1)] if paused_in_step else steps[index]
+    if days_in_step >= CAPITAL_STEP_DAYS and net_in_step > 0:
+        return steps[min(len(steps) - 1, index + 1)]
+    return steps[index]
+
+
+def capital_ramp(session: Session, cfg: Config, now: datetime | None = None) -> Decimal:
+    """Move ``risk_state.capital_fraction`` along 10% → 25% → 50% → 100% of
+    ``capital_max_usdt``. Every move restarts the three-week clock."""
+    now = now or datetime.now(UTC)
+    start = cfg.trading.live_start_fraction
+    state = session.get(RiskState, 1)
+    if state is None or state.mode != "live" or not state.live_since:
+        return start
+    current = state.capital_fraction or start
+    step_at = state.capital_step_at or state.live_since
+    new = next_capital_fraction(
+        current,
+        start,
+        days_in_step=(now - step_at).total_seconds() / 86400,
+        paused_in_step=bool(state.last_pause_at and state.last_pause_at > step_at),
+        braked=bool(state.emergency_brake),
+        net_in_step=_live_net(session, step_at, now),
+    )
+    paused = bool(state.last_pause_at and state.last_pause_at > step_at)
+    if new != current or paused or state.capital_fraction is None:
+        state.capital_fraction, state.capital_step_at = new, now
+        session.commit()
+    return new

@@ -6,7 +6,9 @@ their proposals' signed direction × conviction (main vs alt variants of each PM
 
 Weight tuning every 2 weeks, only after ≥ 100 closed primary trades: each agent's weight
 moves at most ±5 pp toward the IC ranking, then shrinks halfway toward equal weights, then
-renormalizes. Stored in ``agent_weights``; the formula anchor reads it.
+renormalizes. An agent whose IC is ≤ 0 is never zeroed in one go: it loses 5 pp per step,
+and only while its IC was negative in each of the last two tuning windows; until then its
+weight stands. Stored in ``agent_weights``; the formula anchor reads it.
 """
 
 from __future__ import annotations
@@ -24,6 +26,8 @@ from app.db.models import AgentOutputRecord, AgentWeights, Candle, PMProposalRec
 HORIZONS = {"4h": 4, "1d": 24, "3d": 72}
 MIN_SAMPLE = 30
 MAX_STEP = 0.05
+LOOKBACK_DAYS = 90  # the IC the ranking uses
+WINDOW_DAYS = 14  # one tuning window; a penalty needs two negative ones in a row
 BASE_WEIGHTS = {
     "indicators": 0.25,
     "chart_patterns": 0.20,
@@ -73,14 +77,17 @@ def _ic(pairs: list[tuple[float, float]]) -> float | None:
     return float(df["s"].rank().corr(df["r"].rank()))
 
 
-def score_agents(session: Session, cfg: Config, since: datetime) -> list[Score]:
-    outs = session.scalars(
-        select(AgentOutputRecord).where(
-            AgentOutputRecord.computed_at >= since,
-            AgentOutputRecord.valid.is_(True),
-            AgentOutputRecord.variant == "main",
-        )
-    ).all()
+def score_agents(
+    session: Session, cfg: Config, since: datetime, until: datetime | None = None
+) -> list[Score]:
+    stmt = select(AgentOutputRecord).where(
+        AgentOutputRecord.computed_at >= since,
+        AgentOutputRecord.valid.is_(True),
+        AgentOutputRecord.variant == "main",
+    )
+    if until is not None:
+        stmt = stmt.where(AgentOutputRecord.computed_at < until)
+    outs = session.scalars(stmt).all()
     closes = {a: _closes(session, cfg, a, since) for a in cfg.trading.assets}
     by_agent: dict[str, dict[str, list[tuple[float, float]]]] = {}
     for o in outs:
@@ -138,6 +145,35 @@ def current_weights(session: Session) -> dict[str, float]:
     return dict(row.weights) if row else dict(BASE_WEIGHTS)
 
 
+def tune_step(
+    weights: dict[str, float], ics: dict[str, float | None], negative_twice: set[str]
+) -> dict[str, float]:
+    """One tuning step as arithmetic.
+
+    ``ics``: each agent's IC over the lookback (None = too few samples: weight stands).
+    ``negative_twice``: agents whose IC was negative in both of the last two windows.
+    Positive IC: at most ±5 pp toward the ranking. IC ≤ 0: −5 pp when in
+    ``negative_twice``, otherwise unchanged; never straight to zero. Then shrink halfway
+    toward equal weights and renormalize.
+    """
+    valid = {a: ic for a, ic in ics.items() if ic is not None and a in weights}
+    mean_ic = sum(valid.values()) / len(valid) if valid else 0.0
+    new: dict[str, float] = {}
+    for a, w in weights.items():
+        ic = valid.get(a)
+        if ic is None:
+            step = 0.0
+        elif ic <= 0:
+            step = -MAX_STEP if a in negative_twice else 0.0
+        else:
+            step = max(-MAX_STEP, min(MAX_STEP, ic - mean_ic))  # move toward the ranking
+        new[a] = max(0.0, w + step)
+    equal = 1.0 / len(new)
+    new = {a: (w + equal) / 2 for a, w in new.items()}  # shrink halfway toward equal
+    total = sum(new.values()) or 1.0
+    return {a: round(w / total, 4) for a, w in new.items()}
+
+
 def tune(session: Session, cfg: Config, now: datetime | None = None) -> dict[str, float] | None:
     """One tuning step; None when the trade count is too low. Pure arithmetic once scored."""
     now = now or datetime.now(UTC)
@@ -146,28 +182,21 @@ def tune(session: Session, cfg: Config, now: datetime | None = None) -> dict[str
     ).all()
     if len(closed) < 100:
         return None
-    scores = {s.name: s for s in score_agents(session, cfg, now - timedelta(days=90))}
+    scores = {s.name: s for s in score_agents(session, cfg, now - timedelta(days=LOOKBACK_DAYS))}
     weights = current_weights(session)
     ics = {a: (scores[a].ic.get("1d") if a in scores else None) for a in weights}
-    valid = {a: ic for a, ic in ics.items() if ic is not None}
-    if len(valid) < 2:
+    if sum(ic is not None for ic in ics.values()) < 2:
         return None
-    mean_ic = sum(valid.values()) / len(valid)
-    new = {}
-    for a, w in weights.items():
-        ic = valid.get(a)
-        if ic is None:
-            new[a] = w
-            continue
-        step = max(-MAX_STEP, min(MAX_STEP, ic - mean_ic))  # move toward the ranking
-        new[a] = max(0.0, w + step)
-        if ic <= 0:
-            new[a] = 0.0  # no added value: weight goes to zero (§10)
-    equal = 1.0 / len(new)
-    new = {a: (w + equal) / 2 for a, w in new.items()}  # shrink halfway toward equal
-    total = sum(new.values()) or 1.0
-    new = {a: round(w / total, 4) for a, w in new.items()}
-    session.add(AgentWeights(ts=now, weights=new, basis={a: scores[a].__dict__ for a in scores}))
+    window = timedelta(days=WINDOW_DAYS)
+    last = {s.name: s.ic.get("1d") for s in score_agents(session, cfg, now - window, now)}
+    prev = {
+        s.name: s.ic.get("1d") for s in score_agents(session, cfg, now - 2 * window, now - window)
+    }
+    negative_twice = {a for a in weights if (last.get(a) or 0.0) < 0 and (prev.get(a) or 0.0) < 0}
+    new = tune_step(weights, ics, negative_twice)
+    basis: dict[str, object] = {a: scores[a].__dict__ for a in scores}
+    basis["windows_1d"] = {"last": last, "previous": prev, "penalized": sorted(negative_twice)}
+    session.add(AgentWeights(ts=now, weights=new, basis=basis))
     session.commit()
     return new
 

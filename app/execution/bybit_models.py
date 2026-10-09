@@ -257,31 +257,70 @@ class MarginCoin(BybitModel):
         return self.hourly_borrow_rate * HOURS_PER_YEAR
 
 
+class TimeInForce(StrEnum):
+    GTC = "GTC"
+    POST_ONLY = "PostOnly"  # entries only: never crosses the spread
+    IOC = "IOC"  # exits: take what is there up to the limit, cancel the rest
+
+
 class OrderRequest(BaseModel):
-    """A spot limit order. Category is fixed: the bot never trades derivatives."""
+    """A spot order. Category is fixed: the bot never trades derivatives.
+
+    Three shapes are used: a post-only limit (entries), an IOC limit with a price cap
+    (exits) and a conditional stop-market (``trigger_price`` set: the exchange-side
+    backup stop).
+    """
 
     model_config = ConfigDict(frozen=True)
 
     symbol: str
     side: Side
     qty: Decimal
-    price: Decimal
+    price: Decimal | None = None  # None only for the stop-market
     order_link_id: str = Field(min_length=1, max_length=36, pattern=r"^[A-Za-z0-9_-]+$")
     post_only: bool = False
+    time_in_force: TimeInForce | None = None  # None: PostOnly when post_only, else GTC
+    trigger_price: Decimal | None = None
     is_leverage: bool = False
 
+    @property
+    def tif(self) -> TimeInForce:
+        if self.time_in_force is not None:
+            return self.time_in_force
+        return TimeInForce.POST_ONLY if self.post_only else TimeInForce.GTC
+
     def payload(self) -> dict[str, Any]:
-        return {
+        body: dict[str, Any] = {
             "category": "spot",
             "symbol": self.symbol,
             "side": self.side.value,
-            "orderType": "Limit",
             "qty": format(self.qty, "f"),
-            "price": format(self.price, "f"),
-            "timeInForce": "PostOnly" if self.post_only else "GTC",
             "orderLinkId": self.order_link_id,
             "isLeverage": 1 if self.is_leverage else 0,
         }
+        if self.trigger_price is not None:
+            # Conditional order: assets are not reserved until the trigger fires, so the
+            # bot's own exit can still use them. Market buys are sized in the base coin.
+            body |= {
+                "orderType": "Market",
+                "orderFilter": "StopOrder",
+                "triggerPrice": format(self.trigger_price, "f"),
+                "marketUnit": "baseCoin",
+            }
+            return body
+        if self.price is None:
+            raise ValueError("a limit order needs a price")
+        body |= {
+            "orderType": "Limit",
+            "price": format(self.price, "f"),
+            "timeInForce": self.tif.value,
+        }
+        return body
+
+
+FINAL_ORDER_STATES = frozenset(
+    {"Filled", "Cancelled", "PartiallyFilledCanceled", "Rejected", "Deactivated"}
+)
 
 
 class OrderAck(BybitModel):
@@ -294,7 +333,15 @@ class Order(BybitModel):
     order_link_id: str
     symbol: str
     side: Side
-    price: Decimal
+    price: OptDecimal = None  # blank on market orders
     qty: Decimal
     order_status: str
     cum_exec_qty: Decimal = Decimal(0)
+    avg_price: OptDecimal = None
+    cum_exec_fee: OptDecimal = None
+    trigger_price: OptDecimal = None
+
+    @property
+    def is_final(self) -> bool:
+        """No further fills can arrive on this order."""
+        return self.order_status in FINAL_ORDER_STATES

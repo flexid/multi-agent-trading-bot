@@ -1,7 +1,9 @@
 """Order gateway: the one seam between the executor and the venue.
 
 ``PaperGateway`` fills against the current quote (shadow mode). ``BybitGateway`` places
-real post-only limit orders with an ``orderLinkId`` and reports what the exchange says.
+real orders with an ``orderLinkId`` and reports what the exchange says: post-only limits
+for entries, IOC limits for exits (an exit is never post-only), and a conditional
+stop-market as the exchange-side backup stop.
 Tests drive the executor with a scripted gateway to reproduce the failure modes the owner
 listed: partial fill, rejected order, failed borrow, exchange unreachable.
 
@@ -39,6 +41,7 @@ class OrderOutcome:
 
 class Gateway(Protocol):
     name: str
+    supports_backup_stop: bool  # False: the venue (or the paper book) has no resting stop
 
     async def open(
         self, symbol: str, side: Side, qty: Decimal, borrow: bool, link_id: str, quote: Quote
@@ -46,10 +49,44 @@ class Gateway(Protocol):
 
     async def close(
         self, symbol: str, side: Side, qty: Decimal, link_id: str, quote: Quote
-    ) -> OrderOutcome: ...
+    ) -> OrderOutcome:
+        """Flatten ``qty``. ``link_id`` is a per-position prefix; the gateway makes each
+        attempt's ``orderLinkId`` unique. Anything but FILLED means "not flat yet": the
+        executor books what filled and calls again on the next tick."""
+        ...
+
+    async def place_backup_stop(
+        self, symbol: str, side: Side, qty: Decimal, trigger: Decimal, link_id: str
+    ) -> bool: ...
+
+    async def cancel_backup_stop(self, symbol: str, link_id: str) -> bool:
+        """True when the stop is gone (cancelled now, or it no longer rests)."""
+        ...
+
+    async def backup_stop_fill(self, symbol: str, link_id: str) -> OrderOutcome | None:
+        """None: the stop did not fill. FILLED / PARTIAL: the exchange triggered it.
+        UNREACHABLE: unknown; the caller must not assume either way."""
+        ...
 
 
-class PaperGateway:
+class NoBackupStop:
+    """Mixin for venues without a resting stop: the paper book and most test doubles."""
+
+    supports_backup_stop = False
+
+    async def place_backup_stop(
+        self, symbol: str, side: Side, qty: Decimal, trigger: Decimal, link_id: str
+    ) -> bool:
+        return False
+
+    async def cancel_backup_stop(self, symbol: str, link_id: str) -> bool:
+        return True
+
+    async def backup_stop_fill(self, symbol: str, link_id: str) -> OrderOutcome | None:
+        return None
+
+
+class PaperGateway(NoBackupStop):
     """Fills at the touch, full quantity, taker fee. Shadow mode."""
 
     name = "paper"
@@ -70,7 +107,7 @@ class PaperGateway:
         return OrderOutcome(Outcome.FILLED, qty, price, qty * price * self.fee)
 
 
-class ScriptedGateway:
+class ScriptedGateway(NoBackupStop):
     """Test double: returns the next scripted outcome for each call (last one repeats)."""
 
     name = "scripted"
