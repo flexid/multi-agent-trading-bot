@@ -45,6 +45,21 @@ from app.db.session import new_session
 app = FastAPI(title="dorkbot admin", docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=str(Path(__file__).with_name("static"))), name="static")
 templates = Jinja2Templates(directory=str(Path(__file__).with_name("templates")))
+
+
+def fmt_price(value: Any) -> str:
+    """Prices with at most 4 decimals and thousands separators (owner, 2026-10-09)."""
+    if value is None or value == "":
+        return "-"
+    try:
+        q = Decimal(str(value)).quantize(Decimal("0.0001"))
+    except Exception:
+        return str(value)
+    text = f"{q:,.4f}".rstrip("0").rstrip(".")
+    return text if text not in ("", "-0") else "0"
+
+
+templates.env.filters["price"] = fmt_price
 COOKIE = "dorkbot_admin"
 STEP_UP = "dorkbot_stepup"
 CSRF = "dorkbot_csrf"
@@ -306,10 +321,12 @@ def _plan_view(d: DecisionRecord) -> list[dict[str, Any]]:
             {
                 "label": label,
                 "direction": d.direction,
-                "entry": f"{entry:,.6g}",
-                "stop": f"{stop:,.6g} ({stop_pct:.2f}% away, {stop_pct * lev:.2f}% of margin)",
+                "entry": fmt_price(entry),
+                "stop": (
+                    f"{fmt_price(stop)} ({stop_pct:.2f}% away, {stop_pct * lev:.2f}% of margin)"
+                ),
                 "target": (
-                    f"{target:,.6g} ({target_pct:.2f}% away, "
+                    f"{fmt_price(target)} ({target_pct:.2f}% away, "
                     f"{target_pct / stop_pct if stop_pct else 0:.1f}× the stop distance)"
                 ),
                 "leverage": f"{lev:g}x"
