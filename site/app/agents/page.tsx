@@ -3,11 +3,17 @@ import { useEffect, useState } from "react";
 import { cls, loadSnapshot, pct, tick, type Snapshot } from "../snapshot";
 
 const name = (s: Snapshot, id: string) => { const m = (s.crew ?? []).find((c) => c.id === id); return m ? <><b>{m.name}</b> <span className="muted small">{id}</span></> : id; };
+// Model rows read "<model> (<seat>/<variant>)". The crew name follows the model, not the
+// seat: Dyne is the Claude manager wherever it sits; "alt" means it answered from the other
+// seat as the shadow comparison.
 const lname = (s: Snapshot, l: { name: string; kind: string }) => {
   if (l.kind === "agent") return name(s, l.name);
-  const pm = l.name.includes("(pm_1") ? "pm_1" : l.name.includes("(pm_2") ? "pm_2" : null;
-  const m = pm ? (s.crew ?? []).find((c) => c.id === pm) : null;
-  return m ? <><b>{m.name}</b> <span className="muted small">{l.name}</span></> : l.name;
+  const mm = l.name.match(/^(.*?) \((pm_[12])\/(main|alt)\)$/);
+  if (!mm) return l.name;
+  const [, model, , variant] = mm;
+  const id = model.startsWith("claude") ? "pm_1" : model.startsWith("gpt") ? "pm_2" : null;
+  const m = id ? (s.crew ?? []).find((c) => c.id === id) : null;
+  return <><b>{m ? m.name : model}</b> <span className="muted small">{model} · {variant === "main" ? "its own seat" : "shadow, the other seat"}</span></>;
 };
 const sc = (x: number | null | undefined) => (x == null ? "–" : `${x > 0 ? "+" : ""}${x.toFixed(2)}`);
 
