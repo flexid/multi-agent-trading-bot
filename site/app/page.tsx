@@ -52,6 +52,7 @@ export default function Page() {
   const [s, setS] = useState<Snapshot | null | undefined>(undefined);
   const [open, setOpen] = useState(false);
   const [all, setAll] = useState(false);
+  const [best, setBest] = useState<"wins" | "losses">("wins");
   useEffect(() => { loadSnapshot().then(setS); const t = setInterval(() => loadSnapshot().then(setS), 300000); return () => clearInterval(t); }, []);
   if (s === undefined) return <p className="muted">Loading…</p>;
   if (s === null) return <p className="muted">No data right now. The bot pushes a snapshot every five minutes; this one hasn&apos;t arrived.</p>;
@@ -87,9 +88,9 @@ export default function Page() {
         <>
           {s.closed_trades.length >= 5 && (
             <div className="best">
-              <span className="muted small">best so far:</span>
-              {[...s.closed_trades].sort((a, b) => b.margin_pct - a.margin_pct).slice(0, 3).map((t, i) => (
-                <span key={i} className="badge neon">{tick(t.cashtag)} <Side d={t.direction} /> {pct(t.margin_pct)}{t.paper ? " · paper" : ""}</span>
+              <span className="toggle"><button className={best === "wins" ? "on" : ""} onClick={() => setBest("wins")}>top 5 wins</button><button className={best === "losses" ? "on" : ""} onClick={() => setBest("losses")}>top 5 losses</button></span>
+              {[...s.closed_trades].sort((a, b) => best === "wins" ? b.margin_pct - a.margin_pct : a.margin_pct - b.margin_pct).slice(0, 5).map((t, i) => (
+                <span key={i} className={`badge ${best === "wins" ? "neon" : "down"}`}>{tick(t.cashtag)} <Side d={t.direction} /> {pct(t.margin_pct)}{t.paper ? " · paper" : ""}</span>
               ))}
             </div>
           )}

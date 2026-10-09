@@ -40,3 +40,5 @@ table.trades { table-layout: fixed; } table.trades th:nth-child(1) { width: 20%;
 footer a.neon { color: var(--neon); } footer a.neon:hover { color: var(--neon); text-decoration: underline; }
 .best { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 10px; } .best .badge { margin-left: 0; }
 button.more { margin-top: 10px; background: #141414; color: var(--fg); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; } button.more:hover { border-color: var(--accent); color: var(--accent); }
+.badge.down { border-color: var(--down); color: var(--down); }
+.toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin-right: 4px; } .toggle button { background: none; border: none; color: var(--muted); padding: 4px 12px; font-size: 12px; cursor: pointer; } .toggle button.on { background: #1a1a1a; color: var(--fg); }
