@@ -1,6 +1,6 @@
 # M3 report: LLM layer and the four model-backed agents
 
-Status 2026-10-09 03:45 UTC: **in progress.** Lint, mypy and 50 tests pass. Updated as each agent lands; the final version is committed with the milestone.
+2026-10-09. **Complete.** Lint, mypy and 63 tests pass. All five agents run live from Postgres and return the §6 contract; every model call is logged with cost.
 
 ## Done
 
@@ -11,16 +11,23 @@ Status 2026-10-09 03:45 UTC: **in progress.** Lint, mypy and 50 tests pass. Upda
 | Cost logging | Every call lands in `llm_calls`: task, asset, model, prompt version, tokens (incl. cached), cost from `[llm.pricing]`, latency, attempts, outcome, parsed output. Live check: Haiku $0.00004, Luna $0.0001 per smoke call. |
 | Polymarket agent | Fetch now pages the crypto tag (494 markets: BTC 138, ETH 110, SOL 40, BNB 2, SPX6900 0) plus the Fed-decision tag and the S&P 500 close ladders. Daily mapper (`gpt-5.6-luna`) labels asset, threshold and direction per market; validated and stored, 391 markets for $0.03. Scoring in code: implied median from the ladder (level) and the 24-hour shift (weighs 2:1), confidence from market count and liquidity, so BNB and SPX6900 get confidence 0. |
 | Macro agent | Code: z-scores of 5-day changes for 2y/10y yields, dollar, VIX, S&P 500, Nasdaq, gold (Bybit XAUUSDT) and stablecoin supply (DefiLlama); FOMC/CPI/jobs calendar for 2026 (`app/data/calendar_2026.toml`) with the 48-hour window and the "event today" check for SPEC §8; per-asset coupling from 7- and 30-day correlations with equities, dollar (sign flipped) and gold, negative parts floored at 0. Model (`gpt-5.6-terra`): regime, confidence, 48-hour event risk, three reasons. Output = regime × confidence × coupling. Live: neutral at 0.62, couplings 0.20–0.33. |
-| Agent runners | `python -m app.agents.run_indicators`, `run_polymarket`, `run_macro`; `python -m app.agents.polymarket_map` (daily). |
+| X sentiment agent | Reads per 4h cycle: curated account timelines (`[x] accounts`, placeholder until the owner's list) plus a recent search per asset, half the allowance each, capped at `reads_per_cycle_max = 90` and the 600/day budget. `claude-sonnet-5-5` labels asset, stance, kind, credibility and shock per post (schema, stored in `x_posts`; raw text reaches only the labeller). Code aggregates with credibility × kind weights, a neutral prior so two shill posts are not a view, one-sided-crowd halving (contrarian caution), a news-shock flag within 6 hours, and 1.5× count weight for SPX6900. Live: 86 posts labelled for $0.07; search hits are 60% shill at credibility ~0.2, which is why the curated list matters. |
+| Chart patterns agent | Code track per 1h/4h/1D: fractal swings clustered into levels, 30-bar range position, volume-confirmed breakouts and false breakouts, regression trendline slope in ATR. Vision track: mplfinance renders (120 bars, EMA 20/50, volume) read by `claude-opus-5-5` into pattern, direction, confidence, key levels. Agreement averages both and raises confidence; a missing read halves the code score; disagreement quarters it. Live: 15 reads for $0.11, 4h down-breakouts agreed on all five assets. |
+| Indicators summary | `claude-haiku-5-5` writes two sentences from the indicator table; on any failure the numeric output is used unchanged. |
+| Provider swap | `[models.shadow_alt]` names the other provider per task; the cycle runner (M4) runs both in shadow mode and the weight tuning (M9) keeps the better one. |
+| Agent runners | `python -m app.agents.run_indicators`, `run_polymarket`, `run_macro`, `run_x [--no-fetch]`, `run_chart [--no-vision] [--save-charts DIR]`; `python -m app.agents.polymarket_map` (daily). |
 
-## In progress
+## Cost per full agent pass (live, 2026-10-09)
 
-| Piece | Plan |
-| --- | --- |
-| X sentiment agent | `x_posts` table added. Reads per 4h cycle: curated accounts (`[x] accounts` in `config.toml`, placeholder until the owner's list) plus a recent search per asset, capped at `reads_per_cycle_max = 90` (6 cycles ≈ 540 of the 600/day budget). `claude-sonnet-5-5` labels each post (asset, stance, type, credibility, shock); code aggregates into a sentiment level and a news-shock flag, with extreme one-sidedness counted as contrarian caution and extra weight for SPX6900. |
-| Chart patterns agent | Code track: levels, trendlines, breakouts, ranges on 1h/4h/1D. Vision track: mplfinance renders in a fixed style read by `claude-opus-5-5`. Full weight only when both agree. |
-| Indicators summary | `claude-haiku-5-5` turns the indicator table into two sentences for the evidence pack; the numbers never change. |
-| Provider swap | During shadow mode each agent also runs on the other provider (`model=` override exists; the shadow-alt config and the scoring comparison come with the cycle runner in M4). |
+| Call | Model | Cost |
+| --- | --- | --- |
+| Polymarket mapping (daily, ~400 markets) | gpt-5.6-luna | $0.03 |
+| Macro regime | gpt-5.6-terra | <$0.01 |
+| X labels (~90 posts) | claude-sonnet-5-5 | $0.07 + ~$0.45 of X reads |
+| Chart vision (15 images) | claude-opus-5-5 | $0.11 |
+| Indicator summaries (5) | claude-haiku-5-5 | <$0.01 |
+
+About $0.70 per 4-hour cycle before the PMs, roughly $130 a month at 6 cycles a day; the PMs (M4) come on top. OpenAI rows use placeholder prices.
 
 ## Found along the way
 
@@ -31,7 +38,7 @@ Status 2026-10-09 03:45 UTC: **in progress.** Lint, mypy and 50 tests pass. Upda
 
 ## Needed from the owner
 
-Nothing blocking. At your own pace, both in `config.toml`:
+Nothing blocking for M4. At your own pace, in `config.toml`:
 
 1. `[llm.pricing]`: the three `gpt-5.6-*` rows; `[budget] api_usd_per_month` if 550 is not the number.
 2. `[x] accounts`: your 50–100 handles, replacing the placeholder.

@@ -49,5 +49,5 @@ plugins = ["pydantic.mypy"]
 files = ["app", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["apscheduler.*"]
+module = ["apscheduler.*", "mplfinance.*", "pandas_ta.*"]
 ignore_missing_imports = true

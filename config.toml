@@ -69,6 +69,17 @@ x_sentiment = "claude-sonnet-5-5"
 post_writer = "claude-sonnet-5-5"
 post_auditor = "gpt-5.6-terra"
 
+[models.shadow_alt]             # the other provider per task, run alongside during shadow mode
+pm_1 = "gpt-5.6-sol"
+pm_2 = "claude-fable-5-1"
+macro = "claude-opus-5-5"
+chart_patterns = "gpt-5.6-terra"
+indicators = "gpt-5.6-luna"
+polymarket = "claude-haiku-5-5"
+x_sentiment = "gpt-5.6-terra"
+post_writer = "gpt-5.6-terra"
+post_auditor = "claude-sonnet-5-5"
+
 [llm]
 timeout_s = 120
 max_output_tokens = 4000

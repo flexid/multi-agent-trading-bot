@@ -73,7 +73,7 @@ class BudgetConfig(_Section):
     x_reads_per_day: int
 
 
-class ModelsConfig(_Section):
+class TaskModels(_Section):
     pm_1: str
     pm_2: str
     macro: str
@@ -83,6 +83,10 @@ class ModelsConfig(_Section):
     x_sentiment: str
     post_writer: str
     post_auditor: str
+
+
+class ModelsConfig(TaskModels):
+    shadow_alt: TaskModels | None = None
 
 
 class LLMConfig(_Section):

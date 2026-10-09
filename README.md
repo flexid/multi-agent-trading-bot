@@ -2,7 +2,7 @@
 
 An autonomous crypto trader on Bybit EU. Five analysis agents score BTC, ETH, SOL, BNB and SPX6900 every 4 hours; Claude and GPT independently turn those scores into trade proposals; a deterministic risk engine decides, and a separate executor places and manages the orders. Every trade is posted to X.
 
-> **Status:** M0 (connectivity) complete, including the live order self-test; see [`docs/M0_REPORT.md`](docs/M0_REPORT.md). M2 (indicators agent) complete. No trading logic yet.
+> **Status:** M0 (connectivity) complete, including the live order self-test; see [`docs/M0_REPORT.md`](docs/M0_REPORT.md). M3 (LLM layer and all five agents) complete. No decision or trading logic yet.
 
 ## How it works
 
@@ -53,6 +53,10 @@ make test lint
 make selftest           # read-only checks + paper round-trip
 ```
 
+## M3: LLM layer and agents
+
+Every model call goes through [`app/llm/`](app/llm/): model from `config.toml`, provider by prefix, pydantic-validated output, versioned prompts in [`app/prompts/`](app/prompts/), one retry then fail closed, and a row in `llm_calls` with tokens and cost. Agents: macro ([`app/agents/macro.py`](app/agents/macro.py)), chart patterns ([`chart_patterns.py`](app/agents/chart_patterns.py)), Polymarket ([`polymarket.py`](app/agents/polymarket.py) + daily [`polymarket_map.py`](app/agents/polymarket_map.py)), X sentiment ([`x_sentiment.py`](app/agents/x_sentiment.py)). Runners: `python -m app.agents.run_<name>`. Details and live costs in [`docs/M3_REPORT.md`](docs/M3_REPORT.md).
+
 ## M2: indicators agent and backtest
 
 Deterministic scores from fixed rules on closed candles ([`app/agents/indicators.py`](app/agents/indicators.py)): EMA 20/50/200 stack scaled by ADX, MACD histogram over ATR, RSI, OBV, perp funding and open-interest change. Output follows the agent contract in [`app/agents/schema.py`](app/agents/schema.py) (score, confidence, horizon, evidence, risk flags, data age; stale after 30 minutes).
@@ -99,7 +103,7 @@ Code: [`app/execution/bybit_client.py`](app/execution/bybit_client.py), [`app/da
 | M0 | Connectivity: Bybit, Polymarket, X self-tests | done |
 | M1 | Data layer and database | done |
 | M2 | Indicators agent and backtest harness | done |
-| M3 | LLM layer; macro, chart, Polymarket and X agents | in progress |
+| M3 | LLM layer; macro, chart, Polymarket and X agents | done |
 | M4 | Decision layer: two PMs, consensus | – |
 | M5 | Leverage agent and risk engine | – |
 | M6 | Executor, paper simulator — shadow mode starts | – |
