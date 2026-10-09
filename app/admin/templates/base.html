@@ -1,14 +1,19 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>dorkbot admin</title><link rel="icon" href="/static/favicon-32.png"><link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>dorkbot admin</title>
+<link rel="icon" href="/static/favicon-32.png"><link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css">
 <style>
-:root{color-scheme:dark;--bg:#0a0a0a;--fg:#ececec;--muted:#8f958f;--line:#222;--up:#b6ff00;--down:#ff5c5c;--accent:#fe7e1c;--warn:#f7c97a}
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 ui-sans-serif,system-ui,sans-serif}main{max-width:1000px;margin:0 auto;padding:20px 14px 60px}
-h1{font-size:20px;margin:0 0 8px}h2{font-size:13px;margin:28px 0 8px;color:var(--accent);text-transform:uppercase;letter-spacing:.04em}
-a{color:var(--accent);text-decoration:none}nav a{margin-right:14px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 5px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:500}
-.up{color:var(--up)}.down{color:var(--down)}.warn{color:var(--warn)}.muted{color:var(--muted)}.badge{display:inline-block;padding:1px 7px;border:1px solid var(--line);border-radius:999px;font-size:11px;color:var(--muted);margin-left:6px}
-.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.tile{border:1px solid var(--line);border-radius:8px;padding:10px}.tile .k{color:var(--muted);font-size:11px}.tile .v{font-size:18px;font-weight:600}
-input,button,select{font:inherit;background:#12161b;color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 8px}button.danger{border-color:var(--down);color:var(--down)}form.inline{display:inline}
-pre{white-space:pre-wrap;font-size:12px;color:var(--muted)}
-</style></head><body><main>
-<nav><a href="/"><img src="/static/logo-600.png" alt="dorkbot" style="height:34px;vertical-align:middle;margin-right:14px"></a><a href="/">Overview</a><a href="/decisions">Decisions</a><a href="/params">Parameters &amp; audit</a>{% if user %}<form class="inline" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Logout {{ user }}</button></form>{% endif %}</nav>
+:root, [data-theme=dark] { --pico-background-color:#0a0a0a; --pico-card-background-color:#121212; --pico-card-sectioning-background-color:#161616; --pico-primary:#fe7e1c; --pico-primary-hover:#ff9a4d; --pico-primary-background:#fe7e1c; --pico-primary-hover-background:#ff9a4d; --pico-primary-underline:#fe7e1c66; --pico-primary-focus:#fe7e1c44; --pico-muted-color:#8f958f; --pico-font-size:92%; --pico-spacing:0.9rem; --pico-block-spacing-vertical:1.4rem; --pico-form-element-spacing-vertical:.45rem; --pico-form-element-spacing-horizontal:.8rem }
+body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}main.container{max-width:1100px}
+nav{margin-bottom:1.2rem}nav img.avatar{width:40px;height:40px;border-radius:50%;vertical-align:middle}nav ul li{padding:.4rem .6rem}
+h1{font-size:1.4rem;margin-bottom:.6rem}article{padding:1.1rem 1.3rem;margin-bottom:1.2rem}article header{margin:-1.1rem -1.3rem 1rem;padding:.7rem 1.3rem;font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:#fe7e1c}
+table{font-size:.85rem}th{color:var(--pico-muted-color);font-weight:500}td,th{padding:.45rem .5rem}
+.up{color:#b6ff00}.down{color:#ff5c5c}.warn{color:#f7c97a}.muted{color:var(--pico-muted-color)}
+.badge{display:inline-block;padding:.1rem .6rem;border:1px solid #fe7e1c;border-radius:999px;font-size:.72rem;color:#fe7e1c;margin-left:.5rem;vertical-align:middle}.badge.neon{border-color:#b6ff00;color:#b6ff00}.badge.down{border-color:#ff5c5c;color:#ff5c5c}.badge.warn{border-color:#f7c97a;color:#f7c97a}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.9rem}.tile{background:#161616;border:1px solid #222;border-radius:10px;padding:.9rem 1rem}.tile .k{color:var(--pico-muted-color);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em}.tile .v{font-size:1.35rem;font-weight:650;margin-top:.15rem}
+form.inline{display:inline-block;margin:0 .3rem .3rem 0}form.inline input{width:auto;display:inline-block;margin:0 .3rem 0 0}form.inline button{width:auto;display:inline-block;margin:0}button.danger{--pico-background-color:#ff5c5c;--pico-border-color:#ff5c5c;--pico-color:#0a0a0a}
+pre{white-space:pre-wrap;font-size:.78rem;color:var(--pico-muted-color)}.overflow{overflow-x:auto}
+</style></head><body><main class="container">
+<nav><ul><li><a href="/"><img class="avatar" src="/static/avatar-96.png" alt="dorkbot"></a></li><li><a href="/">Overview</a></li><li><a href="/decisions">Decisions</a></li><li><a href="/params">Parameters &amp; audit</a></li></ul>
+<ul>{% if user %}<li><form class="inline" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="outline secondary">Logout {{ user }}</button></form></li>{% endif %}</ul></nav>
 {% block body %}{% endblock %}
 </main></body></html>

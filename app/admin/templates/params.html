@@ -1,9 +1,12 @@
 {% extends "base.html" %}{% block body %}
+
 <h1>Parameters</h1><p>{% include "_stepup.html" %}</p>
 <table><tr><th>key</th><th>current</th><th>bounds</th><th>new value</th></tr>
 {% for k, (lo, hi) in editable.items() %}<tr><td>{{ k }}</td><td>{{ current[k] }}</td><td class="muted">{{ lo }} … {{ hi }}</td><td>{% if stepped %}<form method="post" action="/params" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ k }}"><input name="value" size="10"> <button>Set</button></form>{% else %}<span class="muted">unlock first</span>{% endif %}</td></tr>{% endfor %}</table>
-<h2>Change history</h2><table><tr><th>when</th><th>key</th><th>old</th><th>new</th><th>by</th><th>applied</th><th>result</th></tr>
-{% for h in history %}<tr><td>{{ h.ts.strftime('%m-%d %H:%M') }}</td><td>{{ h.key }}</td><td>{{ h.old_value }}</td><td>{{ h.new_value }}</td><td>{{ h.requested_by }}</td><td>{{ h.applied_at.strftime('%m-%d %H:%M') if h.applied_at else '-' }}</td><td class="muted">{{ h.result or '' }}</td></tr>{% endfor %}</table>
-<h2>Audit log</h2><table><tr><th>when</th><th>actor</th><th>ip</th><th>action</th><th>ok</th><th>detail</th></tr>
-{% for a in audit %}<tr><td>{{ a.ts.strftime('%m-%d %H:%M:%S') }}</td><td>{{ a.actor }}</td><td class="muted">{{ a.ip }}</td><td>{{ a.action }}</td><td class="{{ 'up' if a.ok else 'down' }}">{{ a.ok }}</td><td class="muted">{{ a.detail }}</td></tr>{% endfor %}</table>
+<article><header>Change history</header><div class="overflow"><table><tr><th>when</th><th>key</th><th>old</th><th>new</th><th>by</th><th>applied</th><th>result</th></tr>
+{% for h in history %}<tr><td>{{ h.ts.strftime('%m-%d %H:%M') }}</td><td>{{ h.key }}</td><td>{{ h.old_value }}</td><td>{{ h.new_value }}</td><td>{{ h.requested_by }}</td><td>{{ h.applied_at.strftime('%m-%d %H:%M') if h.applied_at else '-' }}</td><td class="muted">{{ h.result or '' }}</td></tr>{% endfor %}</table></div>
+</article>
+<article><header>Audit log</header><div class="overflow"><table><tr><th>when</th><th>actor</th><th>ip</th><th>action</th><th>ok</th><th>detail</th></tr>
+{% for a in audit %}<tr><td>{{ a.ts.strftime('%m-%d %H:%M:%S') }}</td><td>{{ a.actor }}</td><td class="muted">{{ a.ip }}</td><td>{{ a.action }}</td><td class="{{ 'up' if a.ok else 'down' }}">{{ a.ok }}</td><td class="muted">{{ a.detail }}</td></tr>{% endfor %}</table></div>
+</article>
 {% endblock %}
