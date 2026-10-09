@@ -391,6 +391,29 @@ class Heartbeat(Base):
     detail: Mapped[str | None] = mapped_column(String(200))
 
 
+class XPostOut(Base):
+    """A post the bot wrote (or would write in dry-run), with its audit trail."""
+
+    __tablename__ = "x_posts_out"
+    __table_args__ = (Index("ix_x_posts_out_position", "position_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    position_id: Mapped[int | None] = mapped_column(BigInteger)
+    kind: Mapped[str] = mapped_column(String(10))  # open | close | summary | test
+    text: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(10))  # writer | template
+    audit_ok: Mapped[bool] = mapped_column(Boolean)
+    audit_notes: Mapped[str | None] = mapped_column(Text)
+    whitelist_ok: Mapped[bool] = mapped_column(Boolean)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    x_id: Mapped[str | None] = mapped_column(String(32))
+    reply_to_x_id: Mapped[str | None] = mapped_column(String(32))
+    dry_run: Mapped[bool] = mapped_column(Boolean, default=True)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class RiskState(Base):
     """One row: the risk engine's memory across cycles (SPEC §8 limits)."""
 

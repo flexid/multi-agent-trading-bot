@@ -42,6 +42,7 @@ from app.execution import simulator as sim
 from app.execution.bybit_client import BybitClient
 from app.execution.gateway import Gateway, Outcome, PaperGateway
 from app.execution.simulator import ExitReason, Quote, Side
+from app.social import poster, style
 
 log = logging.getLogger("executor")
 TICK_S = 10
@@ -72,6 +73,7 @@ class Executor:
         self.borrow_rates: dict[str, Decimal] = {}
         self.collateral_ratios: dict[str, Decimal] = {}
         self.frozen = False  # after a kill switch: no new positions until resumed
+        self.style = style.load()
         self._client: BybitClient | None = None
 
     # --- market data ------------------------------------------------------------
@@ -260,6 +262,8 @@ class Executor:
             )
             row.status, row.closed_at, row.close_reason = "closed", now, reason.value
             row.exit_price, row.fees = fill.price, row.fees + fill.fee
+            if row.track == "primary":
+                await self.post(session, row, "close", None, now)
             row.pnl, row.pnl_price_pct, row.pnl_margin_pct = (
                 fill.net_pnl,
                 fill.pnl_price_pct,
@@ -405,6 +409,9 @@ class Executor:
                 updated_at=now,
             )
             session.add(row)
+            session.flush()
+            if track == "primary":
+                await self.post(session, row, "open", self._reason_for(d), now)
             acct.cash -= pos.margin + pos.fees
             acct.fees_paid += pos.fees
             open_assets.add(d.asset)
@@ -420,6 +427,32 @@ class Executor:
                 pos.target,
             )
         session.commit()
+
+    def posting_live(self) -> bool:
+        p = self.cfg.posting
+        return p.enabled and (self.mode == "live" or p.post_in_shadow)
+
+    @staticmethod
+    def _reason_for(d: DecisionRecord) -> str | None:
+        reasons = (d.proposal or {}).get("reasons") or []
+        return str(reasons[0])[:120] if reasons else None
+
+    async def post(
+        self, session: Session, row: Position, kind: str, reason: str | None, now: datetime
+    ) -> None:
+        try:
+            await poster.enqueue(
+                session,
+                self.cfg,
+                row,
+                kind,
+                reason=reason,
+                style=self.style,
+                dry_run=not self.posting_live(),
+                now=now,
+            )
+        except Exception:  # posting must never block trading
+            log.exception("could not queue %s post for %s", kind, row.asset)
 
     def _to_sim(self, row: Position) -> sim.PaperPosition:
         assert row.entry_price is not None and row.opened_at is not None
@@ -503,6 +536,10 @@ class Executor:
             if not close_all:
                 await self.open_new(session, now)
             self.snapshot(session, now)
+            try:
+                await poster.flush(session, self.cfg, self.secrets, now)
+            except Exception:
+                log.exception("poster flush failed")
 
     async def run(self, once: bool = False) -> None:
         while True:
