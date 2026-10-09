@@ -77,12 +77,15 @@ export default function Page() {
         <div className="tile"><div className="k">profit factor</div><div className={`v ${st.profit_factor == null ? "" : st.profit_factor >= 1 ? "up" : "down"}`}>{st.profit_factor ?? "–"}</div></div>
         <div className="tile"><div className="k">avg holding</div><div className="v">{st.avg_holding ?? "–"}</div></div>
       </div>
+      <section className="panel">
       <h2>Open trades</h2>
       {s.open_trades.length === 0 ? <p className="muted">Nothing open right now.</p> : (
         <table className="trades"><thead><tr><th>asset</th><th>side</th><th>entry</th><th>lev</th><th>stop</th><th>target</th><th>in trade</th><th>price</th><th>margin</th></tr></thead><tbody>
           {s.open_trades.map((t, i) => <tr key={i}><td>{tick(t.cashtag)}{t.paper && <span className="badge">paper</span>}</td><td><Side d={t.direction} /></td><td className="mono">{num(t.entry)}</td><td>{t.leverage}x</td><td className="mono">{num(t.stop)}</td><td className="mono">{num(t.target)}</td><td>{t.time_in_trade}</td><td className={cls(t.unrealized_price_pct)}>{pct(t.unrealized_price_pct)}</td><td className={cls(t.unrealized_margin_pct)}>{pct(t.unrealized_margin_pct)}</td></tr>)}
         </tbody></table>
       )}
+      </section>
+      <section className="panel">
       <h2>Closed trades <span className="muted small">last {Math.min(10, s.closed_trades.length)} of {s.closed_trades.length}</span></h2>
       {s.closed_trades.length === 0 ? <p className="muted">No closed trades yet.</p> : (
         <>
@@ -99,6 +102,7 @@ export default function Page() {
           {all && <AllTrades rows={s.closed_trades} onClose={() => setAll(false)} />}
         </>
       )}
+      </section>
     </>
   );
 }

@@ -40,12 +40,14 @@ export default function Agents() {
           </tbody></table>
         </section>
       ))}
-      <h2>Leaderboard</h2>
+      <section className="panel">
+      <h2>Leaderboard <span className="muted small">how well each reading predicted the next day</span></h2>
       {s.leaderboard.length === 0 ? <p className="muted">Measured once enough trades have closed.</p> : (
         <table><thead><tr><th>name</th><th>kind</th><th>IC 1d</th><th>sample</th></tr></thead><tbody>
           {s.leaderboard.map((l) => <tr key={l.name}><td>{lname(s, l)}</td><td>{l.kind}</td><td className={cls(l.ic_1d)}>{sc(l.ic_1d)}</td><td>{l.sample}</td></tr>)}
         </tbody></table>
       )}
+      </section>
     </>
   );
 }
