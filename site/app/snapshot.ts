@@ -21,4 +21,4 @@ export async function loadSnapshot(): Promise<Snapshot | null> {
 
 export const pct = (x: number | null | undefined, d = 1) => (x == null ? "–" : `${x > 0 ? "+" : ""}${x.toFixed(d)}%`);
 export const cls = (x: number | null | undefined) => (x == null ? "" : x >= 0 ? "up" : "down");
-export const num = (x: number) => (x >= 10 ? x.toLocaleString("en-US", { maximumFractionDigits: 2 }) : x.toPrecision(4));
+export const num = (x: number) => x.toLocaleString("en-US", { maximumFractionDigits: 4 });
