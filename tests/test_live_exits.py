@@ -301,7 +301,7 @@ async def test_long_exit_sells_what_is_held_and_cover_buys_the_fee_back() -> Non
     fake.holdings["BTC"] = D("0.0999")  # the fee came out of the 0.1 bought
     gw = BybitGateway(fake.client())
     r = await gw.close("BTCUSDT", Side.LONG, D("0.1"), "x-", q("100", "100.1"))
-    assert r.filled_qty == D("0.0999")
+    assert r.filled_qty == D("0.099")  # held 0.0999, lot step 0.001
     fake2 = FakeBybit("BTCUSDT", "100", "100.1", tick="0.1")
     gw2 = BybitGateway(fake2.client())
     r2 = await gw2.close("BTCUSDT", Side.SHORT, D("0.1"), "y-", q("100", "100.1"))
