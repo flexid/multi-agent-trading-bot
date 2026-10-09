@@ -273,6 +273,7 @@ def decisions(
             if chosen
             else []
         )
+    plans = {d.id: _plan_view(d) for d in decs}
     return render(
         request,
         "decisions.html",
@@ -283,7 +284,46 @@ def decisions(
         hits=hits,
         outs=outs,
         props=props,
+        plans=plans,
     )
+
+
+def _plan_view(d: DecisionRecord) -> list[dict[str, Any]]:
+    """Human-readable rows for the sized plan(s) of a decision, for the overlay."""
+    out = []
+    for key, label in (
+        ("plan", "Primary track (live rules)"),
+        ("plan_max", "Comparison track (max leverage)"),
+    ):
+        plan = (d.proposal or {}).get(key)
+        if not plan:
+            continue
+        entry, stop, target = (Decimal(plan[k]) for k in ("entry", "stop", "target"))
+        stop_pct = abs(stop - entry) / entry * 100
+        target_pct = abs(target - entry) / entry * 100
+        lev = Decimal(plan["leverage"])
+        out.append(
+            {
+                "label": label,
+                "direction": d.direction,
+                "entry": f"{entry:,.6g}",
+                "stop": f"{stop:,.6g} ({stop_pct:.2f}% away, {stop_pct * lev:.2f}% of margin)",
+                "target": (
+                    f"{target:,.6g} ({target_pct:.2f}% away, "
+                    f"{target_pct / stop_pct if stop_pct else 0:.1f}× the stop distance)"
+                ),
+                "leverage": f"{lev:g}x"
+                + (" with borrowing" if plan.get("borrow") else ", no borrowing"),
+                "notional": f"{Decimal(plan['notional']):,.2f} USDT",
+                "margin": f"{Decimal(plan['margin']):,.2f} USDT own capital",
+                "hold": f"at most {plan['max_hold_hours']} hours, then a time-stop",
+                "exits": (
+                    "stop, target, trailing stop (armed after +1R, trails 1R), time-stop, "
+                    "liquidation, kill"
+                ),
+            }
+        )
+    return out
 
 
 @app.get("/params", response_class=HTMLResponse)
