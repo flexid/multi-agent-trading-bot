@@ -6,6 +6,7 @@ Signing follows the V5 auth docs: HMAC-SHA256 over
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -73,6 +74,10 @@ class OrdersDisabledError(BybitError):
 def sign(secret: str, timestamp_ms: int, api_key: str, recv_window_ms: int, payload: str) -> str:
     message = f"{timestamp_ms}{api_key}{recv_window_ms}{payload}"
     return hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()
+
+
+RATE_LIMITED = 10006  # "Too many visits": the margin-data endpoint trips this easily
+RATE_LIMIT_BACKOFF_S: tuple[float, ...] = (1.0, 3.0)
 
 
 class BybitClient:
@@ -151,14 +156,19 @@ class BybitClient:
     ) -> dict[str, Any]:
         query = urlencode({k: v for k, v in (params or {}).items() if v is not None})
         url = f"{path}?{query}" if query else path
-        # Reads are safe to repeat: one retry on a transport failure, then give up.
-        for attempt in (1, 2):
+        # Reads are safe to repeat: one retry on a transport failure, a short back-off
+        # on the rate limit (10006), then give up.
+        for attempt, pause in enumerate(RATE_LIMIT_BACKOFF_S + (None,), start=1):
             try:
                 headers = self._auth_headers(query) if auth else {}
                 return self._unwrap(path, await self._http.get(url, headers=headers))
             except httpx.TransportError as exc:
-                if attempt == 2:
+                if attempt >= 2:
                     raise BybitTransportError(path, exc) from exc
+            except BybitAPIError as exc:
+                if exc.ret_code != RATE_LIMITED or pause is None:
+                    raise
+                await asyncio.sleep(pause)
         raise AssertionError("unreachable")
 
     async def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:

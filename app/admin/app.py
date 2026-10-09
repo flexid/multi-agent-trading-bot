@@ -363,6 +363,7 @@ def _plan_view(d: DecisionRecord) -> list[dict[str, Any]]:
 
 @app.get("/params", response_class=HTMLResponse)
 def params(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
+    get_config.cache_clear()  # the executor rewrites config.toml; show what is in it now
     cfg = get_config()
     current = {k: _get_param(cfg, k) for k in EDITABLE}
     with new_session() as s:
@@ -378,6 +379,11 @@ def params(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
         audit=audit_rows,
         stepped=stepped_up(request),
     )
+
+
+def _fresh_config() -> Any:
+    get_config.cache_clear()
+    return get_config()
 
 
 def _get_param(cfg: Any, key: str) -> Any:
@@ -417,7 +423,7 @@ def params_post(
             ParamChange(
                 ts=datetime.now(UTC),
                 key=key,
-                old_value=str(_get_param(get_config(), key)),
+                old_value=str(_get_param(_fresh_config(), key)),
                 new_value=str(v),
                 requested_by=user,
             )

@@ -38,6 +38,7 @@ services:
     command: ["python", "-m", "app.scheduler"]
     volumes:
       - ./logs:/app/logs
+      - ./config.toml:/app/config.toml  # one file for all processes; the executor writes it
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -53,6 +54,8 @@ services:
     command: ["uvicorn", "app.admin.app:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips", "*"]
     ports:
       - "127.0.0.1:8080:8080"
+    volumes:
+      - ./config.toml:/app/config.toml:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -76,6 +79,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://bot:bot@postgres:5432/bot
     command: ["python", "-m", "app.execution.executor"]
+    volumes:
+      - ./config.toml:/app/config.toml  # parameter changes from the admin land here
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -197,3 +197,32 @@ async def test_margin_coin_absent_when_exchange_returns_null() -> None:
 
     async with client_for(handler) as client:
         assert await client.margin_coin("SPX") is None
+
+
+async def test_reads_back_off_on_the_rate_limit_then_give_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.execution import bybit_client as bc
+
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return httpx.Response(
+                200, json={"retCode": 10006, "retMsg": "Too many visits", "result": {}}
+            )
+        return httpx.Response(
+            200, json={"retCode": 0, "retMsg": "OK", "result": {"timeSecond": "1"}}
+        )
+
+    monkeypatch.setattr(bc, "RATE_LIMIT_BACKOFF_S", (0.0, 0.0))
+    async with BybitClient("https://bybit.test", transport=httpx.MockTransport(handler)) as client:
+        assert await client._get("/v5/market/time") == {"timeSecond": "1"}  # noqa: SLF001
+    assert calls["n"] == 3
+
+    calls["n"] = -10  # never recovers within the back-off: the error surfaces
+    async with BybitClient("https://bybit.test", transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(BybitAPIError) as exc:
+            await client._get("/v5/market/time")  # noqa: SLF001
+    assert exc.value.ret_code == 10006
