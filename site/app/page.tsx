@@ -43,8 +43,8 @@ export default function Page() {
       <h2>Stats</h2>
       <div className="row">
         <div className="tile"><div className="k">trades</div><div className="v">{st.trades}</div></div>
-        <div className="tile"><div className="k">win rate</div><div className="v">{st.win_rate_pct == null ? "–" : `${st.win_rate_pct}%`}</div></div>
-        <div className="tile"><div className="k">profit factor</div><div className="v">{st.profit_factor ?? "–"}</div></div>
+        <div className="tile"><div className="k">win rate</div><div className={`v ${st.win_rate_pct == null ? "" : st.win_rate_pct >= 50 ? "up" : "down"}`}>{st.win_rate_pct == null ? "–" : `${st.win_rate_pct}%`}</div></div>
+        <div className="tile"><div className="k">profit factor</div><div className={`v ${st.profit_factor == null ? "" : st.profit_factor >= 1 ? "up" : "down"}`}>{st.profit_factor ?? "–"}</div></div>
         <div className="tile"><div className="k">avg holding</div><div className="v">{st.avg_holding ?? "–"}</div></div>
       </div>
       <h2>Open trades</h2>
