@@ -2,6 +2,10 @@
 
 Newest first. One entry per decision: what was decided, why, and what it rules out.
 
+## 2026-10-09 · M8: server-rendered admin, Cloudflare Tunnel, SSH-only firewall
+
+The admin is FastAPI with Jinja templates rather than a separate Next.js app: one container, no build step, nothing the owner needs beyond a browser; a Next.js front can replace the templates later without touching auth or the data layer. The admin never gets the trading secrets: it runs from `.env.admin`, an allow-listed subset of `.env`, and a test enforces the list. Public exposure goes through a Cloudflare Tunnel (outbound only), so the droplet's firewall allows SSH and nothing else; SPEC §12's "443 only from Cloudflare ranges" is satisfied by having no 443 at all. Shadow posts' marker words and the site footer's "bot"/"nfa" are the only whitelist exceptions, and only in site mode.
+
 ## 2026-10-09 · Go-live after 4 weeks and 100 primary trades; execution pilot; post voice (owner)
 
 - Shadow mode lasts at least 4 weeks AND until at least 100 trades have closed on the primary paper track, whichever comes later (previously 6 weeks). The other §10 criteria are unchanged. After the first 4 weeks the bot reports monthly running costs (LLM, X, server); the admin's cost page (M8b) carries it.
