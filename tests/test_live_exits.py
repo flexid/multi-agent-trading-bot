@@ -310,3 +310,45 @@ async def test_long_exit_sells_what_is_held_and_cover_buys_the_fee_back() -> Non
     assert r2.filled_qty > D("0.1")
     assert fake2.repaid == ["BTC"]  # the buy-back does not clear the borrow by itself
     assert fake.repaid == []
+
+
+@needs_db
+async def test_live_mode_books_on_its_own_ledger_seeded_from_real_equity(db: None) -> None:  # noqa: F811
+    """Go-live must not inherit the paper history: the live track gets ledger 4 at the
+    subaccount's real equity, and the risk engine's starting capital is that number."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import delete
+
+    from app.db.models import AccountSnapshot, PaperAccount, RiskState
+    from app.db.session import new_session
+
+    seed_decision(stop="98", atr="2")
+    with new_session() as s:
+        s.execute(delete(AccountSnapshot))
+        s.add(
+            AccountSnapshot(
+                ts=datetime.now(UTC),
+                total_equity=D("1234.5"),
+                quote_balance=D("1234.5"),
+                coins=[],
+                open_orders=[],
+            )
+        )
+        state = s.get(RiskState, 1)
+        if state is not None:
+            state.starting_capital = None
+        s.commit()
+    ex = FakeBybit(get_config().symbol(ASSET), "99.9", "100")
+    executor = pilot(ex)
+    executor.mode = "live"
+    await executor.tick()
+    (pos,) = positions("live")
+    assert pos.mode == "live" and positions("primary") == [] and positions("max") == []
+    with new_session() as s:
+        live = s.get(PaperAccount, 4)
+        assert live is not None and live.track == "live" and live.starting_capital == D("1234.5")
+        state = s.get(RiskState, 1)
+        assert state is None or state.starting_capital == D("1234.5")
+        s.execute(delete(AccountSnapshot))
+        s.commit()

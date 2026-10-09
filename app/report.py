@@ -43,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
         rows = s.scalars(
             select(Position)
             .where(
-                Position.track == "primary",
+                Position.track.in_(["primary", "live"]),
                 (Position.status.in_(["open", "closing"])) | (Position.closed_at >= since),
             )
             .order_by(Position.opened_at)

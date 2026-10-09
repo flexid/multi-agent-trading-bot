@@ -27,6 +27,7 @@ from app.db.models import (
     Heartbeat,
     PaperAccount,
     Position,
+    RiskState,
     XPostOut,
 )
 from app.db.session import new_session
@@ -175,10 +176,17 @@ def _f(x: Decimal | float | None, places: int = 4) -> float:
     return round(float(x or 0), places)
 
 
+def _record_mode(s: Any) -> str:
+    """Which equity series the public record is: the live ledger once the bot is live,
+    the primary paper track before (and the live track's trades carry no paper badge)."""
+    state = s.get(RiskState, 1)
+    return "live" if state is not None and state.mode == "live" else "paper:primary"
+
+
 def _pct_curve(cfg: Config, s: Any, since: datetime) -> tuple[list[list[float]], float, float]:
     rows = s.execute(
         select(EquitySnapshot.ts, EquitySnapshot.equity)
-        .where(EquitySnapshot.mode == "paper:primary", EquitySnapshot.ts >= since)
+        .where(EquitySnapshot.mode == _record_mode(s), EquitySnapshot.ts >= since)
         .order_by(EquitySnapshot.ts)
     ).all()
     rows = [r for r in rows if float(r.equity) > 0]  # skip pre-funding zero snapshots
@@ -281,7 +289,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         acct = s.get(PaperAccount, 1)
         since = (acct.updated_at - timedelta(days=90)) if acct else now - timedelta(days=90)
         first = s.execute(
-            select(func.min(EquitySnapshot.ts)).where(EquitySnapshot.mode == "paper:primary")
+            select(func.min(EquitySnapshot.ts)).where(EquitySnapshot.mode == _record_mode(s))
         ).scalar_one()
         since = first or since
         curve, bot_pct, dd = _pct_curve(cfg, s, since)
@@ -290,7 +298,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         history = _history(cfg, s, now - timedelta(days=7))
         closed = s.scalars(
             select(Position)
-            .where(Position.track == "primary", Position.status == "closed")
+            .where(Position.track.in_(["primary", "live"]), Position.status == "closed")
             .order_by(Position.closed_at.desc())
             .limit(200)
         ).all()
@@ -320,7 +328,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         }
         open_rows = s.scalars(
             select(Position).where(
-                Position.track == "primary", Position.status.in_(["open", "closing"])
+                Position.track.in_(["primary", "live"]), Position.status.in_(["open", "closing"])
             )
         ).all()
         open_trades = []

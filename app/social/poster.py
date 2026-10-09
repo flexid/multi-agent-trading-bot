@@ -115,8 +115,8 @@ async def enqueue(
     dry_run: bool,
     now: datetime | None = None,
 ) -> XPostOut:
-    if pos.mode == "pilot" or pos.track != "primary":
-        raise ValueError("only primary-track trades are posted; pilot trades never are")
+    if pos.mode == "pilot" or pos.track not in ("primary", "live"):
+        raise ValueError("only primary/live-track trades are posted; pilot trades never are")
     now = now or datetime.now(UTC)
     paper = pos.mode == "paper"
     text, source, audit_ok, notes = await compose(

@@ -128,7 +128,7 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
     ).all()
     by_track = {
         t: _track_stats([p for p in closed if p.track == t]).__dict__
-        for t in ("primary", "max", "pilot")
+        for t in ("primary", "max", "pilot", "live")
     }
     pilot_rows = session.scalars(select(Position).where(Position.track == "pilot")).all()
     paper_rows = session.scalars(select(Position).where(Position.track == "primary")).all()
@@ -223,6 +223,8 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
         "## Trades, last 7 days",
     ]
     for track, s in f["closed_trades_by_track"].items():
+        if track == "live" and not s["closed"]:
+            continue  # nothing to say before go-live
         if s["closed"]:
             lines.append(
                 f"- {track}: {s['closed']} closed, {s['wins']} won, P&L {s['pnl']:+.2f}, "

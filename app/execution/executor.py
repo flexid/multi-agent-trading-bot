@@ -63,8 +63,9 @@ EXIT_ALERT_AFTER = 3  # passes an exit may stay unfinished before the owner is e
 TRACKS: dict[str, dict[str, str]] = {
     "paper": {"primary": "paper", "max": "paper"},
     "pilot": {"primary": "paper", "max": "paper", "pilot": "pilot"},
-    "live": {"primary": "live"},
+    "live": {"live": "live"},  # one real-money track; the shadow ledgers freeze as history
 }
+LEDGER_IDS = {"primary": 1, "max": 2, "pilot": 3, "live": 4}
 TAKER_FEE = {"USDT": Decimal("0.001"), "USDC": Decimal("0.0005")}
 QTY_STEP_FALLBACK = Decimal("0.000001")
 HOURLY_BORROW_FALLBACK = Decimal("0.000005")
@@ -198,12 +199,32 @@ class Executor:
 
     # --- ledger ---------------------------------------------------------------------
 
+    @staticmethod
+    def _exchange_equity(session: Session) -> Decimal | None:
+        from app.db.models import AccountSnapshot
+
+        snap = session.execute(
+            select(AccountSnapshot).order_by(AccountSnapshot.ts.desc()).limit(1)
+        ).scalar_one_or_none()
+        if snap is None or not snap.total_equity or snap.total_equity <= 0:
+            return None
+        return Decimal(str(snap.total_equity))
+
     def ledger(self, session: Session, now: datetime, track: str = "primary") -> PaperAccount:
-        track_id = {"primary": 1, "max": 2, "pilot": 3}[track]
+        track_id = LEDGER_IDS[track]
         acct = session.get(PaperAccount, track_id)
-        capital = (
-            self.cfg.pilot.capital_usdt if track == "pilot" else self.cfg.trading.capital_max_usdt
-        )
+        if track == "pilot":
+            capital = self.cfg.pilot.capital_usdt
+        elif track == "live":
+            # The live record starts at what the subaccount really holds on go-live day;
+            # the risk engine's "% against starting capital" reads the same number.
+            capital = self._exchange_equity(session) or self.cfg.trading.capital_max_usdt
+        else:
+            capital = self.cfg.trading.capital_max_usdt
+        if acct is None and track == "live":
+            state = session.get(RiskState, 1)
+            if state is not None and not state.starting_capital:
+                state.starting_capital = capital
         if acct is None:
             acct = PaperAccount(
                 id=track_id,
@@ -444,7 +465,7 @@ class Executor:
             fill.pnl_price_pct,
             net / pos.margin if pos.margin else Decimal(0),
         )
-        if row.track == "primary":
+        if row.track in ("primary", "live"):
             await self.post(session, row, "close", None, now)  # needs the P&L fields
         acct = self.ledger(session, now, row.track)
         acct.cash += row.margin + net
@@ -725,7 +746,7 @@ class Executor:
     async def post(
         self, session: Session, row: Position, kind: str, reason: str | None, now: datetime
     ) -> None:
-        if row.mode == "pilot" or row.track != "primary":
+        if row.mode == "pilot" or row.track not in ("primary", "live"):
             return  # the pilot is an execution test, not part of the X storyline
         try:
             await poster.enqueue(

@@ -60,7 +60,9 @@ def _closed(session: Session, mode: str = "paper") -> list[Position]:
     return list(
         session.scalars(
             select(Position).where(
-                Position.track == "primary", Position.status == "closed", Position.mode == mode
+                Position.track.in_(["primary", "live"]),
+                Position.status == "closed",
+                Position.mode == mode,
             )
         ).all()
     )

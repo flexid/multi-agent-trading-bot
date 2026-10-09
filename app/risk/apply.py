@@ -92,7 +92,7 @@ def account_state(session: Session, cfg: Config, mode: str, now: datetime) -> en
         ).all()
     )
     ceiling = state.leverage_ceiling  # primary track follows live rules in shadow too (owner)
-    paper = session.get(PaperAccount, 1)
+    paper = session.get(PaperAccount, 4 if mode == "live" else 1)  # the live ledger once live
     day_pnl = day_high = Decimal(0)
     if paper and paper.day_start_equity > 0:
         day_pnl = paper.equity / paper.day_start_equity - 1
