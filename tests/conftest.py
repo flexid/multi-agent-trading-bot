@@ -35,3 +35,18 @@ def _test_database() -> None:
     db_session.session_factory.cache_clear()
     db_session.get_engine = lambda: engine  # type: ignore[assignment]
     db_session.session_factory = lambda: sessionmaker(engine, expire_on_commit=False)  # type: ignore[assignment]
+
+
+@pytest.fixture(autouse=True)
+def _no_mail(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
+    """Tests never email the owner (the executor's kill alert did, from the test suite)."""
+    from app.admin import notify
+
+    sent: list[tuple[str, str]] = []
+
+    def fake_send(subject: str, body: str, *args: object, **kwargs: object) -> bool:
+        sent.append((subject, body))
+        return True
+
+    monkeypatch.setattr(notify, "send", fake_send)
+    return sent

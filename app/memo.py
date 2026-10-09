@@ -56,7 +56,7 @@ class Proposal(BaseModel):
 class Memo(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    summary: str = Field(max_length=900)
+    summary: str = Field(max_length=2500)
     keep: list[str] = Field(max_length=5)  # what is working and should not be touched
     proposals: list[Proposal] = Field(max_length=6)
 
@@ -325,7 +325,12 @@ def to_html(markdown: str) -> str:
             close_to(0)
             out.append(f"<p style='margin:8px 0'>{_inline(line)}</p>")
     close_to(0)
-    return f"<div style='{_STYLE}'>" + "\n".join(out) + "</div>"
+    src = "https://dorkbot.dev/brand/logo-1200.png?v=6d8a4f25"
+    logo = (
+        f"<a href='https://dorkbot.dev/'><img src='{src}' alt='dorkbot' width='300' "
+        "style='width:300px;max-width:100%;height:auto;display:block;margin:0 0 12px'></a>"
+    )
+    return f"<div style='{_STYLE}'>" + logo + "\n".join(out) + "</div>"
 
 
 def improvement_prompt(f: dict[str, Any], memo: Memo | None) -> str:
@@ -381,7 +386,8 @@ async def propose(f: dict[str, Any]) -> tuple[Memo | None, str | None]:
         result = await complete(
             TASK, Memo, prompt=load_prompt("memo"), user_text=json.dumps(f, default=str)
         )
-    except LLMError as exc:
+    except (LLMError, ValueError) as exc:  # a late, invalid or overlong answer: facts only
+        log.warning("memo proposals unavailable: %s", str(exc)[:200])
         return None, str(exc)[:200]
     return result.parsed, None
 

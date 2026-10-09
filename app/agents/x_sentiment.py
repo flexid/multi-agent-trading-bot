@@ -55,13 +55,13 @@ SEARCH_QUERY = {
     "SPX6900": "(SPX6900 OR $SPX) lang:en -is:retweet -is:reply",
 }
 # Mention volume ("buzz") is counted with the counts endpoint: one request per asset per
-# cycle, no post text. The SPX6900 query avoids "$SPX", which is also the S&P 500.
+# cycle, no post text. $SPX is SPX6900's ticker (owner, 2026-10-09); this is a crypto bot.
 MENTION_QUERY = {
     "BTC": "(bitcoin OR $BTC) -is:retweet",
     "ETH": "(ethereum OR $ETH) -is:retweet",
     "SOL": "(solana OR $SOL) -is:retweet",
     "BNB": "($BNB OR #BNB) -is:retweet",
-    "SPX6900": "(SPX6900 OR #SPX6900 OR $SPX6900) -is:retweet",
+    "SPX6900": "($SPX OR SPX6900 OR #SPX6900) -is:retweet",
 }
 MENTION_SERIES = "XMENTIONS_{asset}"  # hourly counts in macro_observations
 BUZZ_BASELINE_DAYS = 6
