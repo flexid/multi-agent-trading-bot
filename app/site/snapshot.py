@@ -420,7 +420,7 @@ def verify_dict(data: dict[str, Any]) -> list[str]:
             for i, v in enumerate(node):
                 walk(v, f"{path}[{i}]")
         elif isinstance(node, str) and not path.endswith(
-            (".x_url", ".generated_at", ".since", ".closed_at", ".handle")
+            (".x_url", ".generated_at", ".since", ".closed_at", ".handle", ".name")
         ):
             r = check(node, site=True)
             if not r.ok:

@@ -11,7 +11,6 @@ export default function Agents() {
   if (s === null || s.assets.length === 0) return <p className="muted">No cycle data yet.</p>;
   return (
     <>
-      <img className="logo" src="/brand/logo-600.png" alt="dorkbot" />
       <h1>Agents <span className={`badge ${s.mode === "live" ? "neon" : ""}`}>{s.mode}</span></h1>
       <p className="muted">Five agents score each asset every four hours. Two portfolio managers (Claude and GPT) read the same evidence without seeing each other; a trade needs both. Scores run from −1 to +1.</p>
       {s.assets.map((a) => (
