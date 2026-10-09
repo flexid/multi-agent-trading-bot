@@ -20,7 +20,7 @@ export default function Agents() {
       <h2>Latest readings</h2>
       {s.assets.map((a) => (
         <section key={a.asset}>
-          <h2>{tick(a.cashtag)} · {a.consensus} <span className="badge">Decentra {a.pm_claude ?? "–"}</span><span className="badge">Dork {a.pm_gpt ?? "–"}</span></h2>
+          <h2>{tick(a.cashtag)} · {a.consensus} <span className="badge">Dyne {a.pm_claude ?? "–"}</span><span className="badge">Dork {a.pm_gpt ?? "–"}</span></h2>
           <p className="muted">{a.reason}. Formula {sc(a.formula_score)}, consensus {sc(a.consensus_score)}.
             {a.macro_regime && <> Macro regime {a.macro_regime}, tradfi coupling {a.coupling?.toFixed(2)}; macro parts tradfi {sc(a.macro_tradfi)} / crypto-native {sc(a.macro_native)}.</>}</p>
           <table><thead><tr><th>agent</th><th>score</th><th>confidence</th><th>notes</th></tr></thead><tbody>

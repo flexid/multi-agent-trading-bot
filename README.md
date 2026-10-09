@@ -144,7 +144,7 @@ Display names for the site, the admin and the docs (ids stay as they are in code
 | **Oracle** | `polymarket` | prediction-market ladders, their 24 h shift, the up/down bets |
 | **Weather** | `macro` | rates, dollar, equities, fear & greed, BTC dominance, coupling |
 | **Ears** | `x_sentiment` | who is loud, who is credible, how many are talking |
-| **Decentra** | `pm_1` (Claude) | portfolio manager: trade plan from the five readings |
+| **Dyne** | `pm_1` (Claude) | portfolio manager: trade plan from the five readings |
 | **Dork** | `pm_2` (GPT) | the second manager; a trade needs both to agree |
 | **Dial** | leverage agent | size = risk ÷ stop distance, then the lowest cap |
 | **Bouncer** | risk engine | deterministic limits; the only one who can say no |

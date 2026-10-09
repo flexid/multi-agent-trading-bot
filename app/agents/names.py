@@ -53,7 +53,7 @@ CREW: list[Member] = [
     ),
     Member(
         "pm_1",
-        "Decentra",
+        "Dyne",
         "portfolio manager (Claude)",
         "Turns the five readings into a trade plan with entry, stop and target. Never sees "
         "what the other manager said.",
