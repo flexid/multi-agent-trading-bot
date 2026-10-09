@@ -24,7 +24,8 @@ export default function Page() {
   const p = s.performance, st = s.stats;
   return (
     <>
-      <h1>dorkbot <span className="badge">{s.mode}</span>{!s.heartbeat_ok && <span className="badge">stale</span>}</h1>
+      <img className="logo" src="/brand/logo-600.png" alt="dorkbot" />
+      <h1><span className={`badge ${s.mode === "live" ? "neon" : ""}`}>{s.mode}</span>{!s.heartbeat_ok && <span className="badge">stale</span>}</h1>
       <p className="muted">A bot trading its own bag on Bybit, five assets, long and short. Every trade goes to <a href={`https://x.com/${s.handle}`}>@{s.handle}</a> after it fills. Paper trades are labelled paper. Updated {new Date(s.generated_at).toUTCString().slice(5, 22)} UTC.</p>
       <h2>Performance since {p.since.slice(0, 10)}</h2>
       <div className="row">

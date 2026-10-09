@@ -1,14 +1,14 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>dorkbot admin</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>dorkbot admin</title><link rel="icon" href="/static/favicon-32.png"><link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <style>
-:root{color-scheme:dark;--bg:#0b0d10;--fg:#e6e6e6;--muted:#8a919a;--line:#1f242b;--up:#3ddc84;--down:#ff5c5c;--accent:#7aa2f7;--warn:#f7c97a}
+:root{color-scheme:dark;--bg:#0a0a0a;--fg:#ececec;--muted:#8f958f;--line:#222;--up:#b6ff00;--down:#ff5c5c;--accent:#fe7e1c;--warn:#f7c97a}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 ui-sans-serif,system-ui,sans-serif}main{max-width:1000px;margin:0 auto;padding:20px 14px 60px}
-h1{font-size:20px;margin:0 0 8px}h2{font-size:13px;margin:28px 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+h1{font-size:20px;margin:0 0 8px}h2{font-size:13px;margin:28px 0 8px;color:var(--accent);text-transform:uppercase;letter-spacing:.04em}
 a{color:var(--accent);text-decoration:none}nav a{margin-right:14px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 5px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:500}
 .up{color:var(--up)}.down{color:var(--down)}.warn{color:var(--warn)}.muted{color:var(--muted)}.badge{display:inline-block;padding:1px 7px;border:1px solid var(--line);border-radius:999px;font-size:11px;color:var(--muted);margin-left:6px}
 .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.tile{border:1px solid var(--line);border-radius:8px;padding:10px}.tile .k{color:var(--muted);font-size:11px}.tile .v{font-size:18px;font-weight:600}
 input,button,select{font:inherit;background:#12161b;color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 8px}button.danger{border-color:var(--down);color:var(--down)}form.inline{display:inline}
 pre{white-space:pre-wrap;font-size:12px;color:var(--muted)}
 </style></head><body><main>
-<nav><a href="/">Overview</a><a href="/decisions">Decisions</a><a href="/params">Parameters &amp; audit</a>{% if user %}<form class="inline" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Logout {{ user }}</button></form>{% endif %}</nav>
+<nav><a href="/"><img src="/static/logo-600.png" alt="dorkbot" style="height:34px;vertical-align:middle;margin-right:14px"></a><a href="/">Overview</a><a href="/decisions">Decisions</a><a href="/params">Parameters &amp; audit</a>{% if user %}<form class="inline" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Logout {{ user }}</button></form>{% endif %}</nav>
 {% block body %}{% endblock %}
 </main></body></html>

@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import logging
 import sys
+from pathlib import Path
 
 from app.config import get_secrets
 from app.site.snapshot import OUT, Snapshot, build, verify
@@ -19,10 +20,11 @@ log = logging.getLogger("publish")
 
 
 def og_image(snap: Snapshot) -> bytes:
-    """1200×630 PNG with the headline numbers; numbers pass the whitelist by construction."""
+    """1200×630 PNG: wordmark, avatar, headline numbers in the brand palette."""
     from PIL import Image, ImageDraw, ImageFont
 
-    img = Image.new("RGB", (1200, 630), "#0b0d10")
+    brand = Path(__file__).resolve().parents[2] / "site" / "public" / "brand"
+    img = Image.new("RGB", (1200, 630), "#0a0a0a")
     d = ImageDraw.Draw(img)
 
     def font(name: str, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -31,31 +33,43 @@ def og_image(snap: Snapshot) -> bytes:
         except OSError:
             return ImageFont.load_default(size)
 
-    big = font("DejaVuSans-Bold.ttf", 72)
-    mid = font("DejaVuSans.ttf", 40)
-    small = font("DejaVuSans.ttf", 28)
+    big, mid, small = (
+        font("DejaVuSans-Bold.ttf", 80),
+        font("DejaVuSans.ttf", 36),
+        font("DejaVuSans.ttf", 26),
+    )
+    try:
+        logo = Image.open(brand / "logo-600.png").convert("RGBA")
+        logo = logo.resize((560, round(logo.height * 560 / logo.width)), Image.Resampling.LANCZOS)
+        img.paste(logo, (50, 40), logo)
+        avatar = (
+            Image.open(brand / "avatar-512.png")
+            .convert("RGBA")
+            .resize((300, 300), Image.Resampling.LANCZOS)
+        )
+        img.paste(avatar, (850, 165), avatar)
+    except OSError:
+        d.text((60, 60), "dorkbot", font=big, fill="#fe7e1c")
     p = snap.performance
-    d.text((60, 60), "dorkbot", font=big, fill="#e6e6e6")
-    d.text((60, 150), f"{snap.mode} · a bot trading its own bag", font=small, fill="#8a919a")
-    col = "#3ddc84" if p.bot_pct >= 0 else "#ff5c5c"
-    d.text((60, 250), f"{p.bot_pct:+.2f}%", font=big, fill=col)
+    col = "#b6ff00" if p.bot_pct >= 0 else "#ff5c5c"
+    d.text((60, 270), f"{p.bot_pct:+.2f}%", font=big, fill=col)
     d.text(
-        (60, 340),
+        (60, 370),
         f"vs BTC {p.btc_hold_pct:+.2f}%  ·  basket {p.basket_pct:+.2f}%",
         font=mid,
-        fill="#e6e6e6",
+        fill="#ececec",
     )
     d.text(
-        (60, 410),
+        (60, 425),
         f"drawdown {p.drawdown_pct:+.2f}%  ·  {snap.stats.trades} trades",
         font=mid,
-        fill="#8a919a",
+        fill="#8f958f",
     )
     d.text(
         (60, 540),
-        f"@{snap.handle} · {snap.generated_at:%Y-%m-%d %H:%M} UTC",
+        f"{snap.mode} · @{snap.handle} · {snap.generated_at:%Y-%m-%d %H:%M} UTC",
         font=small,
-        fill="#8a919a",
+        fill="#fe7e1c",
     )
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
@@ -87,7 +101,7 @@ def push_r2(objects: dict[str, tuple[bytes, str]], bucket: str | None = None) ->
     return True
 
 
-def publish() -> Snapshot:
+def publish(push: bool = True) -> Snapshot:
     snap = build()
     problems = verify(snap)
     if problems:
@@ -97,7 +111,9 @@ def publish() -> Snapshot:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_bytes(data)
     OUT.with_name("og.png").write_bytes(og)
-    pushed = push_r2({"snapshot.json": (data, "application/json"), "og.png": (og, "image/png")})
+    pushed = push and push_r2(
+        {"snapshot.json": (data, "application/json"), "og.png": (og, "image/png")}
+    )
     log.info(
         "snapshot %s (%d bytes)%s",
         snap.generated_at,
@@ -108,8 +124,9 @@ def publish() -> Snapshot:
 
 
 def main() -> int:
+    """Writes locally; pushes to R2 only with --push (the server's scheduler always pushes)."""
     logging.basicConfig(level=logging.INFO)
-    publish()
+    publish(push="--push" in sys.argv[1:])
     return 0
 
 

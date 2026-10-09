@@ -16,6 +16,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 
@@ -42,6 +43,7 @@ from app.db.models import (
 from app.db.session import new_session
 
 app = FastAPI(title="dorkbot admin", docs_url=None, redoc_url=None, openapi_url=None)
+app.mount("/static", StaticFiles(directory=str(Path(__file__).with_name("static"))), name="static")
 templates = Jinja2Templates(directory=str(Path(__file__).with_name("templates")))
 COOKIE = "dorkbot_admin"
 STEP_UP = "dorkbot_stepup"
