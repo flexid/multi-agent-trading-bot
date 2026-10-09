@@ -254,3 +254,27 @@ def test_spx_cap_only_binds_above_three(asset: str, expected: D) -> None:
     )
     a = engine.assess(c, account(), market(), limits())
     assert a.plan is not None and a.plan.leverage == expected
+
+
+def test_max_track_limits_use_their_own_risk_per_trade() -> None:
+    from types import SimpleNamespace
+
+    from app.risk.apply import limits_for_max
+    from app.risk.engine import Limits
+
+    lim = Limits(
+        capital_max=D(10000),
+        risk_per_trade=D("0.005"),
+        capital_share=D("0.2"),
+        leverage_max=D(20),
+        leverage_max_spx6900=D(10),
+        gross_exposure_max=D(2),
+        depth_cap=D("0.05"),
+        day_loss_stop=D("-0.02"),
+        drawdown_pause=D("-0.10"),
+        emergency_brake=D("-0.20"),
+    )
+    cfg = SimpleNamespace(trading=SimpleNamespace(risk_per_trade_max=D("0.025")))
+    mx = limits_for_max(lim, cfg)  # type: ignore[arg-type]
+    assert mx.risk_per_trade == D("0.025") and mx.leverage_max == lim.leverage_max
+    assert lim.risk_per_trade == D("0.005")  # the primary's limits are untouched

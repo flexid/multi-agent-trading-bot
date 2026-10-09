@@ -9,6 +9,7 @@ live_allowed = false            # owner flips once; go-live itself is automatic 
 leverage_max = 10
 leverage_max_spx6900 = 3
 risk_per_trade = 0.005
+risk_per_trade_max = 0.025      # the max shadow track: the leveraged variant (owner goal 1%/day, 2026-10-09)
 capital_share_per_asset = 0.20
 gross_exposure_max = 3.0
 holding_min_hours = 1

@@ -8,6 +8,7 @@ and writes the rule hits and the resulting action back. The executor (M6) reads 
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -32,6 +33,11 @@ from app.decision.consensus import Agreement, Consensus
 from app.decision.evidence import spot_and_atr
 from app.decision.pm import Direction, Proposal
 from app.risk import engine
+
+
+def limits_for_max(lim: engine.Limits, cfg: Config) -> engine.Limits:
+    """The max track's limits: the same rules, sized with ``risk_per_trade_max``."""
+    return replace(lim, risk_per_trade=cfg.trading.risk_per_trade_max)
 
 
 def limits_from_config(cfg: Config) -> engine.Limits:
@@ -275,7 +281,7 @@ def apply_risk(
         a = engine.assess(c, acct, mkt, lim, account_hits=account_hits)
         out[d.asset] = a
         a_max = (
-            engine.assess(c, acct_max, mkt, lim, account_hits=account_hits)
+            engine.assess(c, acct_max, mkt, limits_for_max(lim, cfg), account_hits=account_hits)
             if mode != "live"
             else None
         )

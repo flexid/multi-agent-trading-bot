@@ -28,6 +28,9 @@ class TradingConfig(_Section):
     leverage_max: int
     leverage_max_spx6900: int
     risk_per_trade: Decimal
+    # The max shadow track sizes with this instead (owner goal 2026-10-09: show the
+    # leveraged variant beside the go-live record).
+    risk_per_trade_max: Decimal = Decimal("0.025")
     capital_share_per_asset: Decimal
     gross_exposure_max: Decimal
     holding_min_hours: int
