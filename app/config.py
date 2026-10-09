@@ -77,6 +77,8 @@ class MacroAgentConfig(_Section):
 
 class AgentsConfig(_Section):
     macro: MacroAgentConfig = MacroAgentConfig()
+    # Per-asset overrides on the tuned agent weights, e.g. SPX6900 leans on X sentiment.
+    weights_by_asset: dict[str, dict[str, float]] = Field(default_factory=dict)
 
 
 class XConfig(_Section):

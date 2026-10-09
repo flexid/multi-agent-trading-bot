@@ -25,7 +25,7 @@ from app.agents.schema import AgentOutput
 from app.config import Config, get_config
 from app.db.models import AgentOutputRecord, Cycle, DecisionRecord, LLMCall, PMProposalRecord
 from app.db.session import new_session
-from app.decision.consensus import Consensus, consensus
+from app.decision.consensus import Consensus, consensus, weights_for
 from app.decision.evidence import build_pack
 from app.decision.pm import Proposal, ask_both
 from app.decision.tuning import current_weights
@@ -224,7 +224,11 @@ async def run_cycle(
             weights = current_weights(session)
         results = {
             asset: consensus(
-                by_asset[asset], couplings.get(asset), pm1.get(asset), pm2.get(asset), weights
+                by_asset[asset],
+                couplings.get(asset),
+                pm1.get(asset),
+                pm2.get(asset),
+                weights_for(weights, cfg.agents.weights_by_asset.get(asset)),
             )
             for asset in cfg.trading.assets
         }

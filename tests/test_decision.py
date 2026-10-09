@@ -143,3 +143,20 @@ def test_pack_check_forces_flat_below_three_valid_agents_and_drops_unknowns() ->
     assert set(checked) == {"BTC"}
     assert checked["BTC"].direction is Direction.FLAT
     assert checked["BTC"].weighted_up == ["indicators"]
+
+
+def test_per_asset_weight_overrides_lean_spx6900_on_x_sentiment() -> None:
+    from app.decision.consensus import WEIGHTS, weights_for
+
+    base = dict(WEIGHTS)
+    spx = weights_for(base, {"x_sentiment": 0.40, "polymarket": 0.0})
+    outs = [
+        out("indicators", -0.5),
+        out("chart_patterns", -0.5),
+        out("x_sentiment", 1.0),
+        out("polymarket", -1.0),
+    ]
+    plain, _ = formula_score(outs, None, weights_for(base, None))
+    leaning, _ = formula_score(outs, None, spx)
+    assert plain is not None and leaning is not None and leaning > plain
+    assert weights_for(base, None) == base  # no override: the tuned weights as they are

@@ -39,6 +39,12 @@ class Consensus:
     proposal: Proposal | None  # the directional proposal to size (merged when both agree)
 
 
+def weights_for(base: dict[str, float], overrides: dict[str, float] | None) -> dict[str, float]:
+    """The tuned weights with an asset's overrides on top (owner 2026-10-09: SPX6900 leans
+    on X sentiment). ``formula_score`` renormalizes over the valid agents."""
+    return {**base, **(overrides or {})}
+
+
 def formula_score(
     outputs: list[AgentOutput], coupling: float | None, weights: dict[str, float] | None = None
 ) -> tuple[float | None, int]:

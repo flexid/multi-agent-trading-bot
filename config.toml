@@ -62,10 +62,13 @@ maintenance_margin_rate = 0.03
 fng_weight = 0.25               # Fear & Greed, contrarian at extremes; also a risk flag
 dominance_weight = 0.0          # BTC dominance tilt: logged only until real dominance history exists
 
+[agents.weights_by_asset]       # overrides on the tuned weights, renormalized per asset
+SPX6900 = { x_sentiment = 0.40, polymarket = 0.0 }   # owner 2026-10-09: community sentiment and volume drive SPX6900; Polymarket has no markets on it
+
 [x]                             # X sentiment agent (SPEC §6)
 # Curated accounts, handles without "@". Owner's list (2026-10-09), duplicates removed.
 accounts = [
-  "decentradork", "DrProfitCrypto", "MustStopMurad", "trader1sz", "MerlijnTrader", "Exitpump",
+  "decentradork", "spx6900", "DrProfitCrypto", "MustStopMurad", "trader1sz", "MerlijnTrader", "Exitpump",
   "benjamincowen", "CryptoCapo_", "Rektcapital", "Durov", "CryptoMichNL", "Duonine", "Devchart",
   "Quintenfrancois", "Murocrypto", "VitalikButerin", "saylor", "cz_binance", "brian_armstrong",
   "APompliano", "balajis", "LynAldenContact", "RaoulGMI", "CryptoHayes", "woonomic",

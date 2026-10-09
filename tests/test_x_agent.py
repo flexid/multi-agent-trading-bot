@@ -75,3 +75,26 @@ def test_spx6900_gains_confidence_faster() -> None:
 def test_no_posts_is_neutral_with_zero_confidence() -> None:
     out = xs.aggregate([], "BNB", 1, NOW)
     assert out.score == 0 and out.confidence == 0
+
+
+def test_mention_volume_scales_confidence_and_flags_spikes_spx6900_twice_as_much() -> None:
+    rows = [post(i, "bullish") for i in range(10)]
+    plain = xs.aggregate(rows, "SPX6900", 1, NOW)
+    quiet = xs.aggregate(rows, "SPX6900", 1, NOW, mentions=(50, 100.0))
+    loud = xs.aggregate(rows, "SPX6900", 1, NOW, mentions=(260, 100.0))
+    assert quiet.confidence < plain.confidence < loud.confidence
+    assert loud.score == plain.score  # attention never changes the direction
+    assert any("attention spike" in f for f in loud.risk_flags)
+    assert any("attention fading" in f for f in quiet.risk_flags)
+    assert any(e.startswith("mentions: 260 in 24h") for e in loud.evidence)
+    btc_loud = xs.aggregate(
+        [post(i, "bullish") for i in range(10)], "BTC", 1, NOW, mentions=(260, 100.0)
+    )
+    btc_plain = xs.aggregate([post(i, "bullish") for i in range(10)], "BTC", 1, NOW)
+    assert (
+        0
+        < (btc_loud.confidence / btc_plain.confidence - 1)
+        < (loud.confidence / plain.confidence - 1)
+    )
+    # an empty baseline (series too short) changes nothing
+    assert xs.aggregate(rows, "BTC", 1, NOW, mentions=(0, 0.0)).evidence == btc_plain.evidence

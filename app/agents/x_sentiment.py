@@ -19,6 +19,7 @@ Aggregation in code, per asset over the labelled posts of the last 24 hours:
 from __future__ import annotations
 
 import json
+import logging
 import math
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -33,6 +34,8 @@ from app.config import Config
 from app.data.x import XClient, XPost
 from app.db.models import XPostRecord
 from app.llm import LLMError, Prompt, complete
+
+log = logging.getLogger(__name__)
 
 AGENT = "x_sentiment"
 TASK = "x_sentiment"
@@ -51,6 +54,18 @@ SEARCH_QUERY = {
     "BNB": '($BNB OR "BNB chain") lang:en -is:retweet -is:reply',
     "SPX6900": "(SPX6900 OR $SPX) lang:en -is:retweet -is:reply",
 }
+# Mention volume ("buzz") is counted with the counts endpoint: one request per asset per
+# cycle, no post text. The SPX6900 query avoids "$SPX", which is also the S&P 500.
+MENTION_QUERY = {
+    "BTC": "(bitcoin OR $BTC) -is:retweet",
+    "ETH": "(ethereum OR $ETH) -is:retweet",
+    "SOL": "(solana OR $SOL) -is:retweet",
+    "BNB": "($BNB OR #BNB) -is:retweet",
+    "SPX6900": "(SPX6900 OR #SPX6900 OR $SPX6900) -is:retweet",
+}
+MENTION_SERIES = "XMENTIONS_{asset}"  # hourly counts in macro_observations
+BUZZ_BASELINE_DAYS = 6
+BUZZ_SPIKE, BUZZ_FADE = 2.0, 0.5
 
 
 class Stance(StrEnum):
@@ -145,8 +160,67 @@ async def fetch_posts(session: Session, cfg: Config, client: XClient, now: datet
         posts = await client.search_recent(SEARCH_QUERY[asset], max_results=per_asset)
         allowance -= max(len(posts), 10)  # the API bills the minimum page even when fewer return
         stored += store(posts, asset, None)
+    await count_mentions(session, cfg, client, now)
     session.commit()
     return stored
+
+
+async def count_mentions(session: Session, cfg: Config, client: XClient, now: datetime) -> int:
+    """Hourly mention counts per asset for the last 7 days, upserted as
+    ``XMENTIONS_<asset>`` in macro_observations. One request per asset; a failure (tier
+    without the counts endpoint, rate limit) leaves the series as it was."""
+    from sqlalchemy.dialects.postgresql import insert
+
+    from app.db.models import MacroObservation
+
+    done = 0
+    for asset in cfg.trading.assets:
+        try:
+            buckets = await client.counts_recent(MENTION_QUERY[asset], granularity="hour")
+        except Exception as exc:  # the agent still works on sentiment alone
+            log.warning("mention counts %s failed: %s", asset, exc)
+            continue
+        rows = [
+            {
+                "series": MENTION_SERIES.format(asset=asset),
+                "date": start,
+                "value": Decimal(count),
+                "fetched_at": now,
+            }
+            for start, count in buckets
+            if start < now.replace(minute=0, second=0, microsecond=0)  # full hours only
+        ]
+        if rows:
+            stmt = insert(MacroObservation).values(rows)
+            session.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=["series", "date"],
+                    set_={"value": stmt.excluded.value, "fetched_at": stmt.excluded.fetched_at},
+                )
+            )
+            done += 1
+    return done
+
+
+def mention_volume(session: Session, asset: str, now: datetime) -> tuple[int, float] | None:
+    """(mentions in the last 24 h, mentions per 24 h over the 6 days before) or None
+    when the series is too short to compare."""
+    from app.db.models import MacroObservation
+
+    since = now - timedelta(days=BUZZ_BASELINE_DAYS + 1)
+    rows = session.execute(
+        select(MacroObservation.date, MacroObservation.value).where(
+            MacroObservation.series == MENTION_SERIES.format(asset=asset),
+            MacroObservation.date >= since,
+        )
+    ).all()
+    cut = now - timedelta(hours=WINDOW_H)
+    last = sum(int(v) for d, v in rows if d >= cut)
+    base_rows = [(d, v) for d, v in rows if d < cut]
+    if len(base_rows) < 48:  # at least two full days of history to compare against
+        return None
+    baseline = sum(int(v) for _, v in base_rows) / len(base_rows) * WINDOW_H
+    return last, baseline
 
 
 # --- labels --------------------------------------------------------------------
@@ -203,11 +277,22 @@ def evaluate(
             XPostRecord.created_at >= now - timedelta(hours=WINDOW_H),
         )
     ).all()
-    return aggregate(list(rows), asset, data_age_min, now)
+    return aggregate(list(rows), asset, data_age_min, now, mention_volume(session, asset, now))
 
 
-def aggregate(rows: list[XPostRecord], asset: str, data_age_min: int, now: datetime) -> AgentOutput:
-    """Pure aggregation of labelled posts into the agent output (testable without a DB)."""
+def aggregate(
+    rows: list[XPostRecord],
+    asset: str,
+    data_age_min: int,
+    now: datetime,
+    mentions: tuple[int, float] | None = None,
+) -> AgentOutput:
+    """Pure aggregation of labelled posts into the agent output (testable without a DB).
+
+    ``mentions``: (last 24 h, baseline per 24 h). Attention scales confidence, not the
+    direction: twice the usual volume lifts it, half the usual volume lowers it, and
+    SPX6900 reacts twice as much because attention is its main driver (owner 2026-10-09).
+    A spike or a fade is also a risk flag the PMs see."""
     weights = [float(r.credibility or 0) * KIND_WEIGHT.get(r.kind or "other", 0.4) for r in rows]
     stances = [STANCE_VALUE.get(r.stance or "neutral", 0.0) for r in rows]
     total = sum(weights)
@@ -239,6 +324,19 @@ def aggregate(rows: list[XPostRecord], asset: str, data_age_min: int, now: datet
     confidence = min(1.0, (1 - math.exp(-count_weight * n / 15)) * (0.4 + 0.6 * mean_cred))
     if shocks:
         confidence = min(1.0, confidence + 0.2)
+    buzz_line: str | None = None
+    if mentions is not None and mentions[1] > 0:
+        last, baseline = mentions
+        buzz = min(3.0, last / baseline)
+        swing = 0.5 if asset == "SPX6900" else 0.25
+        confidence = min(1.0, confidence * (1 + swing * (min(buzz, 2.0) - 1.0)))
+        buzz_line = (
+            f"mentions: {last} in {WINDOW_H}h vs {baseline:.0f} per day lately ({buzz:.1f}×)"
+        )
+        if buzz >= BUZZ_SPIKE:
+            risk_flags.append(f"attention spike ({buzz:.1f}× the usual mention volume)")
+        elif buzz <= BUZZ_FADE:
+            risk_flags.append(f"attention fading ({buzz:.1f}× the usual mention volume)")
 
     kinds = {k: sum(1 for r in rows if r.kind == k) for k in KIND_WEIGHT}
     evidence = [
@@ -248,6 +346,8 @@ def aggregate(rows: list[XPostRecord], asset: str, data_age_min: int, now: datet
     ]
     if n == 0:
         evidence = ["no labelled posts for this asset in the window"]
+    if buzz_line:
+        evidence.append(buzz_line)
     return AgentOutput(
         agent=AGENT,
         asset=asset,
