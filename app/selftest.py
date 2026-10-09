@@ -92,6 +92,7 @@ async def check_pair(client: BybitClient, asset: str, symbol: str, *, traded: bo
     ticker = await client.ticker(symbol)
     bids, asks = (await client.orderbook(symbol)).depth_quote(DEPTH_PCT)
     base = await client.margin_coin(inst.base_coin)
+    await asyncio.sleep(0.3)  # the public margin endpoint rate-limits bursts
     quote = await client.margin_coin(inst.quote_coin)
     can_long_lev = inst.margin_enabled and bool(quote and quote.borrowable)
     can_short = inst.margin_enabled and bool(base and base.borrowable)

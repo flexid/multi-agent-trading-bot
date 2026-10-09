@@ -62,9 +62,10 @@ def og_image(snap: Snapshot) -> bytes:
     return buf.getvalue()
 
 
-def push_r2(objects: dict[str, tuple[bytes, str]]) -> bool:
+def push_r2(objects: dict[str, tuple[bytes, str]], bucket: str | None = None) -> bool:
     s = get_secrets()
-    if not (s.cloudflare_account_id and s.r2_access_key_id.get_secret_value()):
+    bucket = bucket or s.r2_bucket
+    if not (s.cloudflare_account_id and s.r2_access_key_id.get_secret_value() and bucket):
         return False
     import boto3
 
@@ -77,7 +78,7 @@ def push_r2(objects: dict[str, tuple[bytes, str]]) -> bool:
     )
     for key, (body, ctype) in objects.items():
         client.put_object(
-            Bucket=s.r2_bucket,
+            Bucket=bucket,
             Key=key,
             Body=body,
             ContentType=ctype,

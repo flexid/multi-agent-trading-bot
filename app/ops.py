@@ -41,7 +41,9 @@ def backup() -> Path | None:
     try:
         from app.site.publish import push_r2
 
-        push_r2({f"backups/{out.name}": (out.read_bytes(), "application/octet-stream")})
+        private = get_secrets().r2_backup_bucket
+        if private:  # never the public bucket
+            push_r2({out.name: (out.read_bytes(), "application/octet-stream")}, bucket=private)
     except Exception as exc:
         log.warning("backup not pushed to R2: %s", exc)
     log.info("backup written: %s (%d bytes)", out, out.stat().st_size)
