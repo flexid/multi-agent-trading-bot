@@ -37,3 +37,4 @@ table.trades { table-layout: fixed; } table.trades th:nth-child(1) { width: 20%;
 @media (max-width: 520px) { table.trades th:nth-child(1) { width: 30%; } table.trades th:nth-child(2) { width: 16%; } table.trades th:nth-child(3) { width: 22%; } }
 /* legal page */
 .legal { max-width: 760px; } .legal h1 { font-size: 22px; margin: 8px 0 12px; } .legal h2 { margin: 26px 0 8px; } .legal p { margin: 0 0 12px; line-height: 1.6; }
+footer a.neon { color: var(--neon); } footer a.neon:hover { color: var(--neon); text-decoration: underline; }
