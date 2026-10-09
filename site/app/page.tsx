@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DetailOverlay, EquityChart } from "./charts";
 import { cls, loadSnapshot, num, pct, tick, type Snapshot } from "./snapshot";
 
@@ -9,9 +9,49 @@ function Side({ d }: { d: string }) {
   return k === "long" || k === "short" ? <span className={k}>{d}</span> : <>{d}</>;
 }
 
+type Closed = Snapshot["closed_trades"][number];
+
+function ClosedTable({ rows }: { rows: Closed[] }) {
+  return (
+    <table className="trades"><thead><tr><th>asset</th><th>side</th><th>entry</th><th>exit</th><th>lev</th><th>price</th><th>margin</th><th>held</th><th></th></tr></thead><tbody>
+      {rows.map((t, i) => <tr key={i}><td>{tick(t.cashtag)}{t.paper && <span className="badge">paper</span>}</td><td><Side d={t.direction} /></td><td className="mono">{num(t.entry)}</td><td className="mono">{num(t.exit)}</td><td>{t.leverage}x</td><td className={cls(t.price_pct)}>{pct(t.price_pct)}</td><td className={cls(t.margin_pct)}>{pct(t.margin_pct)}</td><td>{t.holding}</td><td>{t.x_url && <a href={t.x_url}>thread</a>}</td></tr>)}
+    </tbody></table>
+  );
+}
+
+/** Every closed trade in an overlay, rendered 40 at a time as you scroll. */
+function AllTrades({ rows, onClose }: { rows: Closed[]; onClose: () => void }) {
+  const [shown, setShown] = useState(40);
+  const sentinel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [onClose]);
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el) return;
+    const io = new IntersectionObserver((es) => { if (es[0].isIntersecting) setShown((n) => Math.min(rows.length, n + 40)); });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [rows.length]);
+  return (
+    <div className="overlay" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="overlay-panel">
+        <div className="overlay-head"><h2>All closed trades ({rows.length})</h2><button className="close" onClick={onClose} aria-label="close">✕</button></div>
+        <ClosedTable rows={rows.slice(0, shown)} />
+        {shown < rows.length && <div ref={sentinel} className="muted small" style={{ padding: 12 }}>loading more…</div>}
+      </div>
+    </div>
+  );
+}
+
 export default function Page() {
   const [s, setS] = useState<Snapshot | null | undefined>(undefined);
   const [open, setOpen] = useState(false);
+  const [all, setAll] = useState(false);
   useEffect(() => { loadSnapshot().then(setS); const t = setInterval(() => loadSnapshot().then(setS), 300000); return () => clearInterval(t); }, []);
   if (s === undefined) return <p className="muted">Loading…</p>;
   if (s === null) return <p className="muted">No data right now. The bot pushes a snapshot every five minutes; this one hasn&apos;t arrived.</p>;
@@ -42,11 +82,21 @@ export default function Page() {
           {s.open_trades.map((t, i) => <tr key={i}><td>{tick(t.cashtag)}{t.paper && <span className="badge">paper</span>}</td><td><Side d={t.direction} /></td><td className="mono">{num(t.entry)}</td><td>{t.leverage}x</td><td className="mono">{num(t.stop)}</td><td className="mono">{num(t.target)}</td><td>{t.time_in_trade}</td><td className={cls(t.unrealized_price_pct)}>{pct(t.unrealized_price_pct)}</td><td className={cls(t.unrealized_margin_pct)}>{pct(t.unrealized_margin_pct)}</td></tr>)}
         </tbody></table>
       )}
-      <h2>Closed trades</h2>
+      <h2>Closed trades <span className="muted small">last {Math.min(10, s.closed_trades.length)} of {s.closed_trades.length}</span></h2>
       {s.closed_trades.length === 0 ? <p className="muted">No closed trades yet.</p> : (
-        <table className="trades"><thead><tr><th>asset</th><th>side</th><th>entry</th><th>exit</th><th>lev</th><th>price</th><th>margin</th><th>held</th><th></th></tr></thead><tbody>
-          {s.closed_trades.map((t, i) => <tr key={i}><td>{tick(t.cashtag)}{t.paper && <span className="badge">paper</span>}</td><td><Side d={t.direction} /></td><td className="mono">{num(t.entry)}</td><td className="mono">{num(t.exit)}</td><td>{t.leverage}x</td><td className={cls(t.price_pct)}>{pct(t.price_pct)}</td><td className={cls(t.margin_pct)}>{pct(t.margin_pct)}</td><td>{t.holding}</td><td>{t.x_url && <a href={t.x_url}>thread</a>}</td></tr>)}
-        </tbody></table>
+        <>
+          {s.closed_trades.length >= 5 && (
+            <div className="best">
+              <span className="muted small">best so far:</span>
+              {[...s.closed_trades].sort((a, b) => b.margin_pct - a.margin_pct).slice(0, 3).map((t, i) => (
+                <span key={i} className="badge neon">{tick(t.cashtag)} <Side d={t.direction} /> {pct(t.margin_pct)}{t.paper ? " · paper" : ""}</span>
+              ))}
+            </div>
+          )}
+          <ClosedTable rows={s.closed_trades.slice(0, 10)} />
+          {s.closed_trades.length > 10 && <button className="more" onClick={() => setAll(true)}>show all {s.closed_trades.length} trades</button>}
+          {all && <AllTrades rows={s.closed_trades} onClose={() => setAll(false)} />}
+        </>
       )}
     </>
   );

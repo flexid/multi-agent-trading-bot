@@ -300,7 +300,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
             select(Position)
             .where(Position.track.in_(["primary", "live"]), Position.status == "closed")
             .order_by(Position.closed_at.desc())
-            .limit(200)
+            .limit(500)
         ).all()
         wins = [p for p in closed if p.pnl and p.pnl > 0]
         losses = [p for p in closed if p.pnl and p.pnl < 0]
