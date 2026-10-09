@@ -155,7 +155,7 @@ function Heatmap({ history, assets }: { history: Snapshot["history"]; assets: st
     return v >= 0 ? `rgba(182,255,0,${a})` : `rgba(255,92,92,${a})`;
   };
   return (
-    <div className="heat" style={{ gridTemplateColumns: `56px repeat(${history.length}, minmax(22px, 44px))` }}>
+    <div className="heat" style={{ gridTemplateColumns: `56px repeat(${history.length}, 1fr)` }}>
       <div />
       {history.map((h, i) => <div key={i} className="heat-x muted">{i % Math.max(1, Math.floor(history.length / 6)) === 0 ? new Date(h.ts).toUTCString().slice(5, 11) : ""}</div>)}
       {assets.map((a) => (
