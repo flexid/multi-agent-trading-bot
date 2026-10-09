@@ -11,10 +11,12 @@ function Side({ d }: { d: string }) {
 
 type Closed = Snapshot["closed_trades"][number];
 
-function ClosedTable({ rows }: { rows: Closed[] }) {
+const allPaper = (rows: { paper: boolean }[]) => rows.length > 0 && rows.every((r) => r.paper);
+
+function ClosedTable({ rows, tagRows }: { rows: Closed[]; tagRows?: boolean }) {
   return (
     <div className="scroll-x"><table className="trades"><thead><tr><th>asset</th><th>side</th><th>entry</th><th>exit</th><th>lev</th><th>price</th><th>margin</th><th>held</th><th></th></tr></thead><tbody>
-      {rows.map((t, i) => <tr key={i}><td>{tick(t.cashtag)}{t.paper && <span className="badge">paper</span>}</td><td><Side d={t.direction} /></td><td className="mono">{num(t.entry)}</td><td className="mono">{num(t.exit)}</td><td>{t.leverage}x</td><td className={cls(t.price_pct)}>{pct(t.price_pct)}</td><td className={cls(t.margin_pct)}>{pct(t.margin_pct)}</td><td>{t.holding}</td><td>{t.x_url && <a href={t.x_url}>thread</a>}</td></tr>)}
+      {rows.map((t, i) => <tr key={i}><td>{tick(t.cashtag)}{tagRows && t.paper && <span className="badge">paper</span>}</td><td><Side d={t.direction} /></td><td className="mono">{num(t.entry)}</td><td className="mono">{num(t.exit)}</td><td>{t.leverage}x</td><td className={cls(t.price_pct)}>{pct(t.price_pct)}</td><td className={cls(t.margin_pct)}>{pct(t.margin_pct)}</td><td>{t.holding}</td><td>{t.x_url && <a href={t.x_url}>thread</a>}</td></tr>)}
     </tbody></table></div>
   );
 }
@@ -40,8 +42,8 @@ function AllTrades({ rows, onClose }: { rows: Closed[]; onClose: () => void }) {
   return (
     <div className="overlay" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="overlay-panel">
-        <div className="overlay-head"><h2>All closed trades ({rows.length})</h2><button className="close" onClick={onClose} aria-label="close">✕</button></div>
-        <ClosedTable rows={rows.slice(0, shown)} />
+        <div className="overlay-head"><h2>All closed trades ({rows.length}){allPaper(rows) && <span className="badge">paper</span>}</h2><button className="close" onClick={onClose} aria-label="close">✕</button></div>
+        <ClosedTable rows={rows.slice(0, shown)} tagRows={!allPaper(rows)} />
         {shown < rows.length && <div ref={sentinel} className="muted small" style={{ padding: 12 }}>loading more…</div>}
       </div>
     </div>
@@ -78,26 +80,26 @@ export default function Page() {
         <div className="tile"><div className="k">avg holding</div><div className="v">{st.avg_holding ?? "–"}</div></div>
       </div>
       <section className="panel">
-      <h2>Open trades</h2>
+      <h2>Open trades{allPaper(s.open_trades) && <span className="badge">paper</span>}</h2>
       {s.open_trades.length === 0 ? <p className="muted">Nothing open right now.</p> : (
         <div className="scroll-x"><table className="trades"><thead><tr><th>asset</th><th>side</th><th>entry</th><th>lev</th><th>stop</th><th>target</th><th>in trade</th><th>price</th><th>margin</th></tr></thead><tbody>
-          {s.open_trades.map((t, i) => <tr key={i}><td>{tick(t.cashtag)}{t.paper && <span className="badge">paper</span>}</td><td><Side d={t.direction} /></td><td className="mono">{num(t.entry)}</td><td>{t.leverage}x</td><td className="mono">{num(t.stop)}</td><td className="mono">{num(t.target)}</td><td>{t.time_in_trade}</td><td className={cls(t.unrealized_price_pct)}>{pct(t.unrealized_price_pct)}</td><td className={cls(t.unrealized_margin_pct)}>{pct(t.unrealized_margin_pct)}</td></tr>)}
+          {s.open_trades.map((t, i) => <tr key={i}><td>{tick(t.cashtag)}{!allPaper(s.open_trades) && t.paper && <span className="badge">paper</span>}</td><td><Side d={t.direction} /></td><td className="mono">{num(t.entry)}</td><td>{t.leverage}x</td><td className="mono">{num(t.stop)}</td><td className="mono">{num(t.target)}</td><td>{t.time_in_trade}</td><td className={cls(t.unrealized_price_pct)}>{pct(t.unrealized_price_pct)}</td><td className={cls(t.unrealized_margin_pct)}>{pct(t.unrealized_margin_pct)}</td></tr>)}
         </tbody></table></div>
       )}
       </section>
       <section className="panel">
-      <h2>Closed trades <span className="muted small">last {Math.min(10, s.closed_trades.length)} of {s.closed_trades.length}</span></h2>
+      <h2>Closed trades <span className="muted small">last {Math.min(10, s.closed_trades.length)} of {s.closed_trades.length}</span>{allPaper(s.closed_trades) && <span className="badge">paper</span>}</h2>
       {s.closed_trades.length === 0 ? <p className="muted">No closed trades yet.</p> : (
         <>
           {s.closed_trades.length >= 5 && (
             <div className="best">
               <span className="toggle"><button className={best === "wins" ? "on" : ""} onClick={() => setBest("wins")}>top 5 wins</button><button className={best === "losses" ? "on" : ""} onClick={() => setBest("losses")}>top 5 losses</button></span>
               {[...s.closed_trades].sort((a, b) => best === "wins" ? b.margin_pct - a.margin_pct : a.margin_pct - b.margin_pct).slice(0, 5).map((t, i) => (
-                <span key={i} className={`badge ${best === "wins" ? "neon" : "down"}`}>{tick(t.cashtag)} <Side d={t.direction} /> {pct(t.margin_pct)}{t.paper ? " · paper" : ""}</span>
+                <span key={i} className={`badge ${best === "wins" ? "neon" : "down"}`}>{tick(t.cashtag)} <Side d={t.direction} /> {pct(t.margin_pct)}{!allPaper(s.closed_trades) && t.paper ? " · paper" : ""}</span>
               ))}
             </div>
           )}
-          <ClosedTable rows={s.closed_trades.slice(0, 10)} />
+          <ClosedTable rows={s.closed_trades.slice(0, 10)} tagRows={!allPaper(s.closed_trades)} />
           {s.closed_trades.length > 10 && <button className="more" onClick={() => setAll(true)}>show all {s.closed_trades.length} trades</button>}
           {all && <AllTrades rows={s.closed_trades} onClose={() => setAll(false)} />}
         </>
