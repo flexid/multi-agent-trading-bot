@@ -556,6 +556,8 @@ def verify_dict(data: dict[str, Any]) -> list[str]:
                 ".handle",
                 ".name",
                 ".ts",
+                ".role",  # the crew's copy is ours, written in code, not data from outside
+                ".blurb",
             )
         ):
             r = check(node, site=True)
