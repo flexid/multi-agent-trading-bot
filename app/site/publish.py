@@ -8,7 +8,9 @@ it only writes ``site/public/data/`` locally (useful for `next dev`).
 
 from __future__ import annotations
 
+import hashlib
 import io
+import json
 import logging
 import sys
 from pathlib import Path
@@ -108,11 +110,27 @@ def publish(push: bool = True) -> Snapshot:
         raise RuntimeError("snapshot failed the whitelist: " + "; ".join(problems[:5]))
     data = snap.model_dump_json(indent=1).encode()
     og = og_image(snap)
+    # A content-hashed copy: link previews (WhatsApp, X) cache by URL, so the URL must
+    # change whenever the numbers on the image change. The site's edge function points
+    # og:image at the current one via og-latest.json.
+    p = snap.performance
+    stamp = hashlib.md5(
+        f"{p.bot_pct:.2f}|{p.btc_hold_pct:.2f}|{p.basket_pct:.2f}|{p.drawdown_pct:.2f}|"
+        f"{snap.stats.trades}|{snap.mode}".encode()
+    ).hexdigest()[:10]
+    base = get_secrets().snapshot_public_url.rsplit("/", 1)[0]
+    latest = json.dumps({"url": f"{base}/og-{stamp}.png", "stamp": stamp}).encode()
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_bytes(data)
     OUT.with_name("og.png").write_bytes(og)
+    OUT.with_name("og-latest.json").write_bytes(latest)
     pushed = push and push_r2(
-        {"snapshot.json": (data, "application/json"), "og.png": (og, "image/png")}
+        {
+            "snapshot.json": (data, "application/json"),
+            "og.png": (og, "image/png"),
+            f"og-{stamp}.png": (og, "image/png"),
+            "og-latest.json": (latest, "application/json"),
+        }
     )
     log.info(
         "snapshot %s (%d bytes)%s",
