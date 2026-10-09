@@ -28,6 +28,7 @@ def jobs(cfg: Config, secrets: Secrets) -> dict[str, fetch.Fetcher]:
         "bybit_global.perps": fetch.make_fetch_perps(cfg),
         "polymarket": fetch.make_fetch_polymarket(),
         "macro.fred": fetch.make_fetch_macro(secrets),
+        "macro.gold_stables": fetch.make_fetch_gold_stables(),
     }
 
 
@@ -44,7 +45,7 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
         # Macro data moves daily; the rest every 15 minutes, 20 s after the candle close.
         trigger = (
             CronTrigger(hour="*", minute="5", second="0")
-            if name == "macro.fred"
+            if name.startswith("macro.")
             else CronTrigger(minute="0,15,30,45", second="20")
         )
         scheduler.add_job(

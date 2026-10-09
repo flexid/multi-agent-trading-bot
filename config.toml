@@ -43,6 +43,12 @@ SOL = "$SOL"
 BNB = "$BNB"
 SPX6900 = "$SPX"
 
+[x]                             # X sentiment agent (SPEC §6)
+# Curated accounts, handles without "@". Placeholder until the owner supplies the list.
+accounts = ["decentradork"]
+search_per_asset = 20           # posts per asset per cycle from recent search
+reads_per_cycle_max = 90        # hard cap per 4h cycle; 6 cycles ≈ 540 of the 600/day budget
+
 [site]                          # M8a public site and M8b admin (SPEC §12)
 public_domain = "dorkbot.dev"
 admin_domain = "admin.dorkbot.dev"

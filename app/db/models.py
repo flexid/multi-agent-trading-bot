@@ -133,6 +133,28 @@ class MacroObservation(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class XPostRecord(Base):
+    """A read X post with the X agent's labels. ``text`` is raw, untrusted input: only the
+    X agent reads it; the public site and the PMs only ever see the labels."""
+
+    __tablename__ = "x_posts"
+    __table_args__ = (Index("ix_x_posts_asset_created", "asset", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    author_id: Mapped[str | None] = mapped_column(String(32))
+    author: Mapped[str | None] = mapped_column(String(64))  # handle when known (curated list)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    query_asset: Mapped[str | None] = mapped_column(String(10))  # which search found it
+    text: Mapped[str] = mapped_column(Text)
+    asset: Mapped[str | None] = mapped_column(String(10))  # label: BTC/ETH/SOL/BNB/SPX6900/none
+    stance: Mapped[str | None] = mapped_column(String(10))  # bullish/bearish/neutral
+    kind: Mapped[str | None] = mapped_column(String(10))  # news/analysis/shill/other
+    credibility: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    shock: Mapped[bool | None] = mapped_column(Boolean)  # market-moving news
+    labeled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class LLMCall(Base):
     """One model call: what was asked (sizes only), what came back, what it cost."""
 

@@ -36,7 +36,7 @@ data layer (15 min) → 5 agents → PM 1 + PM 2 → leverage agent → risk eng
 | [`CLAUDE.md`](CLAUDE.md) | Rules and conventions for Claude Code |
 | [`docs/SPEC.md`](docs/SPEC.md) | Full build spec and milestones |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Decision log |
-| [`docs/M0_REPORT.md`](docs/M0_REPORT.md), [`docs/M1_REPORT.md`](docs/M1_REPORT.md), [`docs/M2_REPORT.md`](docs/M2_REPORT.md) | Milestone reports: what works, what doesn't, what the owner must provide |
+| [`docs/M0_REPORT.md`](docs/M0_REPORT.md), [`docs/M1_REPORT.md`](docs/M1_REPORT.md), [`docs/M2_REPORT.md`](docs/M2_REPORT.md), [`docs/M3_REPORT.md`](docs/M3_REPORT.md) | Milestone reports: what works, what doesn't, what the owner must provide |
 | [`config.toml`](config.toml) | Bot parameters (the only thing the owner tunes) |
 | [`.env.example`](.env.example) | Required secrets, copy to `.env` |
 
@@ -62,7 +62,7 @@ Deterministic scores from fixed rules on closed candles ([`app/agents/indicators
 | `make indicators` | Scores all five assets from the stored 4h candles and perp metrics |
 | `make backtest ARGS="--interval 240 --days 180"` | IC, hit rate and top-minus-bottom-quintile spread of the score against 4h, 1d and 3d forward returns |
 
-Only code-based agents are backtested (SPEC §10). Current result: no measurable edge over the last 180 days; see [`docs/M2_REPORT.md`](docs/M2_REPORT.md).
+Only code-based agents are backtested (SPEC §10). Current result: no measurable edge over the last 180 days; see [`docs/M2_REPORT.md`](docs/M2_REPORT.md), [`docs/M3_REPORT.md`](docs/M3_REPORT.md).
 
 ## M1: data layer
 
@@ -99,7 +99,7 @@ Code: [`app/execution/bybit_client.py`](app/execution/bybit_client.py), [`app/da
 | M0 | Connectivity: Bybit, Polymarket, X self-tests | done |
 | M1 | Data layer and database | done |
 | M2 | Indicators agent and backtest harness | done |
-| M3 | Macro, chart, Polymarket and X agents | – |
+| M3 | LLM layer; macro, chart, Polymarket and X agents | in progress |
 | M4 | Decision layer: two PMs, consensus | – |
 | M5 | Leverage agent and risk engine | – |
 | M6 | Executor, paper simulator — shadow mode starts | – |

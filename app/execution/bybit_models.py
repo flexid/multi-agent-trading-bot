@@ -193,7 +193,8 @@ class ApiKeyInfo(BybitModel):
         return {scope: perms for scope, perms in self.permissions.items() if perms}
 
     def days_to_expiry(self, now: datetime | None = None) -> int | None:
-        if self.expired_at is None:
+        """None when the key never expires (Bybit reports epoch 0 for IP-bound keys)."""
+        if self.expired_at is None or self.expired_at.year < 2000:
             return None
         return (self.expired_at - (now or datetime.now(UTC))).days
 

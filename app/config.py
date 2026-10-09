@@ -56,6 +56,12 @@ class PostingConfig(_Section):
     cashtags: dict[str, str]
 
 
+class XConfig(_Section):
+    accounts: list[str] = Field(default_factory=list)
+    search_per_asset: int = 20
+    reads_per_cycle_max: int = 90
+
+
 class SiteConfig(_Section):
     public_domain: str = "dorkbot.dev"
     admin_domain: str = "admin.dorkbot.dev"
@@ -91,6 +97,7 @@ class Config(_Section):
     trading: TradingConfig
     exchange: ExchangeConfig = ExchangeConfig()
     posting: PostingConfig
+    x: XConfig = XConfig()
     site: SiteConfig = SiteConfig()
     budget: BudgetConfig
     models: ModelsConfig
