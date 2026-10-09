@@ -16,6 +16,7 @@ NUMBER = re.compile(
 # What may follow or precede a number for it to count as an allowed kind.
 PCT = re.compile(r"^[-+]?\d[\d,]*(?:\.\d+)?%$")
 LEVERAGE = re.compile(r"^\d+(?:\.\d+)?x$", re.I)
+LEVERAGE_AHEAD = re.compile(r"^\d+(?:\.\d+)?x(?![A-Za-z0-9])", re.I)  # "2.0x." seen from "2"
 DURATION = re.compile(
     r"^\d+(?:\.\d+)?\s?(?:m|min|mins|minutes?|h|hr|hrs|hours?|d|days?|w|weeks?)\b", re.I
 )
@@ -46,7 +47,12 @@ class WhitelistResult:
 def _kind(token: str, before: str, after: str) -> str | None:
     if PCT.match(token + after[:1]) or PCT.match(token):
         return "percentage"
-    if LEVERAGE.match(token + after[:1]) or LEVERAGE.match(token):
+    # "2x", and "2.0x"/"2.25x", where the number token stops before the decimals
+    if (
+        LEVERAGE.match(token + after[:1])
+        or LEVERAGE.match(token)
+        or LEVERAGE_AHEAD.match(token + after[:5])
+    ):
         return "leverage"
     if DURATION.match(token + after[:9]):
         return "duration"

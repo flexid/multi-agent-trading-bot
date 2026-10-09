@@ -58,3 +58,47 @@ def test_holding_text() -> None:
     assert tpl.holding_text(9.2) == "9 hours"
     assert tpl.holding_text(72) == "3 days"
     assert tpl.holding_text(60) == "2.5 days"
+
+
+def test_every_template_passes_the_whitelist_with_and_without_a_reason() -> None:
+    """A template that the whitelist rejects silently blocks a post (BTC, 2026-10-09)."""
+    from decimal import Decimal
+
+    facts = tpl.TradeFacts(**{**FACTS.__dict__, "leverage": Decimal("2.0"), "paper": True})
+    with_reason = tpl.TradeFacts(
+        **{
+            **facts.__dict__,
+            "reason": "Polymarket P(up) 26% over 1 day is the strongest bearish reading",
+        }
+    )
+    for i in range(len(tpl.OPEN_TEMPLATES)):
+        for f in (facts, with_reason):
+            text = tpl.OPEN_TEMPLATES[i].format(
+                tag=f.cashtag,
+                Tag=f.cashtag,
+                direction=f.direction,
+                Direction=f.direction.capitalize(),
+                entry=tpl.fmt(f.entry),
+                lev=f"{float(f.leverage):g}",
+                stop=tpl.fmt(f.stop),
+                target=tpl.fmt(f.target),
+                reason=f" {f.reason}" if f.reason else "",
+            )
+            assert check(tpl.enforce_marker(text, True)).ok, (i, text, check(text).problems)
+    for i in range(len(tpl.CLOSE_TEMPLATES)):
+        r = __import__("random").Random(i)
+        assert check(
+            tpl.render_close(
+                tpl.TradeFacts(
+                    **{
+                        **facts.__dict__,
+                        "exit": Decimal("77.6"),
+                        "pnl_price_pct": Decimal("0.047"),
+                        "pnl_margin_pct": Decimal("0.136"),
+                        "holding": "9 hours",
+                    }
+                ),
+                r,
+            )
+        ).ok
+    assert check("Short $BTC at 82,524.9, 2.0x. Stop 84,000, target 78,957.63.").ok

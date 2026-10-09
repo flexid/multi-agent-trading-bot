@@ -343,9 +343,8 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         ).all()
         open_trades = []
         for p in open_rows:
-            post = posted.get(p.id)
-            if post is None or post.dry_run:
-                continue  # a trade appears only after its X post (SPEC §12)
+            # The site is the record of every trade on the storyline track; the X post is
+            # the story and may lag or be blocked by the whitelist (owner, 2026-10-09).
             spot = s.execute(
                 select(Candle.close)
                 .where(Candle.symbol == p.symbol, Candle.interval == "15")

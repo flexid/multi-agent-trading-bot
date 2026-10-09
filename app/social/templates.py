@@ -73,7 +73,7 @@ OPEN_TEMPLATES = [
     "Small {tag} {direction} at {entry}, {lev}x. Stop {stop}, target {target}.{reason}",
     "{Tag} {direction}, entry {entry}, {lev}x. Stop {stop}, target {target}.{reason}",
     "New position: {tag} {direction} at {entry}, {lev}x. Stop {stop}, target {target}.{reason}",
-    "{Direction} on {tag} at {entry}, {lev}x. Out at {stop} if wrong, {target} if right.{reason}",
+    "{Direction} {tag} at {entry}, {lev}x. Out at {stop} if wrong, at {target} if right.{reason}",
     "{Tag} {direction} at {entry}, {lev}x. Stop {stop}, target {target}. Nothing fancy.{reason}",
 ]
 CLOSE_TEMPLATES = [
@@ -99,7 +99,7 @@ def render_open(f: TradeFacts, rng: random.Random | None = None) -> str:
         direction=f.direction,
         Direction=f.direction.capitalize(),
         entry=fmt(f.entry),
-        lev=f"{f.leverage:g}",
+        lev=f"{float(f.leverage):g}",  # Decimal("2.0") would print 2.0; 2x reads better
         stop=fmt(f.stop),
         target=fmt(f.target),
         reason=reason,
