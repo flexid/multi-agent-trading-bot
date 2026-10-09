@@ -75,6 +75,8 @@ async def run() -> int:
         secrets.bybit_base_url, secrets.bybit_api_key, secrets.bybit_api_secret, allow_orders=True
     ) as client:
         gw = BybitGateway(client)
+        coins = [cfg.base_coin(a) for a in cfg.trading.assets]
+        print("[0/3] collateral on for:", ", ".join(await gw.ensure_collateral(coins)) or "none")
         inst = await client.instrument(symbol)
         assert inst is not None
         t = await client.ticker(symbol)

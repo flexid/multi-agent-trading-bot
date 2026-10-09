@@ -93,6 +93,7 @@ class Executor:
                 allow_orders=True,
             )
             gateway = BybitGateway(self._client)
+            self._collateral_pending = [cfg.base_coin(a) for a in cfg.trading.assets]
         self.paper_gateway = PaperGateway(TAKER_FEE.get(cfg.exchange.quote, Decimal("0.001")))
         self.gateway: Gateway = gateway or self.paper_gateway
         self.feed = feed  # False in tests: quotes are injected
@@ -838,6 +839,12 @@ class Executor:
 
     async def tick(self) -> None:
         now = datetime.now(UTC)
+        pending = getattr(self, "_collateral_pending", None)
+        if pending and hasattr(self.gateway, "ensure_collateral"):
+            done = await self.gateway.ensure_collateral(pending)
+            if done:
+                log.info("collateral on for %s", ", ".join(done))
+                self._collateral_pending = []
         await self.refresh_quotes()
         with new_session() as session:
             self.apply_param_changes(session, now)

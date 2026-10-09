@@ -55,6 +55,19 @@ class BybitGateway:
         # Exit attempts whose outcome we could not read, per position prefix.
         self._unsettled: dict[str, list[str]] = {}
 
+    async def ensure_collateral(self, coins: list[str]) -> list[str]:
+        """Switch the traded coins on as collateral (idempotent). Bybit refuses margin
+        orders in a coin that is not collateral (retCode 170037)."""
+        try:
+            result = await self.client._post(  # noqa: SLF001
+                "/v5/account/set-collateral-switch-batch",
+                {"request": [{"coin": c, "collateralSwitch": "ON"} for c in coins]},
+            )
+        except BybitError as exc:
+            log.warning("collateral switch failed: %s", exc)
+            return []
+        return [str(row["coin"]) for row in result.get("list", [])]
+
     # --- entries: post-only -------------------------------------------------------
 
     async def _work(
@@ -255,7 +268,8 @@ class BybitGateway:
                         price=limit,
                         order_link_id=lid,
                         time_in_force=TimeInForce.IOC,
-                        is_leverage=True,
+                        # Selling a held coin is plain spot; buying back a borrow repays it.
+                        is_leverage=ex_side is ExSide.BUY,
                     )
                 )
             except BybitAPIError as exc:
