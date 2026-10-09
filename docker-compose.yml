@@ -58,6 +58,17 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  cloudflared:
+    # Outbound-only tunnel for admin.dorkbot.dev → admin:8080. No inbound ports on the server.
+    profiles: ["bot"]
+    image: cloudflare/cloudflared:latest
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - admin
+    restart: unless-stopped
+
   executor:
     profiles: ["bot"]
     build: .
