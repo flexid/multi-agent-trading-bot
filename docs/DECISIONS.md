@@ -2,6 +2,14 @@
 
 Newest first. One entry per decision: what was decided, why, and what it rules out.
 
+## 2026-10-09 · Crypto-native macro inputs: Fear & Greed weighted 0.25, dominance 0 (owner briefing)
+
+Owner briefing: add Fear & Greed (alternative.me, daily since 2018) and BTC dominance (CoinGecko `/global` every 15 min, plus ETHBTC/SOLBTC candles as a backtestable proxy) to the macro agent as crypto-native inputs; split the macro output into a tradfi part × coupling and a native part not scaled by coupling; log both; backtest before weighting; show both on the public agents page.
+Backtest (`python -m app.backtest_native`, daily bars, ~998 per asset, 2024-01 to 2026-10):
+- Fear & Greed (contrarian at extremes >80 / <20): IC within ±0.02 at 1 and 3 days; hit rate on the extreme readings 59% BTC, 61% SPX6900, 50–55% elsewhere at 3 days; quintile spreads mixed (BTC −0.36%, SPX6900 +1.32%). A weak caution signal. Weight 0.25 of the native part, plus the "fear & greed extreme" risk flag for the leverage agent.
+- Dominance proxy (ETHBTC 7-day change, inverted; rising dominance = +BTC, −alts, ×1.5 SPX6900): IC within ±0.04 and quintile spreads zero to negative on every asset (SOL −0.76%, SPX6900 −0.77% at 3 days). Weight 0 (`[agents.macro] dominance_weight`), logged every cycle in `agent_outputs.components`. Re-run the backtest when 60 days of real CoinGecko dominance exist.
+Rules out: the dominance tilt moving a score before it earns it.
+
 ## 2026-10-09 · M4: one PM flat is "partial", not "no trade"
 
 SPEC §7 says opposite directions mean no trade and §8 caps "PMs disagree" at 1x without borrowing. Long-versus-flat is treated as that disagreement: the directional PM's proposal proceeds with conviction capped below 0.5, so the risk engine applies the 1x rule. Long-versus-short stays a hard no. Consensus geometry (entry zone, stop, target, hold time) is the conviction-weighted mean of the two proposals when they agree, with conviction equal to the lower of the two.

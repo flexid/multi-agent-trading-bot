@@ -91,6 +91,7 @@ def store_outputs(cycle_id: int, by_asset: dict[str, list[AgentOutput]]) -> None
                         data_age_min=o.data_age_min,
                         valid=o.valid,
                         computed_at=o.computed_at,
+                        components=o.components or None,
                     )
                 )
         session.commit()

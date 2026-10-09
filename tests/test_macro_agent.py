@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from app.agents import macro
 from app.agents.macro import MacroInputs, MacroView, Regime
@@ -64,3 +65,39 @@ def test_output_scales_regime_by_confidence_and_coupling() -> None:
     assert any("CPI" in f for f in coupled.risk_flags) and any(
         "event risk" in f for f in coupled.risk_flags
     )
+
+
+def test_fng_is_contrarian_only_at_extremes() -> None:
+    assert macro.fng_score(90) == pytest.approx(-0.5)
+    assert macro.fng_score(10) == pytest.approx(0.5)
+    assert abs(macro.fng_score(55)) <= 0.1
+    assert macro.fng_score(None) == 0.0
+
+
+def test_dominance_tilt_signs_and_spx_strength() -> None:
+    assert macro.dominance_tilt("BTC", 3.0) == 1.0
+    assert macro.dominance_tilt("ETH", 3.0) == -1.0
+    assert macro.dominance_tilt("SPX6900", 1.0) == pytest.approx(-0.5)
+    assert macro.dominance_tilt("SOL", -1.5) == pytest.approx(0.5)
+    assert macro.dominance_tilt("BTC", None) == 0.0
+
+
+def test_output_logs_split_components_and_flags_extremes() -> None:
+    inputs = MacroInputs(
+        z_changes={},
+        events_48h=[],
+        fed_odds={},
+        as_of=datetime.now(UTC),
+        fng=92.0,
+        dominance_change_7d=3.0,
+    )
+    view = MacroView(
+        regime=Regime.RISK_ON, regime_confidence=1.0, event_risk_48h=0.1, reasons=["r"]
+    )
+    out = macro.to_output("BTC", view, 0.5, inputs, 3)
+    assert out.components["tradfi"] == pytest.approx(0.5)
+    assert out.components["fng"] < 0 and out.components["dominance"] == 1.0
+    assert out.components["native"] == pytest.approx(
+        0.25 * out.components["fng"]
+    )  # dominance weight 0
+    assert any("fear & greed extreme" in f for f in out.risk_flags)

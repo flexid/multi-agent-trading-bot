@@ -23,6 +23,7 @@ cycle_hours = 4
 quote = "USDT"                  # quote coin of every traded pair
 alt_quote = "USDC"              # compared in the self-test report only, never traded
 recv_window_ms = 5000
+extra_candle_symbols = ["ETHBTC", "SOLBTC"]  # dominance proxies, never traded
 
 [exchange.base_coin]            # asset -> exchange base coin, where they differ
 SPX6900 = "SPX"
@@ -42,6 +43,10 @@ ETH = "$ETH"
 SOL = "$SOL"
 BNB = "$BNB"
 SPX6900 = "$SPX"
+
+[agents.macro]                  # crypto-native weights, set from app/backtest_native.py (see DECISIONS)
+fng_weight = 0.25               # Fear & Greed, contrarian at extremes; also a risk flag
+dominance_weight = 0.0          # BTC dominance tilt: logged only until real dominance history exists
 
 [x]                             # X sentiment agent (SPEC §6)
 # Curated accounts, handles without "@". Placeholder until the owner supplies the list.

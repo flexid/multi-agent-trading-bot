@@ -29,6 +29,7 @@ class AgentOutput(BaseModel):
     risk_flags: list[str] = Field(default_factory=list, max_length=10)
     data_age_min: int = Field(ge=0)
     computed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    components: dict[str, float] = Field(default_factory=dict)  # logged sub-scores, e.g. macro
 
     @property
     def valid(self) -> bool:

@@ -15,6 +15,10 @@
 
 First live cycle, 2026-10-09 03:50 UTC: both PMs short on all five assets; consensus −0.27 to −0.55, formula −0.16 to −0.26, conviction 0.40–0.55; stops 1–3 ATR, targets ≥ 2× stop, hold ≤ 62 h.
 
+## Addendum: crypto-native macro inputs (owner briefing, same day)
+
+Fear & Greed (alternative.me, 3,169 days of history) and BTC dominance (CoinGecko `/global` every 15 minutes, ETHBTC/SOLBTC candles as the backtestable proxy) are fetched by the `crypto_native` job. The macro output is split into `tradfi` (regime × confidence × coupling) and `native` (Fear & Greed contrarian at extremes, dominance tilt per asset), both logged in `agent_outputs.components` and shown on the public agents page (SPEC §12). Backtest with `python -m app.backtest_native`: Fear & Greed is a weak caution signal (weight 0.25 plus a risk flag), the dominance proxy has no edge (weight 0, logged only, re-test after 60 days of real dominance). Details in `docs/DECISIONS.md`.
+
 ## Not yet, or deferred
 
 | Item | Finding |

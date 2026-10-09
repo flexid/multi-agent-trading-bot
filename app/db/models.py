@@ -216,6 +216,7 @@ class AgentOutputRecord(Base):
     data_age_min: Mapped[int] = mapped_column(Integer)
     valid: Mapped[bool] = mapped_column(Boolean)
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    components: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
 class PMProposalRecord(Base):

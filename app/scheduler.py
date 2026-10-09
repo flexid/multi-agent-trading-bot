@@ -29,6 +29,7 @@ def jobs(cfg: Config, secrets: Secrets) -> dict[str, fetch.Fetcher]:
         "polymarket": fetch.make_fetch_polymarket(),
         "macro.fred": fetch.make_fetch_macro(secrets),
         "macro.gold_stables": fetch.make_fetch_gold_stables(),
+        "crypto_native": fetch.make_fetch_crypto_native(secrets),  # every 15 min: dominance
     }
 
 

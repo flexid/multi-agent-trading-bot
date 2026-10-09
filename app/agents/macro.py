@@ -8,9 +8,15 @@ Code side:
   the dollar index (sign flipped: a strong dollar is risk-off) and gold. Negative
   correlation is decoupled, never an inverted signal.
 Model side (gpt-5.6-terra): regime and 48h event risk only, from the normalized JSON.
-Output: a risk-on regime scores positive, risk-off negative, scaled by regime confidence
-and by the asset's coupling. Low coupling pushes the score to zero and lets the
-crypto-native agents carry the weight, which is what the spec asks for.
+
+Output has two logged parts (``components``):
+- tradfi = regime × confidence × coupling. Low coupling pushes it to zero.
+- native = Fear & Greed (contrarian only at extremes: above 80 leans against longs, below
+  20 against shorts, near zero in between) + BTC dominance tilt (7-day change in
+  percentage points: rising favours BTC and weighs on alts, strongest on SPX6900;
+  falling is the reverse). Not scaled by coupling.
+- score = clip(tradfi + native). Extreme Fear & Greed is also a risk flag for the
+  leverage agent (SPEC §8).
 """
 
 from __future__ import annotations
@@ -29,6 +35,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.schema import AgentOutput, Horizon
+from app.config import get_config
 from app.db.models import Candle, MacroObservation, PolymarketMarket, PolymarketPrice
 from app.llm import LLMError, Prompt, complete
 
@@ -36,6 +43,9 @@ AGENT = "macro"
 TASK = "macro"
 CALENDAR = Path(__file__).resolve().parent.parent / "data" / "calendar_2026.toml"
 SERIES = ["DGS2", "DGS10", "DTWEXBGS", "VIXCLS", "SP500", "NASDAQCOM", "XAUUSD", "STABLES_USD"]
+FNG_HIGH, FNG_LOW = 80.0, 20.0
+DOMINANCE_SCALE_PP = 3.0  # a 3-point 7-day move in BTC dominance is a full tilt
+DOMINANCE_TILT = {"BTC": 1.0, "ETH": -1.0, "SOL": -1.0, "BNB": -1.0, "SPX6900": -1.5}
 TRADFI = {"SP500": 1.0, "NASDAQCOM": 1.0, "DTWEXBGS": -1.0, "XAUUSD": 1.0}
 CHANGE_DAYS = 5
 HISTORY_DAYS = 90
@@ -63,6 +73,8 @@ class MacroInputs:
     events_48h: list[str]
     fed_odds: dict[str, float]  # market question stem -> P(yes)
     as_of: datetime
+    fng: float | None = None
+    dominance_change_7d: float | None = None
 
 
 # --- code: normalization, calendar, coupling ----------------------------------
@@ -180,9 +192,60 @@ def build_inputs(session: Session, now: datetime) -> tuple[MacroInputs, pd.DataF
             events_48h=events_within(48, now),
             fed_odds=fed_odds(session, now),
             as_of=now,
+            fng=latest_fng(session),
+            dominance_change_7d=dominance_change_7d(session, now),
         ),
         wide,
     )
+
+
+# --- crypto-native inputs ---------------------------------------------------------
+
+
+def fng_score(value: float | None) -> float:
+    """Contrarian only at extremes; near-neutral in between."""
+    if value is None:
+        return 0.0
+    if value >= FNG_HIGH:
+        return -min(1.0, (value - FNG_HIGH) / (100 - FNG_HIGH))
+    if value <= FNG_LOW:
+        return min(1.0, (FNG_LOW - value) / FNG_LOW)
+    return -0.1 * (value - 50) / 30  # ±0.1 at the edges of the neutral band
+
+
+def dominance_tilt(asset: str, change_7d_pp: float | None) -> float:
+    if change_7d_pp is None:
+        return 0.0
+    strength = max(-1.0, min(1.0, change_7d_pp / DOMINANCE_SCALE_PP))
+    return max(-1.0, min(1.0, strength * DOMINANCE_TILT.get(asset, -1.0)))
+
+
+def latest_fng(session: Session) -> float | None:
+    row = session.execute(
+        select(MacroObservation.value)
+        .where(MacroObservation.series == "FNG")
+        .order_by(MacroObservation.date.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    return float(row) if row is not None else None
+
+
+def dominance_change_7d(session: Session, now: datetime) -> float | None:
+    """BTC dominance now minus 7 days ago, in percentage points. Falls back to the ETHBTC
+    proxy (inverted, scaled) while dominance history is shorter than 7 days."""
+    rows = session.execute(
+        select(MacroObservation.date, MacroObservation.value)
+        .where(MacroObservation.series == "BTC_DOMINANCE")
+        .order_by(MacroObservation.date.desc())
+    ).all()
+    if rows and rows[-1].date <= now - timedelta(days=7):
+        latest = float(rows[0].value)
+        older = next(float(v) for d, v in rows if d <= now - timedelta(days=7))
+        return latest - older
+    closes = asset_daily_closes(session, "ETHBTC", 12)
+    if len(closes) >= 8:
+        return float(-(closes.iloc[-1] / closes.iloc[-8] - 1) * 100 * 0.6)  # ~ETHBTC −5% ≈ +3 pp
+    return None
 
 
 # --- model: regime -------------------------------------------------------------
@@ -196,6 +259,8 @@ async def read_regime(
         "z_score_of_5d_change": inputs.z_changes,
         "scheduled_events_48h": inputs.events_48h,
         "fed_decision_odds": inputs.fed_odds,
+        "fear_greed_index": inputs.fng,
+        "btc_dominance_change_7d_pp": inputs.dominance_change_7d,
     }
     result = await complete(
         TASK, MacroView, prompt=prompt, user_text=json.dumps(payload), cycle_id=cycle_id
@@ -215,20 +280,33 @@ def to_output(
 ) -> AgentOutput:
     if view is None:
         raise LLMError("macro: no regime")
-    base = REGIME_SCORE[view.regime.value] * view.regime_confidence
-    score = base * asset_coupling
+    tradfi = REGIME_SCORE[view.regime.value] * view.regime_confidence * asset_coupling
+    fng = fng_score(inputs.fng)
+    dom = dominance_tilt(asset, inputs.dominance_change_7d)
+    weights = get_config().agents.macro
+    native = max(-1.0, min(1.0, weights.fng_weight * fng + weights.dominance_weight * dom))
+    score = max(-1.0, min(1.0, tradfi + native))
     risk_flags = []
     if inputs.events_48h:
         risk_flags.append("scheduled: " + ", ".join(inputs.events_48h))
     if view.event_risk_48h >= 0.6:
         risk_flags.append(f"event risk 48h {view.event_risk_48h:.1f}")
+    if inputs.fng is not None and (inputs.fng >= FNG_HIGH or inputs.fng <= FNG_LOW):
+        risk_flags.append(f"fear & greed extreme ({inputs.fng:.0f})")
+    fng_txt = f"{inputs.fng:.0f}" if inputs.fng is not None else "n/a"
+    dom_txt = (
+        f"{inputs.dominance_change_7d:+.1f} pp" if inputs.dominance_change_7d is not None else "n/a"
+    )
     evidence = [
         f"regime {view.regime.value} (conf {view.regime_confidence:.2f}), "
         f"coupling {asset_coupling:.2f}",
+        f"tradfi {tradfi:+.2f} | native {native:+.2f}: fear&greed {fng_txt} → {fng:+.2f}, "
+        f"BTC dominance 7d {dom_txt} → {dom:+.2f}",
         *view.reasons,
         "z(5d): " + ", ".join(f"{k} {v:+.1f}" for k, v in inputs.z_changes.items()),
     ]
     confidence = view.regime_confidence * (0.5 + 0.5 * asset_coupling)
+    confidence = max(confidence, 0.4 * abs(native))  # native inputs need no coupling
     return AgentOutput(
         agent=AGENT,
         asset=asset,
@@ -238,4 +316,10 @@ def to_output(
         evidence=evidence[:10],
         risk_flags=risk_flags,
         data_age_min=data_age_min,
+        components={
+            "tradfi": round(tradfi, 4),
+            "native": round(native, 4),
+            "fng": round(fng, 4),
+            "dominance": round(dom, 4),
+        },
     )

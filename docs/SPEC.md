@@ -208,7 +208,7 @@ Content
 - Stats: number of trades, win rate, profit factor, average holding time.
 - Open trades: asset, direction, entry, leverage, stop, target, time in trade, unrealized % on price and on margin. A trade appears only after its X post.
 - Closed trades: entry, exit, leverage, % on price, % on margin, holding time, and a link to its X thread.
-- Agents: latest score per agent per asset, Claude against GPT, consensus, and short reasons for entering or staying out. Macro regime and tradfi coupling per asset.
+- Agents: latest score per agent per asset, Claude against GPT, consensus, and short reasons for entering or staying out. Macro regime and tradfi coupling per asset, plus the crypto-native inputs (Fear & Greed, BTC dominance) and the macro agent's tradfi and native components.
 - Leaderboard: which agents and models have measurable value so far.
 - Mode badge: shadow or live. Paper trades are labelled paper.
 

@@ -43,6 +43,7 @@ class ExchangeConfig(_Section):
     alt_quote: str | None = None
     recv_window_ms: int = 5000
     base_coin: dict[str, str] = Field(default_factory=dict)
+    extra_candle_symbols: list[str] = Field(default_factory=list)  # e.g. ETHBTC, SOLBTC
 
 
 class PostingConfig(_Section):
@@ -54,6 +55,15 @@ class PostingConfig(_Section):
     max_posts_per_day: int
     post_in_shadow: bool
     cashtags: dict[str, str]
+
+
+class MacroAgentConfig(_Section):
+    fng_weight: float = 0.25
+    dominance_weight: float = 0.0
+
+
+class AgentsConfig(_Section):
+    macro: MacroAgentConfig = MacroAgentConfig()
 
 
 class XConfig(_Section):
@@ -101,6 +111,7 @@ class Config(_Section):
     trading: TradingConfig
     exchange: ExchangeConfig = ExchangeConfig()
     posting: PostingConfig
+    agents: AgentsConfig = AgentsConfig()
     x: XConfig = XConfig()
     site: SiteConfig = SiteConfig()
     budget: BudgetConfig
@@ -132,6 +143,7 @@ class Secrets(BaseSettings):
     x_bearer_token: SecretStr = SecretStr("")
 
     fred_api_key: SecretStr = SecretStr("")
+    coingecko_api_key: SecretStr = SecretStr("")
 
     database_url: SecretStr = SecretStr("")
 
