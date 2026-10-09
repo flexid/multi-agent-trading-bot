@@ -1,6 +1,6 @@
 export type Snapshot = {
   generated_at: string; mode: "shadow" | "live"; handle: string; heartbeat_ok: boolean;
-  performance: { since: string; bot_pct: number; btc_hold_pct: number; basket_pct: number; drawdown_pct: number; equity_curve: number[][]; btc_curve: number[][]; basket_curve: number[][] };
+  performance: { since: string; bot_pct: number; btc_hold_pct: number; basket_pct: number; drawdown_pct: number; equity_curve: number[][]; equity_recent: number[][]; btc_curve: number[][]; basket_curve: number[][] };
   stats: { trades: number; win_rate_pct: number | null; profit_factor: number | null; avg_holding: string | null };
   open_trades: { asset: string; cashtag: string; direction: string; entry: number; leverage: number; stop: number; target: number; time_in_trade: string; unrealized_price_pct: number; unrealized_margin_pct: number; paper: boolean }[];
   closed_trades: { asset: string; cashtag: string; direction: string; entry: number; exit: number; leverage: number; price_pct: number; margin_pct: number; holding: string; opened_at: string; closed_at: string; x_url: string | null; paper: boolean }[];

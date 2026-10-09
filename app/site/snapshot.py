@@ -132,7 +132,8 @@ class Performance(_Strict):
     btc_hold_pct: float
     basket_pct: float
     drawdown_pct: float
-    equity_curve: list[list[float]]  # [[unix_ms, pct], ...]
+    equity_curve: list[list[float]]  # [[unix_ms, pct], ...], ~400 points over the whole record
+    equity_recent: list[list[float]] = Field(default_factory=list)  # last 7 days, ~400 points
     btc_curve: list[list[float]] = Field(default_factory=list)  # BTC buy & hold, same units
     basket_curve: list[list[float]] = Field(default_factory=list)  # equal-weight basket
 
@@ -202,7 +203,11 @@ def _record_track(s: Any) -> str:
     return "live" if _is_live(s) else "primary"
 
 
-def _pct_curve(cfg: Config, s: Any, since: datetime) -> tuple[list[list[float]], float, float]:
+def _pct_curve(
+    cfg: Config, s: Any, since: datetime, now: datetime | None = None
+) -> tuple[list[list[float]], list[list[float]], float, float]:
+    """The record as % since its start: the whole range thinned to ~400 points, the last
+    seven days thinned separately to ~400 so a zoom into recent days keeps its detail."""
     rows = s.execute(
         select(EquitySnapshot.ts, EquitySnapshot.equity)
         .where(EquitySnapshot.mode == _record_mode(s), EquitySnapshot.ts >= since)
@@ -210,16 +215,23 @@ def _pct_curve(cfg: Config, s: Any, since: datetime) -> tuple[list[list[float]],
     ).all()
     rows = [r for r in rows if float(r.equity) > 0]  # skip pre-funding zero snapshots
     if not rows:
-        return [], 0.0, 0.0
+        return [], [], 0.0, 0.0
     base = float(rows[0].equity)
-    curve, peak, dd = [], -1e9, 0.0
-    for i, r in enumerate(rows):
+    pts, peak, dd = [], -1e9, 0.0
+    for r in rows:
         pct = (float(r.equity) / base - 1) * 100
         peak = max(peak, pct)
         dd = min(dd, pct - peak)
-        if i % max(1, len(rows) // 400) == 0 or i == len(rows) - 1:
-            curve.append([r.ts.timestamp() * 1000, round(pct, 3)])
-    return curve, round(curve[-1][1], 3), round(dd, 3)
+        pts.append((r.ts, round(pct, 3)))
+
+    def thin(series: list[tuple[datetime, float]]) -> list[list[float]]:
+        step = max(1, len(series) // 400)
+        keep = [p for i, p in enumerate(series) if i % step == 0 or i == len(series) - 1]
+        return [[ts.timestamp() * 1000, v] for ts, v in keep]
+
+    cut = (now or datetime.now(UTC)) - timedelta(days=7)
+    recent = [p for p in pts if p[0] >= cut]
+    return thin(pts), thin(recent) if len(pts) > len(recent) else [], pts[-1][1], round(dd, 3)
 
 
 def _benchmark_curves(
@@ -311,7 +323,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
             select(func.min(EquitySnapshot.ts)).where(EquitySnapshot.mode == _record_mode(s))
         ).scalar_one()
         since = first or since
-        curve, bot_pct, dd = _pct_curve(cfg, s, since)
+        curve, recent_curve, bot_pct, dd = _pct_curve(cfg, s, since, now)
         btc_pct, basket_pct = _benchmarks(cfg, s, since)
         btc_curve, basket_curve = _benchmark_curves(cfg, s, since)
         history = _history(cfg, s, now - timedelta(days=7))
@@ -513,6 +525,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
             basket_pct=basket_pct,
             drawdown_pct=dd,
             equity_curve=curve,
+            equity_recent=recent_curve,
             btc_curve=btc_curve,
             basket_curve=basket_curve,
         ),

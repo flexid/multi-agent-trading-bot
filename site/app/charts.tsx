@@ -181,7 +181,7 @@ export function EquityChart({ s, onExpand }: { s: Snapshot; onExpand: () => void
   });
   return (
     <div className="chart-wrap">
-      <LineChart series={[{ name: "dorkbot", points: p.equity_curve as Pt[], color: "var(--accent)", width: 1.8 }]} markers={markers} height={220} />
+      <LineChart series={[{ name: "dorkbot", points: p.equity_curve as Pt[], color: "var(--accent)", width: 1.8 }]} markers={markers.length <= 40 ? markers : []} height={220} />
       <button className="expand" onClick={onExpand} aria-label="open the detailed charts">details ⤢</button>
     </div>
   );
@@ -197,7 +197,10 @@ export function DetailOverlay({ s, onClose }: { s: Snapshot; onClose: () => void
     document.body.style.overflow = "hidden";
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [onClose]);
-  const equity = p.equity_curve as Pt[];
+  const full = p.equity_curve as Pt[];
+  const recent = (p.equity_recent ?? []) as Pt[];
+  // a zoom inside the last week switches to the dense series, so detail survives the zoom
+  const equity = range && recent.length > 1 && range[0] >= recent[0][0] ? recent : full;
   const series: Series[] = [
     { name: "dorkbot", points: equity, color: "var(--accent)", width: 2 },
     ...(p.btc_curve.length > 1 ? [{ name: "BTC hold", points: p.btc_curve as Pt[], color: "#8f958f" }] : []),
@@ -207,7 +210,7 @@ export function DetailOverlay({ s, onClose }: { s: Snapshot; onClose: () => void
     const x = Date.parse(t.closed_at);
     return { x, y: nearest(equity, x)?.[1] ?? 0, color: t.margin_pct >= 0 ? "var(--up)" : "var(--down)", label: `${tick(t.cashtag)} ${t.direction} ${pct(t.margin_pct)}` };
   });
-  const dd = drawdown(equity);
+  const dd = drawdown(full);
   const inRange = (ms: string) => !range || (Date.parse(ms) >= range[0] && Date.parse(ms) <= range[1]);
   const trades = s.closed_trades.filter((t) => inRange(t.closed_at)).slice().reverse();
   const setR = useCallback((r: Range) => setRange(r), []);
