@@ -39,7 +39,7 @@ nav a { margin-right: 16px; }
 /* the open and closed trade tables sit under each other: same widths for the first three columns */
 table.trades td { white-space: nowrap; }
 /* desktop: the two stacked trade tables share their first three column widths; phones scroll, so auto layout */
-@media (min-width: 721px) { table.trades { table-layout: fixed; } table.trades th:nth-child(1) { width: 9%; } table.trades th:nth-child(2) { width: 9%; } table.trades th:nth-child(3) { width: 13%; } }
+@media (min-width: 721px) { table.trades th:nth-child(1) { width: 9%; } table.trades th:nth-child(2) { width: 9%; } table.trades th:nth-child(3) { width: 13%; } }
 /* legal page */
 .legal { max-width: 760px; } .legal h1 { font-size: 22px; margin: 8px 0 12px; } .legal h2 { margin: 26px 0 8px; } .legal p { margin: 0 0 12px; line-height: 1.6; }
 footer a.neon { color: var(--neon); } footer a.neon:hover { color: var(--neon); text-decoration: underline; }
