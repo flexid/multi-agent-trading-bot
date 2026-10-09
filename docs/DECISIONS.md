@@ -2,6 +2,19 @@
 
 Newest first. One entry per decision: what was decided, why, and what it rules out.
 
+## 2026-10-09 · M2 indicators agent: rules fixed, no tuning on the backtest
+
+The indicator rules (EMA stack scaled by ADX, MACD histogram over ATR, RSI momentum with contrarian extremes, OBV confirmation, funding crowding, OI confirmation; weights 0.30/0.20/0.15/0.15/0.10/0.10) are fixed in `app/agents/indicators.py` and were not tuned on the backtest. The backtest over the last 180 days of 4h bars shows no edge (IC ≈ 0, hit rate 42–50%). That is reported, not fixed: tuning rules on the same window would be curve-fitting, and SPEC §10 already handles a worthless agent by driving its weight to 0 during shadow mode. The harness exists so the question gets re-asked on new data every two weeks (SPEC §7 weight tuning).
+Rules out: changing indicator rules without a fresh out-of-sample window to judge them on.
+
+## 2026-10-09 · Candle backfill: 1,000 bars per pair and interval
+
+While a (symbol, interval) has fewer than 1,000 stored bars the fetch asks Bybit for 1,000 (its maximum) instead of 200. That gives EMA 200 warm-up and a 160-day 4h backtest without a separate backfill tool. Upserts are chunked at 2,000 rows (Postgres bind-parameter limit).
+
+## 2026-10-09 · Server: DigitalOcean droplet `dorkbot`, 164.90.211.109 (owner)
+
+The bot will run on a DigitalOcean droplet named `dorkbot` in FRA1 (Frankfurt) with fixed IP 164.90.211.109; the owner's local SSH key is on it, so deployment runs from the owner's machine over SSH. Deployment is part of M6. The current Bybit OAuth key cannot be IP-bound; a web-created key bound to this IP replaces it before go-live.
+
 ## 2026-10-09 · M1 data layer: sources and storage
 
 - **Macro from FRED only for now:** DGS2, DGS10, DTWEXBGS (broad dollar), VIXCLS, SP500, NASDAQCOM, hourly, 60-day window upserted. Gold is no longer on FRED; gold, the economic calendar, spot ETF flows and stablecoin supply are chosen in M3 with the macro agent that consumes them.

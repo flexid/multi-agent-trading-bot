@@ -106,6 +106,18 @@ class PolymarketPrice(Base):
     liquidity: Mapped[Decimal | None]
 
 
+class PerpMetric(Base):
+    """Funding and open interest from Bybit global perpetuals; indicator input only."""
+
+    __tablename__ = "perp_metrics"
+
+    symbol: Mapped[str] = mapped_column(String(20), primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    funding_rate: Mapped[Decimal]
+    open_interest_value: Mapped[Decimal]
+    mark_price: Mapped[Decimal]
+
+
 class MacroObservation(Base):
     """One value of one series (FRED or other) per observation date."""
 

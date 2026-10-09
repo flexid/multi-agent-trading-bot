@@ -1,4 +1,4 @@
-.PHONY: up down test lint migrate fetch-once scheduler selftest selftest-live bybit-authorize
+.PHONY: up down test lint migrate fetch-once scheduler indicators backtest selftest selftest-live bybit-authorize
 
 up:
 	docker compose up -d
@@ -18,6 +18,13 @@ fetch-once:
 
 scheduler:
 	uv run python -m app.scheduler
+
+# Indicators agent on stored candles, and its backtest.
+indicators:
+	uv run python -m app.agents.run_indicators $(ARGS)
+
+backtest:
+	uv run python -m app.backtest $(ARGS)
 
 lint:
 	uv run ruff check .

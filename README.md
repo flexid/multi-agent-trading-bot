@@ -2,7 +2,7 @@
 
 An autonomous crypto trader on Bybit EU. Five analysis agents score BTC, ETH, SOL, BNB and SPX6900 every 4 hours; Claude and GPT independently turn those scores into trade proposals; a deterministic risk engine decides, and a separate executor places and manages the orders. Every trade is posted to X.
 
-> **Status:** M0 (connectivity) complete, including the live order self-test; see [`docs/M0_REPORT.md`](docs/M0_REPORT.md). M1 (data layer) complete. No trading logic yet.
+> **Status:** M0 (connectivity) complete, including the live order self-test; see [`docs/M0_REPORT.md`](docs/M0_REPORT.md). M2 (indicators agent) complete. No trading logic yet.
 
 ## How it works
 
@@ -36,7 +36,7 @@ data layer (15 min) → 5 agents → PM 1 + PM 2 → leverage agent → risk eng
 | [`CLAUDE.md`](CLAUDE.md) | Rules and conventions for Claude Code |
 | [`docs/SPEC.md`](docs/SPEC.md) | Full build spec and milestones |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Decision log |
-| [`docs/M0_REPORT.md`](docs/M0_REPORT.md), [`docs/M1_REPORT.md`](docs/M1_REPORT.md) | Milestone reports: what works, what doesn't, what the owner must provide |
+| [`docs/M0_REPORT.md`](docs/M0_REPORT.md), [`docs/M1_REPORT.md`](docs/M1_REPORT.md), [`docs/M2_REPORT.md`](docs/M2_REPORT.md) | Milestone reports: what works, what doesn't, what the owner must provide |
 | [`config.toml`](config.toml) | Bot parameters (the only thing the owner tunes) |
 | [`.env.example`](.env.example) | Required secrets, copy to `.env` |
 
@@ -52,6 +52,17 @@ uv sync
 make test lint
 make selftest           # read-only checks + paper round-trip
 ```
+
+## M2: indicators agent and backtest
+
+Deterministic scores from fixed rules on closed candles ([`app/agents/indicators.py`](app/agents/indicators.py)): EMA 20/50/200 stack scaled by ADX, MACD histogram over ATR, RSI, OBV, perp funding and open-interest change. Output follows the agent contract in [`app/agents/schema.py`](app/agents/schema.py) (score, confidence, horizon, evidence, risk flags, data age; stale after 30 minutes).
+
+| Command | What it does |
+| --- | --- |
+| `make indicators` | Scores all five assets from the stored 4h candles and perp metrics |
+| `make backtest ARGS="--interval 240 --days 180"` | IC, hit rate and top-minus-bottom-quintile spread of the score against 4h, 1d and 3d forward returns |
+
+Only code-based agents are backtested (SPEC §10). Current result: no measurable edge over the last 180 days; see [`docs/M2_REPORT.md`](docs/M2_REPORT.md).
 
 ## M1: data layer
 
@@ -87,7 +98,7 @@ Code: [`app/execution/bybit_client.py`](app/execution/bybit_client.py), [`app/da
 | --- | --- | --- |
 | M0 | Connectivity: Bybit, Polymarket, X self-tests | done |
 | M1 | Data layer and database | done |
-| M2 | Indicators agent and backtest harness | – |
+| M2 | Indicators agent and backtest harness | done |
 | M3 | Macro, chart, Polymarket and X agents | – |
 | M4 | Decision layer: two PMs, consensus | – |
 | M5 | Leverage agent and risk engine | – |

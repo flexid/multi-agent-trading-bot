@@ -25,6 +25,7 @@ def jobs(cfg: Config, secrets: Secrets) -> dict[str, fetch.Fetcher]:
         "bybit.candles": fetch.make_fetch_candles(cfg, secrets),
         "bybit.books": fetch.make_fetch_books(cfg, secrets),
         "bybit.account": fetch.make_fetch_account(cfg, secrets),
+        "bybit_global.perps": fetch.make_fetch_perps(cfg),
         "polymarket": fetch.make_fetch_polymarket(),
         "macro.fred": fetch.make_fetch_macro(secrets),
     }
