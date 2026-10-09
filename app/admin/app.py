@@ -26,6 +26,7 @@ from app.admin import auth, notify
 from app.agents.polymarket import coverage as pm_coverage
 from app.config import get_config, get_secrets
 from app.db.models import (
+    AccountSnapshot,
     AdminUser,
     AuditLog,
     ControlRequest,
@@ -291,6 +292,15 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
             .where(ControlRequest.applied_at.is_(None))
         ).scalar_one()
         pm_cov = [pm_coverage(s, a, now) for a in cfg.trading.assets]
+        real = s.execute(
+            select(AccountSnapshot).order_by(AccountSnapshot.ts.desc()).limit(1)
+        ).scalar_one_or_none()
+        real_coins = [
+            c
+            for c in (real.coins if real else [])
+            if Decimal(str(c.get("wallet_balance") or 0)) != 0
+            or Decimal(str(c.get("borrow_amount") or 0)) != 0
+        ]
     x_month = Decimal(reads_month) * Decimal("0.005") + Decimal(posts_month) * Decimal("0.015")
     stale = {h.process: (now - h.ts) > timedelta(minutes=5) for h in heartbeats}
     return render(
@@ -306,6 +316,8 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
         stale=stale,
         sources=sources,
         pm_cov=pm_cov,
+        real=real,
+        real_coins=real_coins,
         risk=risk,
         llm_day=llm_day,
         llm_month=llm_month,
