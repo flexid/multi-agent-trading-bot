@@ -116,10 +116,22 @@ def _set_cookie(resp: Response, name: str, value: str, max_age: int, request: Re
     )
 
 
+LOGOUT_NOTICES = {
+    "expired": "You were logged out: the session expired. Sign in again.",
+    "session": "You were logged out: the session was no longer valid. Sign in again.",
+    "bye": "Logged out.",
+}
+
+
+def _to_login(reason: str) -> HTTPException:
+    """Back to the login page with a notice; the login page clears the old cookies."""
+    return HTTPException(status_code=303, headers={"Location": f"/login?reason={reason}"})
+
+
 def current_user(request: Request) -> str:
     data = _sessions().read(request.cookies.get(COOKIE))
     if not data:
-        raise HTTPException(status_code=303, headers={"Location": "/login"})
+        raise _to_login("expired") if request.cookies.get(COOKIE) else _to_login("")
     return str(data["u"])
 
 
@@ -129,13 +141,13 @@ def stepped_up(request: Request) -> bool:
 
 
 def check_csrf(request: Request, csrf: str) -> None:
+    """A stale session or a token from another session never shows a 403 to the owner:
+    it logs out with a notice (owner, 2026-10-09)."""
     token = request.cookies.get(COOKIE) or ""
     if not _sessions().read(token):
-        # The page was rendered under a session that has since expired: back to login,
-        # not a bare 403 (owner hit this on 2026-10-09 after leaving the tab open).
-        raise HTTPException(status_code=303, headers={"Location": "/login"})
+        raise _to_login("expired")
     if not _sessions().csrf_ok(token, csrf):
-        raise HTTPException(status_code=403, detail="bad csrf")
+        raise _to_login("session")
 
 
 def render(request: Request, name: str, **ctx: Any) -> HTMLResponse:
@@ -148,8 +160,14 @@ def render(request: Request, name: str, **ctx: Any) -> HTMLResponse:
 
 
 @app.get("/login", response_class=HTMLResponse)
-def login_form(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "login.html", {"error": None})
+def login_form(request: Request, reason: str = "") -> HTMLResponse:
+    resp = templates.TemplateResponse(
+        request, "login.html", {"error": None, "notice": LOGOUT_NOTICES.get(reason)}
+    )
+    if reason or request.cookies.get(COOKIE):
+        for name in (COOKIE, STEP_UP, CSRF):  # whatever was there is gone: start clean
+            resp.delete_cookie(name, path="/")
+    return resp
 
 
 @app.post("/login")
@@ -176,7 +194,7 @@ def login_post(
 @app.post("/logout")
 def logout(request: Request, csrf: str = Form()) -> Response:
     check_csrf(request, csrf)
-    resp = RedirectResponse("/login", status_code=303)
+    resp = RedirectResponse("/login?reason=bye", status_code=303)
     resp.delete_cookie(COOKIE)
     resp.delete_cookie(STEP_UP)
     return resp

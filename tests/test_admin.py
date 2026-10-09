@@ -88,3 +88,19 @@ def test_side_filter_colours_long_and_short_and_escapes_html() -> None:
     assert "&lt;b&gt;" in out and "<b>" not in out
     assert "longer" in out and '<span class="long">longer' not in out
     assert str(side_words(None)) == ""
+
+
+def test_stale_session_logs_out_with_a_notice_instead_of_403() -> None:
+    from fastapi.testclient import TestClient
+
+    from app.admin.app import COOKIE, app
+
+    client = TestClient(app, follow_redirects=False)
+    client.cookies.set(COOKIE, "stale-token")
+    r = client.post("/logout", data={"csrf": "whatever"})
+    assert r.status_code == 303 and r.headers["location"] == "/login?reason=expired"
+    page = client.get("/login?reason=expired")
+    assert page.status_code == 200 and "You were logged out" in page.text
+    assert any(
+        c.startswith(f"{COOKIE}=") and "Max-Age=0" in c for c in page.headers.get_list("set-cookie")
+    )
