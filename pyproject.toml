@@ -27,6 +27,7 @@ dependencies = [
     "qrcode>=7.4",
     "sqlalchemy>=2.0",
     "uvicorn[standard]>=0.30",
+    "websockets>=13",
 ]
 
 [dependency-groups]

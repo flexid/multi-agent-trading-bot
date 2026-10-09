@@ -326,7 +326,13 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
                     except (IndexError, ValueError):
                         coupling = None
                 reasons = (
-                    [str(r) for r in ((d.proposal or {}).get("reasons") or [])][:3] if d else []
+                    [
+                        str(r)
+                        for r in ((d.proposal or {}).get("reasons") or [])
+                        if check(str(r), site=True).ok
+                    ][:3]
+                    if d
+                    else []
                 )
                 assets.append(
                     AssetView(

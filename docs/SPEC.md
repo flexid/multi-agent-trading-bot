@@ -102,7 +102,7 @@ During shadow mode every agent also runs on the other provider. Per task, keep t
 4. **Consensus:** same direction gives the conviction-weighted mean of both scores. Opposite directions, or one PM flat while the other is directional, mean no new trade for that asset (owner, 2026-10-09). Any failure means no new trade. Consensus is clamped to formula score ± 0.4.
 5. **Triggered cycles** (max 2 per day): price move above 2× ATR within an hour, a Polymarket probability shift above 10 percentage points, or an X news shock.
 6. **Open positions** are re-assessed every cycle: hold, adjust stop, or close.
-7. **Weight auto-tuning** every 2 weeks: only after at least 100 closed trades, at most ±5 percentage points per agent per step, then shrink halfway toward equal weights. Measure each agent and each model by the correlation of its score with forward returns over 4 hours, 1 day and 3 days.
+7. **Weight auto-tuning** every 2 weeks: only after at least 100 closed trades, at most ±5 percentage points per agent per step, then shrink halfway toward equal weights. Measure each agent and each model by the correlation of its score with forward returns over 4 hours, 1 day and 3 days (IC). An agent with IC ≤ 0 is never set to zero in one step: it loses at most 5 percentage points per tuning step, and only when its IC was negative in each of the last two consecutive 14-day windows; otherwise its weight stands (owner, 2026-10-09).
 
 ## 8. Leverage agent and risk engine
 
@@ -132,7 +132,7 @@ A 1% stop gives 2.5x, a 0.5% stop gives 5x. Then the lowest of these applies:
 
 An LLM may flag risks that are not in the numbers (thin books, news). It may only lower leverage, never raise it.
 
-The leverage ceiling ramps itself: live starts at 2x, 5x after 4 weeks within all limits, 10x after 3 months net-positive after costs. It drops back automatically on underperformance.
+The leverage ceiling ramps itself: live starts at 2x, 5x after 4 weeks within all limits, 10x after 3 months net-positive after all costs (§10). It drops back automatically on underperformance.
 
 Cost rule: take a trade only if the target covers at least 3× fees plus borrow interest at the chosen leverage.
 
@@ -147,8 +147,11 @@ Limits:
 
 ## 9. Execution
 
-- Separate process. Limit orders near mid, repriced after 2 minutes. Idempotent `orderLinkId`. WebSocket for prices and fills.
+- Separate process. Idempotent `orderLinkId`. Prices from the public WebSocket (`orderbook.1`), with the REST ticker as fallback when the stream goes quiet; on the stream, exits are checked every second.
+- **Entries** are post-only limit orders at the touch, repriced once after 2 minutes.
+- **Exits are never post-only** (owner, 2026-10-09). Stop, target, trailing stop, time-stop, liquidation guard, risk close-all and kill all leave as an IOC limit priced about 1% beyond the touch, re-sent at the new touch until the position is flat. A position is only booked as closed once it is flat.
 - Stops, targets, trailing stops and time-stops are enforced in code.
+- **Exchange-side backup stop** (owner, 2026-10-09): every real entry also places a conditional stop-market order on Bybit, 0.5 ATR(14, 4h) beyond the bot's own stop, in case the executor or its connection dies. It moves with every change of the bot's stop and is cancelled before the bot's own exit goes out. `[exchange] backup_stop` turns it off if spot margin turns out not to support it; the live self-test verifies it.
 - Paper-fill simulator for shadow mode: fills at bid or ask, fees, borrow interest at the exchange's hourly rate, leverage and liquidation price modeled with Bybit's collateral ratios.
 - Two shadow tracks: the primary follows live rules (2x leverage ceiling at the start, ramping per §8) and is what the go-live criteria judge; a second track at `leverage_max` runs for comparison only.
 - Before shadow mode starts, tests must pass for: partial fill, rejected order, price-feed drop during an active stop, restart mid-trade, failed borrow, gap through a stop, exchange unreachable.
@@ -160,23 +163,26 @@ Limits:
 The bot goes live by itself when `live_allowed = true` and all of these hold:
 
 - At least 4 weeks of shadow mode AND at least 100 closed trades on the primary paper track, whichever comes later (owner, 2026-10-09; was 6 weeks); the last 2 weeks without operational incidents
-- Net positive after fees and borrow interest, profit factor ≥ 1.3
+- Net positive after ALL costs: fees, borrow interest, LLM, X and server (owner, 2026-10-09); profit factor ≥ 1.3
 - Sharpe ratio above BTC buy-and-hold over the same period
 - Max drawdown below 10%, zero simulated liquidations
-- Each agent shows added value, or its weight goes to 0
-- Self-test on Bybit EU with minimal size: order, margin borrow, close, kill switch
+- Each agent shows added value, or its weight is cut step by step (§7.7)
+- Self-test on Bybit with minimal size: order, backup stop, margin borrow, close, kill switch
+- The executor's price feed is the public WebSocket, not the 10-second REST poll (not required for the pilot)
 
-Live starts with 10% of `capital_max_usdt` and max 2x, then scales per §8.
+Live starts with 10% of `capital_max_usdt` and max 2x. Leverage then scales per §8.
+
+**Capital ramp** (owner, 2026-10-09): 10% → 25% → 50% → 100% of `capital_max_usdt`. Each step up needs 3 weeks at the current step within limits (no drawdown pause, no emergency brake) and net positive after all costs over those weeks. A drawdown pause moves it one step back, never below 10%. Every move restarts the 3-week clock. Position sizing never exceeds actual subaccount equity.
 
 After the first 4 weeks of shadow mode the bot reports monthly running costs (LLM, X, server).
 
-**Execution pilot (after M9):** 200 USDT at 1x on the real Bybit gateway to test fills, slippage and borrowing. Pilot results are tracked separately (`positions.mode = "pilot"`) and do not count toward the go-live criteria.
+**Execution pilot (after M9):** 200 USDT at 1x on the real Bybit gateway to test fills, slippage and borrowing. Pilot results are tracked separately (`positions.mode = "pilot"`) and do not count toward the go-live criteria. The paper tracks keep running next to the pilot. Pilot trades are never posted to X: the primary paper track stays the X storyline until go-live (owner, 2026-10-09).
 
 Backtesting: only the indicator agent and the risk engine on historical candles. Backtests with LLMs in the loop suffer look-ahead (the models know how history played out), so forward testing in shadow mode is the real test.
 
 ## 11. X poster (@decentradork)
 
-- Post only after a fill, never a planned trade. Opening = new post; close = reply in the same thread.
+- Post only after a fill, never a planned trade. Opening = new post; close = reply in the same thread. Only primary-track trades are posted; pilot trades never are.
 - Claude writes, GPT audits, as in the owner's retweet-mirror project. The writer only sees the trade record and summarized PM reasons, never raw X content.
 - Always the cashtag: `$BTC`, `$ETH`, `$SOL`, `$BNB`, `$SPX` (for SPX6900).
 - Opening: cashtag, direction, entry, leverage, stop, target, usually a short reason. Close: cashtag, exit, % on price and on margin, holding time.
@@ -283,6 +289,10 @@ drawdown_pause = -0.10
 emergency_brake = -0.25
 depth_cap = 0.05
 cycle_hours = 4
+
+[exchange]
+price_feed = "ws"               # public WebSocket with REST fallback; go-live requires "ws"
+backup_stop = true              # exchange-side stop behind every real position
 
 [posting]
 enabled = true
