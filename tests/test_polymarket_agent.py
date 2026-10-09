@@ -167,6 +167,11 @@ def test_updown_momentum_and_component_weights() -> None:
     assert score == pytest.approx(1.0) and evidence and "P(up) 65% over 4 h" in evidence[0]
     assert score_updown([UpDownPoint("a", 0.35, 1440, 20.0, 5_000)])[0] == pytest.approx(-1.0)
     assert score_updown([]) == (0.0, [])
+    # a daily window with 10 minutes left is history, not a forecast
+    assert score_updown([UpDownPoint("a", 0.95, 1440, 10 / 60, 50_000)]) == (0.0, [])
+    # ... and a window three-quarters done weighs a quarter of a fresh one
+    fresh, stale = UpDownPoint("f", 0.5, 240, 4.0, 10_000), UpDownPoint("s", 0.9, 240, 1.0, 10_000)
+    assert 0 < score_updown([fresh, stale])[0] < score_updown([stale])[0]
     # shift dominates; the components present share the weight
     assert combine(level=0.0, shift=1.0, updown=0.0) == pytest.approx(0.5)
     assert combine(level=1.0, shift=None, updown=None) == pytest.approx(1.0)

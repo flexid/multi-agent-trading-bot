@@ -45,6 +45,7 @@ MIN_HOURS_TO_RESOLUTION = 1
 MAX_DAYS_TO_RESOLUTION = 60  # year-end markets carry little 4h-to-3d information
 SHIFT_FULL_SCALE = 0.10  # 10 pp move in 24h = ±1
 UPDOWN_FULL_SCALE = 0.15  # P(up) 65% = +1, 35% = −1
+MIN_UPDOWN_REMAINING = 0.25  # of the window still ahead; later than that it is history
 WEIGHT_SHIFT, WEIGHT_LEVEL, WEIGHT_UPDOWN = 0.5, 0.25, 0.25
 
 
@@ -253,11 +254,21 @@ def score_ladder(points: list[LadderPoint], spot: float) -> tuple[float, float, 
     return score, level, shift, evidence
 
 
+def remaining_fraction(p: UpDownPoint) -> float:
+    """How much of the Up/Down window is still ahead: 1 at the start, 0 at resolution."""
+    return max(0.0, min(1.0, p.hours_to_resolution * 60 / p.window_min))
+
+
 def score_updown(points: list[UpDownPoint]) -> tuple[float, list[str]]:
-    """Volume-weighted P(up) over the open Up/Down windows, centred on 50%."""
+    """Volume-weighted P(up) over the open Up/Down windows, centred on 50%.
+
+    A window that is almost over prices the move that already happened, not the one
+    ahead, so each market weighs by the fraction of its window still remaining and
+    the last quarter of a window does not count at all."""
+    points = [p for p in points if remaining_fraction(p) >= MIN_UPDOWN_REMAINING]
     if not points:
         return 0.0, []
-    weights = [max(p.volume_24h, 1.0) for p in points]
+    weights = [max(p.volume_24h, 1.0) * remaining_fraction(p) for p in points]
     p_up = sum(w * p.p_up for w, p in zip(weights, points, strict=True)) / sum(weights)
     score = max(-1.0, min(1.0, (p_up - 0.5) / UPDOWN_FULL_SCALE))
     top = sorted(points, key=lambda p: -p.volume_24h)[:2]
@@ -300,7 +311,7 @@ def evaluate(
     score = combine(
         level=level if points else 0.0,
         shift=shift if has_shift else None,
-        updown=ud_score if ud_points else None,
+        updown=ud_score if ud_evidence else None,  # every window nearly over: no read
     )
     n = len(points) + len(ud_points)
     liquidity = sum(p.volume_24h for p in points) + sum(p.volume_24h for p in ud_points)
