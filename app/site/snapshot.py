@@ -176,11 +176,21 @@ def _f(x: Decimal | float | None, places: int = 4) -> float:
     return round(float(x or 0), places)
 
 
+def _is_live(s: Any) -> bool:
+    state = s.get(RiskState, 1)
+    return state is not None and state.mode == "live"
+
+
 def _record_mode(s: Any) -> str:
     """Which equity series the public record is: the live ledger once the bot is live,
-    the primary paper track before (and the live track's trades carry no paper badge)."""
-    state = s.get(RiskState, 1)
-    return "live" if state is not None and state.mode == "live" else "paper:primary"
+    the primary paper track before."""
+    return "live" if _is_live(s) else "paper:primary"
+
+
+def _record_track(s: Any) -> str:
+    """Which track's trades the public record shows: live once live, primary before. The
+    paper tracks keep running beside live, but only one story is told."""
+    return "live" if _is_live(s) else "primary"
 
 
 def _pct_curve(cfg: Config, s: Any, since: datetime) -> tuple[list[list[float]], float, float]:
@@ -298,7 +308,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         history = _history(cfg, s, now - timedelta(days=7))
         closed = s.scalars(
             select(Position)
-            .where(Position.track.in_(["primary", "live"]), Position.status == "closed")
+            .where(Position.track == _record_track(s), Position.status == "closed")
             .order_by(Position.closed_at.desc())
             .limit(500)
         ).all()
@@ -328,7 +338,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         }
         open_rows = s.scalars(
             select(Position).where(
-                Position.track.in_(["primary", "live"]), Position.status.in_(["open", "closing"])
+                Position.track == _record_track(s), Position.status.in_(["open", "closing"])
             )
         ).all()
         open_trades = []

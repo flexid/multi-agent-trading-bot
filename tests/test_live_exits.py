@@ -344,7 +344,10 @@ async def test_live_mode_books_on_its_own_ledger_seeded_from_real_equity(db: Non
     executor.mode = "live"
     await executor.tick()
     (pos,) = positions("live")
-    assert pos.mode == "live" and positions("primary") == [] and positions("max") == []
+    assert pos.mode == "live"
+    # the paper tracks keep running beside live as the control group; no pilot in live
+    assert len(positions("primary")) == 1 and len(positions("max")) == 1
+    assert positions("primary")[0].mode == "paper" and positions("pilot") == []
     with new_session() as s:
         live = s.get(PaperAccount, 4)
         assert live is not None and live.track == "live" and live.starting_capital == D("1234.5")

@@ -63,7 +63,10 @@ EXIT_ALERT_AFTER = 3  # passes an exit may stay unfinished before the owner is e
 TRACKS: dict[str, dict[str, str]] = {
     "paper": {"primary": "paper", "max": "paper"},
     "pilot": {"primary": "paper", "max": "paper", "pilot": "pilot"},
-    "live": {"live": "live"},  # one real-money track; the shadow ledgers freeze as history
+    # One real-money track; the paper tracks keep running beside it as the control group
+    # (same decisions at the live rules and at risk_per_trade_max), which is the evidence
+    # for stepping live risk up toward the owner's goal.
+    "live": {"primary": "paper", "max": "paper", "live": "live"},
 }
 LEDGER_IDS = {"primary": 1, "max": 2, "pilot": 3, "live": 4}
 TAKER_FEE = {"USDT": Decimal("0.001"), "USDC": Decimal("0.0005")}
@@ -746,8 +749,9 @@ class Executor:
     async def post(
         self, session: Session, row: Position, kind: str, reason: str | None, now: datetime
     ) -> None:
-        if row.mode == "pilot" or row.track not in ("primary", "live"):
-            return  # the pilot is an execution test, not part of the X storyline
+        storyline = "live" if self.mode == "live" else "primary"
+        if row.mode == "pilot" or row.track != storyline:
+            return  # one track tells the X story: live once live, the primary paper track before
         try:
             await poster.enqueue(
                 session,
