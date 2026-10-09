@@ -151,6 +151,13 @@ class Secrets(BaseSettings):
     fred_api_key: SecretStr = SecretStr("")
     coingecko_api_key: SecretStr = SecretStr("")
 
+    cloudflare_account_id: str = ""
+    cloudflare_api_token: SecretStr = SecretStr("")
+    r2_bucket: str = "dorkbot-public"
+    r2_access_key_id: SecretStr = SecretStr("")
+    r2_secret_access_key: SecretStr = SecretStr("")
+    snapshot_public_url: str = ""
+
     database_url: SecretStr = SecretStr("")
     test_database_url: SecretStr = SecretStr("")
 

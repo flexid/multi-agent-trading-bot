@@ -104,10 +104,26 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
             misfire_grace_time=120,
         )
     scheduler.add_job(heartbeat_job, CronTrigger(second="30"), id="heartbeat", max_instances=1)
+    scheduler.add_job(
+        publish_job,
+        CronTrigger(minute=f"*/{cfg.site.snapshot_interval_minutes}", second="40"),
+        id="site_snapshot",
+        max_instances=1,
+        coalesce=True,
+    )
     scheduler.start()
     log.info("scheduler started with %d jobs", len(scheduler.get_jobs()))
     await run_all(cfg, secrets)  # fill the tables right away
     await asyncio.Event().wait()
+
+
+async def publish_job() -> None:
+    from app.site.publish import publish
+
+    try:
+        await asyncio.to_thread(publish)
+    except Exception as exc:  # the site is never a reason to stop trading
+        log.warning("site snapshot failed: %s", exc)
 
 
 async def heartbeat_job() -> None:

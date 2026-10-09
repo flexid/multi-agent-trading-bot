@@ -1,10 +1,16 @@
-.PHONY: up down deploy test lint migrate fetch-once scheduler cycle executor kill resume indicators backtest selftest selftest-live bybit-authorize
+.PHONY: up down deploy deploy-site snapshot test lint migrate fetch-once scheduler cycle executor kill resume indicators backtest selftest selftest-live bybit-authorize
 
 up:
 	docker compose up -d postgres
 
 deploy:
 	scripts/deploy.sh $(HOST)
+
+deploy-site:
+	scripts/deploy_site.sh
+
+snapshot:
+	uv run python -m app.site.publish
 
 down:
 	docker compose down
