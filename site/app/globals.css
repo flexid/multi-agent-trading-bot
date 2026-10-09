@@ -47,3 +47,4 @@ button.more { margin-top: 10px; background: #141414; color: var(--fg); border: 1
 .panel { border: 1px solid var(--line); border-radius: 12px; background: #0f0f0f; padding: 14px 16px 16px; margin: 28px 0 0; }
 .panel > h2 { margin: -14px -16px 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); border-radius: 12px 12px 0 0; background: #121212; }
 .panel table { font-size: 14px; } .panel .best { margin-top: 2px; }
+.sign-off { display: flex; justify-content: center; margin: 72px 0 8px; } .sign-off img { width: 64px; height: 64px; border-radius: 50%; opacity: .9; }
