@@ -18,7 +18,7 @@
 | Auth (`app/admin/auth.py`) | Single user, argon2id password, TOTP (pyotp), lockout after 5 failures for 15 minutes, signed 30-minute session cookie (HttpOnly, SameSite=Strict, Secure except over a localhost SSH tunnel), CSRF token per session, TOTP step-up valid 5 minutes for kill, pause, resume and every parameter change. Email on login from a new IP, every parameter change and every control action (`app/admin/notify.py`: Resend or SMTP; silent until configured). |
 | Pages | Overview: both ledgers with cash, realized, fees, interest, liquidations; open positions with sizes and liquidation prices; recent closes; LLM cost today and this month per model against the budget; X reads and posts; data freshness per source; heartbeats; controls. Decisions: per cycle the decisions, risk-rule hits, PM proposals (main and alt) and raw agent outputs. Parameters: editable keys with bounds, change history with the executor's result, audit log of every admin action. `/health` for monitoring. |
 | Setup | `python -m app.admin.setup --username ...` on the server: password, QR, first-code confirmation. |
-| Network | Admin bound to 127.0.0.1:8080; server firewall now SSH-only (ufw). Going public uses a Cloudflare Tunnel, so no inbound 443 is ever opened. |
+| Network | Admin bound to 127.0.0.1:8080; server firewall SSH-only (ufw, default deny incoming, 22/tcp rate-limited). Going public uses a Cloudflare Tunnel, so no inbound 443 is ever opened. Postgres and the admin publish on 127.0.0.1 only, so Docker's iptables rules expose nothing. SSH: keys only (`PermitRootLogin prohibit-password`, `PasswordAuthentication no`), fail2ban on sshd (5 tries, 1 h ban), unattended security upgrades on (2026-10-09). |
 
 ## Not yet
 
