@@ -107,7 +107,7 @@ def test_render_includes_facts_and_proposals_and_degrades_without_a_model() -> N
 
 
 def test_memo_markdown_becomes_clean_html_for_mail() -> None:
-    from app.memo import to_html
+    from app.admin.notify import to_html
 
     md = (
         "# Title\n\nIntro **bold** line.\n\n## Trades\n- one\n- two\n\n## Proposals\n"

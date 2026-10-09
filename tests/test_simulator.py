@@ -95,3 +95,39 @@ def test_close_pnl_on_price_and_margin() -> None:
 def test_below_one_lot_is_rejected() -> None:
     with pytest.raises(ValueError):
         sim.open_position(Side.LONG, D("0.5"), D(1), q("99.9", "100"), D(98), D(106), 24, FEE, D(1))
+
+
+def test_liquidation_room_runs_from_one_at_entry_to_zero_at_the_level() -> None:
+    p = sim.open_position(
+        Side.LONG,
+        D(1000),
+        D(5),
+        q("100", "100.1"),
+        D(97),
+        D(110),
+        24,
+        D("0.001"),
+        D("0.001"),
+        collateral_ratio=D("0.98"),
+        maintenance_rate=D("0.03"),
+    )
+    liq = p.liquidation_price
+    assert liq > 0
+    assert sim.liquidation_room(p, q("100", "100.1")) == pytest.approx(D(1), abs=D("0.02"))
+    mid = (p.entry + liq) / 2
+    assert sim.liquidation_room(p, q(str(mid), str(mid))) == pytest.approx(D("0.5"), abs=D("0.02"))
+    assert sim.liquidation_room(p, q(str(liq), str(liq))) == D(0)
+    flat = sim.open_position(
+        Side.LONG,
+        D(1000),
+        D(1),
+        q("100", "100.1"),
+        D(97),
+        D(110),
+        24,
+        D("0.001"),
+        D("0.001"),
+        collateral_ratio=D("0.98"),
+        maintenance_rate=D("0.03"),
+    )
+    assert sim.liquidation_room(flat, q("100", "100.1")) is None

@@ -70,6 +70,7 @@ TRACKS: dict[str, dict[str, str]] = {
 }
 LEDGER_IDS = {"primary": 1, "max": 2, "pilot": 3, "live": 4}
 TAKER_FEE = {"USDT": Decimal("0.001"), "USDC": Decimal("0.0005")}
+LIQ_WARN_ROOM = Decimal("0.30")  # mail when under 30% of the entry-to-liquidation distance is left
 CASH_FIT_BUFFER = Decimal("0.995")  # leave the entry fee in cash when sizing to what is free
 MIN_FIT_FRACTION = Decimal("0.25")  # a trade smaller than a quarter of the plan is skipped
 QTY_STEP_FALLBACK = Decimal("0.000001")
@@ -375,6 +376,7 @@ class Executor:
                 reason = ExitReason(row.close_reason or "risk")  # retry a pending exit
             row.interest, row.trail_stop, row.updated_at = pos.interest, pos.trail_stop, now
             row.liquidation_price = pos.liquidation_price
+            self._warn_near_liquidation(row, pos, quote)
             if reason is None:
                 if not fast and row.mode != "paper":
                     # The exchange may have triggered the backup while we were away.
@@ -479,7 +481,16 @@ class Executor:
         acct.interest_paid += row.interest
         if reason is ExitReason.LIQUIDATION and row.mode == "paper":
             acct.liquidations += 1
+        if reason is ExitReason.LIQUIDATION:
+            self._alert(
+                f"dorkbot: liquidation guard closed {row.asset} ({row.track})",
+                f"{row.mode} {row.track} {row.asset} {row.direction} {float(row.leverage):g}x "
+                f"was closed by the liquidation guard at {fill.price} (entry {row.entry_price}, "
+                f"liquidation level {row.liquidation_price}). P&L {net:+.2f}. "
+                + ("Paper money." if row.mode == "paper" else "Real money."),
+            )
         self._alerted.discard(f"exit:{row.id}")
+        self._alerted.discard(f"liq:{row.id}")
         log.info(
             "closed %s %s %s at %s: %.2f (%s)",
             row.mode,
@@ -842,6 +853,23 @@ class Executor:
             Heartbeat(process="executor", ts=now, detail=f"{self.mode}: " + "; ".join(summary))
         )
         session.commit()
+
+    def _warn_near_liquidation(self, row: Position, pos: sim.PaperPosition, quote: Quote) -> None:
+        """One mail per position when the price has covered most of the way from the entry
+        to the liquidation level (owner, 2026-10-09). The guard closes before the level."""
+        left = sim.liquidation_room(pos, quote)
+        key = f"liq:{row.id}"
+        if left is None or left > LIQ_WARN_ROOM or key in self._alerted:
+            return
+        self._alerted.add(key)
+        self._alert(
+            f"dorkbot: {row.asset} ({row.track}) is near liquidation",
+            f"{row.mode} {row.track} {row.asset} {row.direction} {float(row.leverage):g}x: "
+            f"price {quote.mid} has covered {1 - left:.0%} of the way from the entry "
+            f"{row.entry_price} to the liquidation level {row.liquidation_price}. The stop sits "
+            f"at {row.stop}; the guard closes before the level. "
+            + ("Paper money." if row.mode == "paper" else "Real money."),
+        )
 
     def _alert(self, subject: str, body: str) -> None:
         """Owner email via the admin's notify module; never raises into the trading loop."""

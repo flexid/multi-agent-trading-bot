@@ -163,6 +163,23 @@ def update_trail(pos: PaperPosition, quote: Quote) -> PaperPosition:
     return replace(pos, best_price=best, trail_stop=trail)
 
 
+def liquidation_room(pos: PaperPosition, quote: Quote) -> Decimal | None:
+    """Fraction of the entry-to-liquidation distance still ahead of the price: 1 at the
+    entry, 0 at the level, None when the position cannot be liquidated (1x, no borrow)."""
+    liq = pos.liquidation_price
+    if liq <= 0:
+        return None
+    if pos.side is Side.LONG:
+        price, total = quote.bid, pos.entry - liq
+        left = price - liq
+    else:
+        price, total = quote.ask, liq - pos.entry
+        left = liq - price
+    if total <= 0:
+        return None
+    return max(Decimal(0), min(Decimal(1), left / total))
+
+
 def exit_reason(
     pos: PaperPosition, quote: Quote, now: datetime, kill: bool = False
 ) -> ExitReason | None:
