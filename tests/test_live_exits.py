@@ -8,7 +8,7 @@ real orders.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal as D
 
 import pytest
@@ -32,7 +32,9 @@ from tests.test_executor_failures import (  # noqa: F401  (db is a fixture)
     seed_decision,
 )
 
-NOW = datetime(2026, 10, 9, 12, tzinfo=UTC)
+NOW = datetime.now(UTC).replace(microsecond=0) - timedelta(
+    minutes=5
+)  # the executor only opens decisions younger than one cycle
 SYMBOL = "BTCUSDT"
 
 

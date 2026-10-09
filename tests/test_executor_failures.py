@@ -21,7 +21,9 @@ from app.execution.gateway import OrderOutcome, Outcome, ScriptedGateway
 from app.execution.simulator import Quote
 from tests.test_data_layer import needs_db
 
-NOW = datetime(2026, 10, 9, 12, tzinfo=UTC)
+NOW = datetime.now(UTC).replace(microsecond=0) - timedelta(
+    minutes=5
+)  # the executor only opens decisions younger than one cycle
 ASSET = "BTC"
 
 
