@@ -37,6 +37,7 @@ log = logging.getLogger("bybit_gateway")
 REPRICE_S = 120
 POLL_S = 3
 EXIT_SLIPPAGE = Decimal("0.01")  # exit limit: 1% beyond the touch
+COVER_FEE_BUFFER = Decimal("0.0012")  # taker fee plus rounding, so a cover repays the borrow
 EXIT_ATTEMPTS = 5  # per call; the executor calls again every tick until flat
 SETTLE_POLL_S = 0.3
 SETTLE_POLLS = 5
@@ -193,6 +194,19 @@ class BybitGateway:
         if inst is None:
             return OrderOutcome(Outcome.REJECTED, detail="unknown symbol")
         qty = inst.round_qty(qty)
+        # Spot fees are taken from the coin received: a long holds slightly less than it
+        # bought, so sell what is actually there; a short must buy back a little more so
+        # the borrow repays in full (Bybit auto-repays from the buy).
+        try:
+            if ex_side is ExSide.SELL:
+                wallet = await self.client.wallet_balance()
+                held = wallet.of(inst.base_coin)
+                if held is not None:
+                    qty = min(qty, inst.round_qty(held.wallet_balance))
+            else:
+                qty = inst.round_qty(qty / (Decimal(1) - COVER_FEE_BUFFER), up=True)
+        except BybitError as exc:
+            return OrderOutcome(Outcome.UNREACHABLE, detail=str(exc)[:200])
         filled_total, fee_total, value_total = Decimal(0), Decimal(0), Decimal(0)
         detail, blocked, rejected = "", False, False
 

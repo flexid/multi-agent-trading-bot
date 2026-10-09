@@ -289,3 +289,20 @@ async def test_partial_exit_keeps_closing_and_books_once_at_the_average(db: None
     assert done is not None and done.status == "closed" and done.close_reason == "stop"
     expected = (D(5) * D(97) + (done.qty - D(5)) * D(95)) / done.qty
     assert done.exit_price == pytest.approx(expected)
+
+
+async def test_long_exit_sells_what_is_held_and_cover_buys_the_fee_back() -> None:
+    """Spot fees come out of the coin received: the exit must not try to sell more than
+    the wallet holds, and a short cover must buy slightly more than it owes."""
+    from app.execution.bybit_gateway import BybitGateway
+    from app.execution.simulator import Side
+
+    fake = FakeBybit("BTCUSDT", "100", "100.1", tick="0.1")
+    fake.holdings["BTC"] = D("0.000072")
+    gw = BybitGateway(fake.client())
+    r = await gw.close("BTCUSDT", Side.LONG, D("0.000073"), "x-", q("100", "100.1"))
+    assert r.filled_qty == D("0.000072")
+    fake2 = FakeBybit("BTCUSDT", "100", "100.1", tick="0.1")
+    gw2 = BybitGateway(fake2.client())
+    r2 = await gw2.close("BTCUSDT", Side.SHORT, D("0.001"), "y-", q("100", "100.1"))
+    assert r2.filled_qty > D("0.001")

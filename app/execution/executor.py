@@ -55,6 +55,7 @@ from app.social import poster, style
 
 log = logging.getLogger("executor")
 TICK_S = 10
+ENTRY_CLAMP = Decimal("0.01")  # enter at spot when the plan is more than 1% away
 FAST_S = 1  # exit checks between full passes, only on the WebSocket feed
 BACKUP_ATR_MULT = Decimal("0.5")  # backup stop sits this many ATR beyond the bot's stop
 EXIT_ALERT_AFTER = 3  # passes an exit may stay unfinished before the owner is emailed
@@ -584,9 +585,19 @@ class Executor:
                     self.cfg.pilot.capital_usdt * self.cfg.trading.capital_share_per_asset,
                 )
             entry_mid = Decimal(plan["entry"])
-            # Limit near mid (SPEC §9): take it only while the market is within ±0.5% of entry.
-            if abs(quote.mid / entry_mid - 1) > Decimal("0.005"):
-                continue
+            # Owner (2026-10-09): clamp the PMs' entry to spot ±1%. If the plan sits further
+            # away, enter here and shift stop and target by the same amount, so the stop
+            # distance, the target distance and the risk sizing stay as approved.
+            drift = quote.mid / entry_mid - 1
+            if abs(drift) > ENTRY_CLAMP:
+                offset = quote.mid - entry_mid
+                plan = {
+                    **plan,
+                    "entry": str(quote.mid),
+                    "stop": str(Decimal(plan["stop"]) + offset),
+                    "target": str(Decimal(plan["target"]) + offset),
+                }
+                log.info("%s: entry clamped to spot (%+.2f%% from plan)", d.asset, drift * 100)
             if notional / leverage > acct.cash:
                 log.warning(
                     "%s: margin %s exceeds cash %s", d.asset, notional / leverage, acct.cash

@@ -32,6 +32,7 @@ class FakeBybit:
         self.ioc_liquidity: list[D] = []
         self.drop_next_create = False  # the request reaches the exchange, the reply is lost
         self.fail_cancel = False
+        self.holdings: dict[str, D] = {}  # base-coin balance; empty = plenty (not under test)
 
     def client(self) -> BybitClient:
         return BybitClient(
@@ -70,6 +71,20 @@ class FakeBybit:
             return self._ok({"list": [self._ticker()]})
         if path in ("/v5/order/realtime", "/v5/order/history"):
             return self._ok({"list": self._query(path, q)})
+        if path == "/v5/account/wallet-balance":
+            base = self.symbol.replace("USDT", "")
+            held = self.holdings.get(base, D("1000000"))
+            return self._ok(
+                {
+                    "list": [
+                        {
+                            "accountType": "UNIFIED",
+                            "totalEquity": "0",
+                            "coin": [{"coin": base, "walletBalance": str(held)}],
+                        }
+                    ]
+                }
+            )
         body = json.loads(request.content)
         if path == "/v5/order/create":
             return self._create(body)
