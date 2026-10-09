@@ -43,6 +43,21 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  admin:
+    # Own container, own env file: no Bybit, X, LLM or Cloudflare keys (SPEC §12 M8b).
+    profiles: ["bot"]
+    build: .
+    env_file: .env.admin
+    environment:
+      DATABASE_URL: postgresql+psycopg://bot:bot@postgres:5432/bot
+    command: ["uvicorn", "app.admin.app:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   executor:
     profiles: ["bot"]
     build: .

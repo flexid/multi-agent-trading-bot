@@ -180,6 +180,51 @@ class Executor:
         session.commit()
         return kill
 
+    def apply_param_changes(self, session: Session, now: datetime) -> None:
+        """Parameter changes requested from the admin, re-checked against the hard bounds
+        in code before they touch config.toml. Leverage never above 10 (SPEC §12 M8b)."""
+        from app.admin.app import EDITABLE
+        from app.db.models import ParamChange
+
+        pending = session.scalars(
+            select(ParamChange).where(ParamChange.applied_at.is_(None)).order_by(ParamChange.id)
+        ).all()
+        if not pending:
+            return
+        import tomllib
+
+        from app.config import CONFIG_PATH, get_config
+
+        text = CONFIG_PATH.read_text()
+        for req in pending:
+            req.applied_at = now
+            bounds = EDITABLE.get(req.key)
+            try:
+                value = Decimal(req.new_value)
+            except Exception:
+                req.result = "rejected: not a number"
+                continue
+            if bounds is None or not (bounds[0] <= value <= bounds[1]):
+                req.result = f"rejected: outside bounds {bounds}"
+                continue
+            section, name = req.key.split(".", 1)
+            new_text, n = _set_toml_value(text, section, name, value)
+            if n != 1:
+                req.result = "rejected: key not found in config.toml"
+                continue
+            try:
+                tomllib.loads(new_text)
+            except tomllib.TOMLDecodeError:
+                req.result = "rejected: would break config.toml"
+                continue
+            text = new_text
+            req.result = "applied"
+        CONFIG_PATH.write_text(text)
+        get_config.cache_clear()
+        self.cfg = get_config()
+        session.commit()
+        log.info("applied %d parameter change(s)", sum(1 for r in pending if r.result == "applied"))
+
     # --- positions ----------------------------------------------------------------
 
     async def manage_open(
@@ -530,6 +575,7 @@ class Executor:
         now = datetime.now(UTC)
         await self.refresh_quotes()
         with new_session() as session:
+            self.apply_param_changes(session, now)
             kill = self.apply_controls(session, now)
             close_all = self.risk_close_all(session, now)
             await self.manage_open(session, now, kill, close_all)
@@ -552,6 +598,24 @@ class Executor:
             await asyncio.sleep(TICK_S)
         if self._client is not None:
             await self._client.aclose()
+
+
+def _set_toml_value(text: str, section: str, name: str, value: Decimal) -> tuple[str, int]:
+    """Replace `name = ...` inside `[section]` keeping comments; returns (text, replacements)."""
+    import re
+
+    lines = text.splitlines(keepends=True)
+    current, count = None, 0
+    for i, line in enumerate(lines):
+        m = re.match(r"^\[([^\]]+)\]", line)
+        if m:
+            current = m.group(1)
+            continue
+        if current == section and re.match(rf"^{re.escape(name)}\s*=", line):
+            comment = line.split("#", 1)[1].rstrip("\n") if "#" in line else ""
+            lines[i] = f"{name} = {value:g}" + (f"  #{comment}" if comment else "") + "\n"
+            count += 1
+    return "".join(lines), count
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -1,0 +1,1 @@
+{% if not stepped %}<form method="post" action="/step-up" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="{{ request.url.path }}"><input name="code" placeholder="TOTP to unlock actions" inputmode="numeric" required> <button>Unlock 5 min</button></form>{% else %}<span class="badge">actions unlocked</span>{% endif %}

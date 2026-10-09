@@ -158,6 +158,13 @@ class Secrets(BaseSettings):
     r2_secret_access_key: SecretStr = SecretStr("")
     snapshot_public_url: str = ""
 
+    # Admin (M8b): session signing key and alert email provider
+    admin_secret_key: SecretStr = SecretStr("")
+    alert_email_to: str = ""
+    alert_email_from: str = ""
+    resend_api_key: SecretStr = SecretStr("")
+    smtp_url: str = ""
+
     database_url: SecretStr = SecretStr("")
     test_database_url: SecretStr = SecretStr("")
 

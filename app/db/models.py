@@ -414,6 +414,50 @@ class XPostOut(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class AdminUser(Base):
+    """Single admin user (M8b): argon2 password hash, TOTP secret, lockout state."""
+
+    __tablename__ = "admin_user"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    username: Mapped[str] = mapped_column(String(40))
+    password_hash: Mapped[str] = mapped_column(String(200))
+    totp_secret: Mapped[str] = mapped_column(String(64))
+    totp_enrolled: Mapped[bool] = mapped_column(Boolean, default=False)
+    failed_logins: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    known_ips: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    actor: Mapped[str] = mapped_column(String(40))
+    ip: Mapped[str | None] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(40))
+    detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ParamChange(Base):
+    """Parameter changes requested from the admin; the executor applies them within hard
+    bounds in code and records the outcome."""
+
+    __tablename__ = "param_changes"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    key: Mapped[str] = mapped_column(String(60))
+    old_value: Mapped[str | None] = mapped_column(String(200))
+    new_value: Mapped[str] = mapped_column(String(200))
+    requested_by: Mapped[str] = mapped_column(String(40))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    result: Mapped[str | None] = mapped_column(String(200))
+
+
 class RiskState(Base):
     """One row: the risk engine's memory across cycles (SPEC §8 limits)."""
 

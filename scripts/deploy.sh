@@ -9,5 +9,5 @@ ssh "$HOST" 'command -v docker >/dev/null || (curl -fsSL https://get.docker.com 
 rsync -az --delete --exclude .git --exclude .venv --exclude pgdata --exclude logs --exclude '.env*' \
   --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache \
   ./ "$HOST:$DIR/"
-scp -q .env "$HOST:$DIR/.env"
-ssh "$HOST" "chmod 600 $DIR/.env && cd $DIR && docker compose --profile bot build -q && docker compose --profile bot up -d && docker compose --profile bot ps"
+scripts/admin_env.sh && scp -q .env .env.admin "$HOST:$DIR/"
+ssh "$HOST" "chmod 600 $DIR/.env $DIR/.env.admin && cd $DIR && docker compose --profile bot build -q && docker compose --profile bot up -d && docker compose --profile bot ps"
