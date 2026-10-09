@@ -1,5 +1,5 @@
 <!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>dorkbot admin</title>
-<link rel="icon" href="/static/favicon-32.png"><link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="icon" href="/static/favicon-32.png?v=6d8a4f25"><link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=6d8a4f25">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css">
 <style>
 :root, [data-theme=dark] { --pico-background-color:#0a0a0a; --pico-card-background-color:#121212; --pico-card-sectioning-background-color:#161616; --pico-primary:#fe7e1c; --pico-primary-hover:#ff9a4d; --pico-primary-background:#fe7e1c; --pico-primary-hover-background:#ff9a4d; --pico-primary-underline:#fe7e1c66; --pico-primary-focus:#fe7e1c44; --pico-muted-color:#8f958f; --pico-font-size:92%; --pico-spacing:0.9rem; --pico-block-spacing-vertical:1.4rem; --pico-form-element-spacing-vertical:.45rem; --pico-form-element-spacing-horizontal:.8rem }
@@ -13,7 +13,7 @@ table{font-size:.85rem}th{color:var(--pico-muted-color);font-weight:500}td,th{pa
 form.inline{display:inline-block;margin:0 .3rem .3rem 0}form.inline input{width:auto;display:inline-block;margin:0 .3rem 0 0}form.inline button{width:auto;display:inline-block;margin:0}button.danger{--pico-background-color:#ff5c5c;--pico-border-color:#ff5c5c;--pico-color:#0a0a0a}
 pre{white-space:pre-wrap;font-size:.78rem;color:var(--pico-muted-color)}.overflow{overflow-x:auto}
 </style></head><body><main class="container">
-<nav><ul><li><a href="/"><img class="avatar" src="/static/avatar-96.png" alt="dorkbot"></a></li><li><a href="/">Overview</a></li><li><a href="/decisions">Decisions</a></li><li><a href="/params">Parameters &amp; audit</a></li></ul>
+<nav><ul><li><a href="/"><img class="avatar" src="/static/avatar-96.png?v=6d8a4f25" alt="dorkbot"></a></li><li><a href="/">Overview</a></li><li><a href="/decisions">Decisions</a></li><li><a href="/params">Parameters &amp; audit</a></li></ul>
 <ul>{% if user %}<li><form class="inline" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="outline secondary">Logout {{ user }}</button></form></li>{% endif %}</ul></nav>
 {% block body %}{% endblock %}
 </main></body></html>
