@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import logging
 import random
+import re
 import time
 import urllib.parse
 import uuid
@@ -26,7 +27,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Config, Secrets
-from app.db.models import Position, XPostOut
+from app.db.models import Position, XPostOut, XPostRecord
 from app.llm import LLMError, complete, load_prompt
 from app.social import templates as tpl
 from app.social.whitelist import check
@@ -119,6 +120,19 @@ async def enqueue(
         kind, facts_for(pos, cfg, reason, paper), style, use_models=not dry_run
     )
     text = tpl.enforce_marker(text, paper)
+    repeated = repeats_archive(session, cfg, text) if source == "writer" else None
+    if repeated:
+        notes = f"{notes + '; ' if notes else ''}repeats archive: {repeated!r}"
+        text, source, audit_ok = (
+            tpl.enforce_marker(
+                tpl.render_open(facts_for(pos, cfg, reason, paper))
+                if kind == "open"
+                else tpl.render_close(facts_for(pos, cfg, reason, paper)),
+                paper,
+            ),
+            "template",
+            False,
+        )
     wl = check(text)
     if tpl.has_marker(text) != paper:  # belt and braces: never leaks either way
         wl = type(wl)(False, [*wl.problems, "shadow marker mismatch"])
@@ -145,6 +159,40 @@ async def enqueue(
     session.add(row)
     session.commit()
     return row
+
+
+_SENTENCE = re.compile(r"[^.!?\n]+[.!?]?")
+
+
+def sentences(text: str) -> set[str]:
+    out = set()
+    for s in _SENTENCE.findall(text):
+        s = s.strip().lower()
+        s = re.sub(r"\s+", " ", s)
+        if len(s) >= 20:
+            out.add(s)
+    return out
+
+
+def repeats_archive(session: Session, cfg: Config, text: str) -> str | None:
+    """A sentence that already appeared in the owner's posts or the bot's own posts fails
+    (SPEC §11: no sentence repeats). Returns the offending sentence."""
+    mine = sentences(text)
+    if not mine:
+        return None
+    archive = list(
+        session.scalars(
+            select(XPostRecord.text).where(XPostRecord.author == cfg.posting.handle)
+        ).all()
+    )
+    archive += list(
+        session.scalars(select(XPostOut.text).where(XPostOut.posted_at.is_not(None))).all()
+    )
+    seen: set[str] = set()
+    for t in archive:
+        seen |= sentences(t)
+    hit = mine & seen
+    return next(iter(hit)) if hit else None
 
 
 def posts_today(session: Session, now: datetime) -> int:
@@ -203,6 +251,14 @@ async def send(secrets: Secrets, text: str, reply_to: str | None) -> str:
     if r.status_code not in (200, 201):
         raise RuntimeError(f"X post failed: HTTP {r.status_code} {r.text[:200]}")
     return str(r.json()["data"]["id"])
+
+
+async def delete(secrets: Secrets, x_id: str) -> None:
+    url = f"https://api.x.com/2/tweets/{x_id}"
+    async with httpx.AsyncClient(timeout=20) as http:
+        r = await http.delete(url, headers={"Authorization": _oauth_header(secrets, "DELETE", url)})
+    if r.status_code != 200:
+        raise RuntimeError(f"X delete failed: HTTP {r.status_code} {r.text[:200]}")
 
 
 async def flush(

@@ -36,7 +36,7 @@ language = "en"
 style = "plain"                 # normal capitalization, direct; dry humour allowed (owner)
 delay_minutes = [1, 10]
 max_posts_per_day = 20
-post_in_shadow = false
+post_in_shadow = true           # owner: shadow trades are posted, written and audited like live, with a marker
 
 [posting.cashtags]
 BTC = "$BTC"

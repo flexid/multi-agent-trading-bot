@@ -42,6 +42,7 @@ async def build(handle: str, count: int = 200) -> str:
         if count > 100:
             posts += await x.user_timeline(user.id, count - 100)
     texts = [p.text for p in posts if p.text]
+    archive_posts(handle, posts)
     result = await complete(
         "post_writer",
         Profile,
@@ -50,6 +51,36 @@ async def build(handle: str, count: int = 200) -> str:
     )
     PROFILE.write_text(result.parsed.profile.strip() + "\n")
     return result.parsed.profile
+
+
+def archive_posts(handle: str, posts: list) -> int:  # type: ignore[type-arg]
+    """Store the owner's own posts in x_posts (author = handle) for the no-repeat check."""
+    from datetime import UTC, datetime
+
+    from app.db.models import XPostRecord
+    from app.db.session import new_session
+
+    now = datetime.now(UTC)
+    n = 0
+    with new_session() as session:
+        for p in posts:
+            if session.get(XPostRecord, p.id) is None:
+                session.add(
+                    XPostRecord(
+                        id=p.id,
+                        author_id=p.author_id,
+                        author=handle,
+                        created_at=p.created_at,
+                        fetched_at=now,
+                        query_asset=None,
+                        text=p.text,
+                        labeled_at=now,
+                        kind="other",
+                    )
+                )
+                n += 1
+        session.commit()
+    return n
 
 
 if __name__ == "__main__":
