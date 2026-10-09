@@ -141,7 +141,7 @@ Display names for the site, the admin and the docs (ids stay as they are in code
 |---|---|---|
 | **Tape** | `indicators` | trend, momentum, volatility, funding, open interest; pure math |
 | **Squint** | `chart_patterns` | flags, wedges, ranges, breakouts; code first, a vision model second |
-| **Oracle** | `polymarket` | prediction-market ladders, their 24 h shift, the up/down bets |
+| **Orak** | `polymarket` | prediction-market ladders, their 24 h shift, the up/down bets |
 | **Weather** | `macro` | rates, dollar, equities, fear & greed, BTC dominance, coupling |
 | **Ears** | `x_sentiment` | who is loud, who is credible, how many are talking |
 | **Dyne** | `pm_1` (Claude) | portfolio manager: trade plan from the five readings |

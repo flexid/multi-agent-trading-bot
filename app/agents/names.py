@@ -32,7 +32,7 @@ CREW: list[Member] = [
     ),
     Member(
         "polymarket",
-        "Oracle",
+        "Orak",
         "analysis agent",
         "Reads the prediction markets: where the crowd's money says price will be, how "
         "those odds shifted in a day, and which way the up-or-down bets lean.",
