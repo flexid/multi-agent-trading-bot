@@ -29,6 +29,7 @@ from app.decision.consensus import Consensus, consensus
 from app.decision.evidence import build_pack
 from app.decision.pm import Proposal, ask_both
 from app.llm import load_prompt
+from app.risk.apply import apply_risk
 
 log = logging.getLogger("cycle")
 
@@ -223,6 +224,22 @@ async def run_cycle(
             for asset in cfg.trading.assets
         }
         store_decisions(cycle_id, now, results, spots, pm1, pm2)
+        with new_session() as session:
+            assessments = apply_risk(session, cfg, cycle_id, mode, now)
+        for asset, a in assessments.items():
+            caps = ", ".join(f"{h.rule}={h.detail}" for h in a.hits if h.effect in ("cap", "block"))
+            if a.plan:
+                log.info(
+                    "%s: %s %.1fx notional %s margin %s%s",
+                    asset,
+                    a.plan.direction.value,
+                    a.plan.leverage,
+                    a.plan.notional,
+                    a.plan.margin,
+                    f" [{caps}]" if caps else "",
+                )
+            else:
+                log.info("%s: no trade (%s)", asset, caps or "no consensus")
         status, error = "done", None
     except Exception as exc:
         log.exception("cycle %d failed", cycle_id)

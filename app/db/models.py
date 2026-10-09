@@ -269,6 +269,38 @@ class DecisionRecord(Base):
     action: Mapped[str] = mapped_column(String(12), default="none")  # none | open | close | adjust
 
 
+class RiskState(Base):
+    """One row: the risk engine's memory across cycles (SPEC §8 limits)."""
+
+    __tablename__ = "risk_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    starting_capital: Mapped[Decimal | None]  # set at go-live; emergency-brake reference
+    peak_equity: Mapped[Decimal | None]
+    paused_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pause_count_30d: Mapped[int] = mapped_column(Integer, default=0)
+    last_pause_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    half_risk_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    emergency_brake: Mapped[bool] = mapped_column(Boolean, default=False)
+    brake_reason: Mapped[str | None] = mapped_column(Text)
+    day_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    leverage_ceiling: Mapped[Decimal] = mapped_column(Numeric(4, 1), default=2)  # ramps per §8
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RiskRuleHit(Base):
+    __tablename__ = "risk_rule_hits"
+    __table_args__ = (Index("ix_risk_rule_hits_cycle", "cycle_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    cycle_id: Mapped[int | None] = mapped_column(BigInteger)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    asset: Mapped[str | None] = mapped_column(String(10))
+    rule: Mapped[str] = mapped_column(String(40))
+    detail: Mapped[str] = mapped_column(Text)
+    effect: Mapped[str] = mapped_column(String(20))  # cap | block | close_all | pause | brake
+
+
 class DataSource(Base):
     """Freshness per source; the agents refuse inputs older than 30 minutes (SPEC §6)."""
 

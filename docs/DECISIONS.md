@@ -2,6 +2,11 @@
 
 Newest first. One entry per decision: what was decided, why, and what it rules out.
 
+## 2026-10-09 · M5: shorts at 1x still borrow; Fear & Greed extreme caps leverage at 2x
+
+A short on spot margin is always a borrow of the base coin, so the "no borrowing" rule (PMs disagree or conviction < 0.5) blocks every short, including at 1x, while a long at 1x proceeds without borrowing. The owner's Fear & Greed briefing asked for a risk flag for the leverage agent; it is implemented as a 2x cap when the index is above 80 or below 20, the same tier as a scheduled event. Shadow mode uses `leverage_max` as the ceiling so the full caps table gets exercised; the live ramp (2x → 5x → 10x) lives in `risk_state.leverage_ceiling` for M9.
+Rules out: a short "without leverage" slipping past the disagreement rule.
+
 ## 2026-10-09 · Crypto-native macro inputs: Fear & Greed weighted 0.25, dominance 0 (owner briefing)
 
 Owner briefing: add Fear & Greed (alternative.me, daily since 2018) and BTC dominance (CoinGecko `/global` every 15 min, plus ETHBTC/SOLBTC candles as a backtestable proxy) to the macro agent as crypto-native inputs; split the macro output into a tradfi part × coupling and a native part not scaled by coupling; log both; backtest before weighting; show both on the public agents page.
