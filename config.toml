@@ -1,0 +1,51 @@
+# Bot parameters. The owner sets these once; the bot decides everything else.
+# Secrets do not belong here; they live in .env. See docs/SPEC.md §13.
+
+[trading]
+assets = ["BTC", "ETH", "SOL", "BNB", "SPX6900"]
+capital_max_usdc = 0            # owner sets
+live_allowed = false            # owner flips once; go-live itself is automatic (SPEC §10)
+leverage_max = 10
+leverage_max_spx6900 = 3
+risk_per_trade = 0.005
+capital_share_per_asset = 0.20
+gross_exposure_max = 3.0
+holding_min_hours = 1
+holding_max_days = 7
+short_allowed = true
+day_loss_stop = -0.02
+drawdown_pause = -0.10
+emergency_brake = -0.25
+depth_cap = 0.05
+cycle_hours = 4
+
+[posting]
+enabled = true
+handle = "decentradork"
+language = "en"
+style = "nonchalant"
+delay_minutes = [1, 10]
+max_posts_per_day = 20
+post_in_shadow = false
+
+[posting.cashtags]
+BTC = "$BTC"
+ETH = "$ETH"
+SOL = "$SOL"
+BNB = "$BNB"
+SPX6900 = "$SPX"
+
+[budget]
+api_usd_per_month = 550         # above this, downgrade models; never stop
+x_reads_per_day = 600
+
+[models]
+pm_1 = "claude-fable-5-1"
+pm_2 = "gpt-5.6-sol"            # verify exact OpenAI model ID
+macro = "gpt-5.6-terra"         # verify
+chart_patterns = "claude-opus-5-5"
+indicators = "claude-haiku-5-5"
+polymarket = "gpt-5.6-luna"     # verify
+x_sentiment = "claude-sonnet-5-5"
+post_writer = "claude-sonnet-5-5"
+post_auditor = "gpt-5.6-terra"  # verify
