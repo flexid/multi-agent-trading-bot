@@ -56,6 +56,12 @@ class PostingConfig(_Section):
     cashtags: dict[str, str]
 
 
+class SiteConfig(_Section):
+    public_domain: str = "dorkbot.dev"
+    admin_domain: str = "admin.dorkbot.dev"
+    snapshot_interval_minutes: int = 5
+
+
 class BudgetConfig(_Section):
     api_usd_per_month: Decimal
     x_reads_per_day: int
@@ -85,6 +91,7 @@ class Config(_Section):
     trading: TradingConfig
     exchange: ExchangeConfig = ExchangeConfig()
     posting: PostingConfig
+    site: SiteConfig = SiteConfig()
     budget: BudgetConfig
     models: ModelsConfig
 

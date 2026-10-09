@@ -188,19 +188,74 @@ Examples:
 
 > closed $SOL at 77.60 after 9 hours. +4.7% on price, +13.6% on margin. ran out of steam just before target, i'll take it
 
-## 12. Dashboard and notifications
+## 12. Public site and private admin (M8, replaces the earlier dashboard section)
 
-FastAPI + Next.js behind Cloudflare Access or Tailscale, never public, mobile-first.
+Two separate parts.
 
-- **Overview:** equity against BTC buy-and-hold and an equal-weight monthly-rebalanced basket; open trades with leverage, stop and liquidation price; daily P&L calendar; drawdown; mode (shadow or live).
-- **Per asset:** each agent's score, Claude against GPT, consensus against formula, price chart with trades.
-- **Decision log:** per cycle, what each agent and model said, reasons, risk-rule hits, orders and fills.
-- **Agents:** Polymarket markets with 24-hour shift, X posts and sentiment, macro regime and coupling per asset, chart images with detected patterns, indicator table.
-- **Performance:** per agent and per model, score against forward return; results with and without each agent.
-- **Costs:** tokens per model, X reads and posts, fees and borrow, against the monthly budget.
-- **Parameters:** editable and logged, plus pause and kill switch.
+### M8a: public site, dorkbot.dev
 
-Telegram: every trade, PM disagreement, risk stops, errors, daily report at 08:00 Europe/Brussels. Informational only; only the emergency brake asks for action.
+Purpose: dorkbot is openly a bot. The site shows how it trades. It links to @decentradork, and the X bio links back. X posts themselves never contain links.
+
+Hosting
+
+- Static site (Next.js static export) on Cloudflare Pages.
+- Data comes from a sanitized JSON snapshot that dorkbot pushes every 5 minutes to Cloudflare R2 (or a Pages deploy). Nothing on dorkbot is reachable for this.
+- Auto-generated Open Graph image with current performance, so the link renders well on X.
+
+Content
+
+- Performance in % against BTC buy-and-hold and an equal-weight basket, plus drawdown.
+- Stats: number of trades, win rate, profit factor, average holding time.
+- Open trades: asset, direction, entry, leverage, stop, target, time in trade, unrealized % on price and on margin. A trade appears only after its X post.
+- Closed trades: entry, exit, leverage, % on price, % on margin, holding time, and a link to its X thread.
+- Agents: latest score per agent per asset, Claude against GPT, consensus, and short reasons for entering or staying out. Macro regime and tradfi coupling per asset.
+- Leaderboard: which agents and models have measurable value so far.
+- Mode badge: shadow or live. Paper trades are labelled paper.
+
+Never on the public site: amounts, balances, position sizes, costs, API spend, account or subaccount IDs, keys, logs, and raw X posts from other accounts (only labels and summaries).
+
+Safety
+
+- The snapshot is built from an explicit pydantic whitelist schema, never by dumping database rows.
+- Numbers pass the same whitelist as the X poster: prices, leverage, percentages and durations only.
+- A test fails if any forbidden field or amount reaches the snapshot.
+
+Tone and design
+
+- Same voice as the X posts: lowercase, dry, a bit self-deprecating.
+- Mobile-first, dark by default.
+- Footer: "nfa. just a bot trading its own bag." and a link to @decentradork.
+
+### M8b: private admin, admin.dorkbot.dev
+
+Hosting and network
+
+- Served from dorkbot (FastAPI + Next.js), proxied through Cloudflare.
+- Server firewall: 443 only from Cloudflare IP ranges; SSH with key only. No Tailscale.
+
+Auth
+
+- Single user. Strong password (argon2 hash) plus TOTP 2FA.
+- TOTP is asked again for the kill switch, for resuming after the emergency brake, and for every parameter change.
+- Rate limiting and lockout after repeated failures.
+- Session cookies: Secure, HttpOnly, SameSite=Strict, short-lived. CSRF protection.
+- Email the owner on every login from a new IP, every parameter change and every kill-switch action.
+
+Isolation
+
+- The admin runs in its own container with no Bybit key and no trading secrets in its environment.
+- It writes parameter changes and kill-switch requests to the database. The executor applies them only after checking them against hard bounds in code (leverage never above 10, never beyond the AI subaccount limits).
+- A test asserts the admin container has no Bybit credentials.
+
+Content
+
+- Everything the public site hides: amounts, balances, positions in size, costs per model, X reads and posts, fees and borrow interest against the monthly budget.
+- Full decision log with raw agent inputs and outputs.
+- Performance per agent and per model.
+- Parameter editor with change history.
+- Kill switch, and the "resume" action after the emergency brake (the only action the owner ever has to take).
+- Health: scheduler and executor heartbeats, data freshness per source, last backup, days until the Bybit key expires.
+- Audit log of every admin action.
 
 ## 13. Config defaults (`config.toml`)
 
@@ -269,7 +324,7 @@ Each ends with passing tests and a README section. Shadow mode starts at M6 and 
 | M5 | Leverage + risk | All of §8, with unit tests on every formula and limit. |
 | M6 | Executor + shadow | Paper simulator, reconciliation, Telegram, kill switch. Shadow mode starts here. |
 | M7 | X poster | Writer, auditor, number whitelist, templates, threading, delay. Off in shadow by default. |
-| M8 | Dashboard | All screens from §12. |
+| M8 | Public site + admin | M8a public site on dorkbot.dev from a whitelisted snapshot; M8b private admin on admin.dorkbot.dev with 2FA, kill switch, parameters, health. See §12. |
 | M9 | Go-live checker | Automatic go-live per §10, leverage ramp, weight auto-tuning. |
 
 ## 15. Verify during the build

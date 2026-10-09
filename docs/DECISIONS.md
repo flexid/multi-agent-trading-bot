@@ -2,6 +2,11 @@
 
 Newest first. One entry per decision: what was decided, why, and what it rules out.
 
+## 2026-10-09 · M8 split into a public site and a private admin (owner)
+
+SPEC §12 is replaced. M8a is a static public site at dorkbot.dev (Cloudflare Pages) fed by a sanitized JSON snapshot pushed every 5 minutes; it shows performance, trades (after their X post), agent scores and a leaderboard, never amounts, balances, costs, IDs, keys, logs or raw X text. The snapshot is built from a pydantic whitelist and the X poster's number whitelist, with a test that fails on any forbidden field. M8b is a private admin at admin.dorkbot.dev served from dorkbot behind Cloudflare (443 from Cloudflare ranges only, SSH key only, no Tailscale): single user, argon2 password plus TOTP (re-asked for kill switch, resume and parameter changes), lockout, strict cookies, CSRF, email on new-IP login, parameter changes and kill-switch actions. The admin container holds no Bybit key; it writes requests to the database and the executor applies them within hard code bounds.
+Config: `[site]` with the domains and `snapshot_interval_minutes = 5`. Open for M8b: the email provider for the alerts. Rules out: a dashboard reachable on the server without Cloudflare in front; any admin process holding trading secrets.
+
 ## 2026-10-09 · M2 indicators agent: rules fixed, no tuning on the backtest
 
 The indicator rules (EMA stack scaled by ADX, MACD histogram over ATR, RSI momentum with contrarian extremes, OBV confirmation, funding crowding, OI confirmation; weights 0.30/0.20/0.15/0.15/0.10/0.10) are fixed in `app/agents/indicators.py` and were not tuned on the backtest. The backtest over the last 180 days of 4h bars shows no edge (IC ≈ 0, hit rate 42–50%). That is reported, not fixed: tuning rules on the same window would be curve-fitting, and SPEC §10 already handles a worthless agent by driving its weight to 0 during shadow mode. The harness exists so the question gets re-asked on new data every two weeks (SPEC §7 weight tuning).

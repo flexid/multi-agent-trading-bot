@@ -43,6 +43,11 @@ SOL = "$SOL"
 BNB = "$BNB"
 SPX6900 = "$SPX"
 
+[site]                          # M8a public site and M8b admin (SPEC §12)
+public_domain = "dorkbot.dev"
+admin_domain = "admin.dorkbot.dev"
+snapshot_interval_minutes = 5   # sanitized JSON pushed to Cloudflare for the public site
+
 [budget]
 api_usd_per_month = 550         # above this, downgrade models; never stop
 x_reads_per_day = 600
