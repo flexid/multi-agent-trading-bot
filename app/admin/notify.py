@@ -36,6 +36,8 @@ def send(subject: str, body: str) -> bool:
             },
             timeout=15,
         )
+        if r.status_code >= 300:
+            log.error("alert mail refused by Resend (%s): %s", r.status_code, r.text[:200])
         return r.status_code < 300
     if s.smtp_url:
         u = urlparse(s.smtp_url)
