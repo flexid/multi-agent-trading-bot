@@ -2,14 +2,14 @@
 
 An autonomous crypto trader on Bybit EU. Five analysis agents score BTC, ETH, SOL, BNB and SPX6900 every 4 hours; Claude and GPT independently turn those scores into trade proposals; a deterministic risk engine decides, and a separate executor places and manages the orders. Every trade is posted to X.
 
-> **Status:** planning complete, build starting at milestone M0. Nothing runs yet.
+> **Status:** M0 (connectivity) complete, including the live order self-test; see [`docs/M0_REPORT.md`](docs/M0_REPORT.md). M1 (data layer) in progress. No trading logic yet.
 
 ## How it works
 
 ```
 data layer (15 min) → 5 agents → PM 1 + PM 2 → leverage agent → risk engine → executor
                                                                             → X poster
-                                                                            → dashboard / Telegram
+                                                                            → dashboard
 ```
 
 | Layer | What it does |
@@ -36,6 +36,7 @@ data layer (15 min) → 5 agents → PM 1 + PM 2 → leverage agent → risk eng
 | [`CLAUDE.md`](CLAUDE.md) | Rules and conventions for Claude Code |
 | [`docs/SPEC.md`](docs/SPEC.md) | Full build spec and milestones |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Decision log |
+| [`docs/M0_REPORT.md`](docs/M0_REPORT.md) | Connectivity report |
 | [`config.toml`](config.toml) | Bot parameters (the only thing the owner tunes) |
 | [`.env.example`](.env.example) | Required secrets, copy to `.env` |
 
@@ -47,20 +48,36 @@ Prerequisites: Python 3.12 with [uv](https://docs.astral.sh/uv/), Docker with Co
 
 ```bash
 cp .env.example .env    # fill in the keys
-# make targets (up, test, lint, selftest) are added in M0
+uv sync
+make test lint
+make selftest           # read-only checks + paper round-trip
 ```
+
+## M0: connectivity self-test
+
+`make selftest` checks the exchange clock, all five pairs (listing, tick and lot size, liquidity, margin and borrow terms), the API key, account mode, balances, fee rates, a paper round-trip, Polymarket and X. It never sends an order: the Bybit client refuses order calls unless it was built for them.
+
+| Command | What it does |
+| --- | --- |
+| `make selftest` | All read-only checks. The X read costs about $0.06; skip it with `ARGS=--no-x` |
+| `make selftest ARGS="--json logs/selftest.json"` | Same, and saves the results |
+| `make selftest-live CONFIRM=yes` | Also places one minimal post-only order 10% below the bid and cancels it |
+| `make bybit-authorize` | Connects the bot to a Bybit AI Subaccount via OAuth and writes its key into `.env` (`ARGS=--list`, `--use <id>`, `--create`) |
+| `make up` / `make down` | Postgres 16 (used from M1) |
+
+Code: [`app/execution/bybit_client.py`](app/execution/bybit_client.py), [`app/data/polymarket.py`](app/data/polymarket.py), [`app/data/x.py`](app/data/x.py), [`app/selftest.py`](app/selftest.py).
 
 ## Milestones
 
 | # | Milestone | Status |
 | --- | --- | --- |
-| M0 | Connectivity: Bybit EU, Polymarket, X self-tests | next |
+| M0 | Connectivity: Bybit, Polymarket, X self-tests | done |
 | M1 | Data layer and database | – |
 | M2 | Indicators agent and backtest harness | – |
 | M3 | Macro, chart, Polymarket and X agents | – |
 | M4 | Decision layer: two PMs, consensus | – |
 | M5 | Leverage agent and risk engine | – |
-| M6 | Executor, paper simulator, Telegram — shadow mode starts | – |
+| M6 | Executor, paper simulator — shadow mode starts | – |
 | M7 | X poster | – |
 | M8 | Dashboard | – |
 | M9 | Automatic go-live checker, leverage ramp, weight tuning | – |

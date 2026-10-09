@@ -3,7 +3,7 @@
 
 [trading]
 assets = ["BTC", "ETH", "SOL", "BNB", "SPX6900"]
-capital_max_usdc = 0            # owner sets
+capital_max_usdc = 0            # owner sets; counted in the quote coin (USDT)
 live_allowed = false            # owner flips once; go-live itself is automatic (SPEC §10)
 leverage_max = 10
 leverage_max_spx6900 = 3
@@ -18,6 +18,14 @@ drawdown_pause = -0.10
 emergency_brake = -0.25
 depth_cap = 0.05
 cycle_hours = 4
+
+[exchange]
+quote = "USDT"                  # quote coin of every traded pair
+alt_quote = "USDC"              # compared in the self-test report only, never traded
+recv_window_ms = 5000
+
+[exchange.base_coin]            # asset -> exchange base coin, where they differ
+SPX6900 = "SPX"
 
 [posting]
 enabled = true

@@ -2,6 +2,8 @@
 
 Owner: Lex. Status: plan approved, ready to build.
 
+> 2026-10-09: two owner changes override the text below. No Telegram: every mention of it is dropped, the dashboard carries notifications and the kill switch. Quote coin is USDT: read every `…USDC` symbol as `…USDT`. See `docs/DECISIONS.md`.
+
 ## 1. What it is
 
 A fully autonomous trader on Bybit EU for five assets: BTC, ETH, SOL, BNB and SPX6900. Every 4 hours, five analysis agents score each asset. Two LLM portfolio managers (Claude and GPT) independently propose trades. A leverage agent sizes them between 1x and 10x. A deterministic risk engine decides, and a separate executor places and manages the orders. Every executed trade is posted to X (@decentradork) in casual, human language.
@@ -13,6 +15,8 @@ The owner sets parameters once and never reviews or approves anything. The only 
 See `CLAUDE.md` › Non-negotiables. They apply to every milestone.
 
 ## 3. Exchange constraints (Bybit EU)
+
+> 2026-10-09: the owner moved the bot to Bybit global (`https://api.bybit.com`). Host and per-pair facts below are superseded by `docs/DECISIONS.md` and `docs/M0_REPORT.md`; the spot-and-spot-margin scope stands.
 
 - REST base `https://api.bybit.eu`, V5 API. Requests from US IPs return 403, so the server runs in Frankfurt or Amsterdam.
 - Products: spot plus spot margin up to 10x, cross margin only. No perpetuals, no TradFi.

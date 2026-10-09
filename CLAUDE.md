@@ -17,7 +17,7 @@ The full spec is `docs/SPEC.md`. Read it before starting any milestone; it wins 
 
 ## Stack
 
-Python 3.12 managed with uv · pydantic v2 + pydantic-settings · SQLAlchemy 2 + Alembic · Postgres 16 · APScheduler · httpx + websockets · pandas, pandas-ta, mplfinance · anthropic and openai SDKs · FastAPI · Next.js (dashboard) · Docker Compose · Telegram Bot API.
+Python 3.12 managed with uv · pydantic v2 + pydantic-settings · SQLAlchemy 2 + Alembic · Postgres 16 · APScheduler · httpx + websockets · pandas, pandas-ta, mplfinance · anthropic and openai SDKs · FastAPI · Next.js (dashboard) · Docker Compose.
 
 ## Conventions
 
