@@ -29,6 +29,7 @@ Exits never wait for a cycle. The exchange-side backup stop (bot stop ± 0.5 ATR
 | 01:10 daily | backup | `pg_dump`, 14 days, private bucket |
 | 01:30 on the 1st and 15th | weight tuning | only after ≥ 100 closed primary trades |
 | 02:00 on the 1st | cost report | LLM, X, server |
+| Monday 06:00 | weekly memo | the week's facts in code plus model-written proposals, written to `logs/memo-<date>.md` and emailed to the owner; nothing is applied automatically |
 
 ## Changing the pace
 

@@ -90,7 +90,7 @@ Only code-based agents are backtested (SPEC §10). Current result: no measurable
 
 ## M1: data layer
 
-Postgres 16 (`make up`), schema via Alembic (`make migrate`). `make fetch-once` runs every fetch job one time; `make scheduler` runs them every 15 minutes (macro hourly). The full timetable of everything that runs, from the executor's 10-second tick to the monthly cost report, is in [`docs/SCHEDULE.md`](docs/SCHEDULE.md).
+Postgres 16 (`make up`), schema via Alembic (`make migrate`). `make fetch-once` runs every fetch job one time; `make scheduler` runs them every 15 minutes (macro hourly). The full timetable of everything that runs, from the executor's 10-second tick to the Monday improvement memo (`python -m app.memo`, emailed), is in [`docs/SCHEDULE.md`](docs/SCHEDULE.md).
 
 | Source | Stored | Table |
 | --- | --- | --- |

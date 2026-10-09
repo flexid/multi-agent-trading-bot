@@ -108,6 +108,7 @@ class TaskModels(_Section):
     x_sentiment: str
     post_writer: str
     post_auditor: str
+    memo: str = "claude-opus-5-5"  # weekly improvement memo (owner 2026-10-09)
 
 
 class ModelsConfig(TaskModels):

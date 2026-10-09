@@ -139,6 +139,13 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
         max_instances=1,
     )
     scheduler.add_job(
+        ops_job,
+        CronTrigger(day_of_week="mon", hour="6", minute="0"),  # weekly memo, emailed
+        args=["memo", cfg],
+        id="memo",
+        max_instances=1,
+    )
+    scheduler.add_job(
         publish_job,
         CronTrigger(minute=f"*/{cfg.site.snapshot_interval_minutes}", second="40"),
         id="site_snapshot",
@@ -173,6 +180,11 @@ async def ops_job(kind: str, cfg: Config) -> None:
         elif kind == "costs":
             await asyncio.to_thread(ops.write_cost_report)
             log.info("cost report written to logs/costs.md")
+        elif kind == "memo":
+            from app import memo
+
+            path = await memo.build(cfg)
+            log.info("weekly memo written to %s and mailed", path)
     except Exception as exc:
         log.warning("ops job %s failed: %s", kind, exc)
 
