@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <a href="/" className="wordmark"><img src={`/brand/logo-1200.png?v=${V}`} alt="dorkbot" /></a>
           {children}
           <div className="sign-off"><img src={`/brand/avatar-512.png?v=${V}`} alt="" /></div>
-          <footer>nfa. just a dorky bot trading its own bag... · <a href="/disclaimer/" className="neon">terms &amp; disclaimer</a> · <a href="https://x.com/decentradork">@decentradork</a> · <ShareLink /></footer>
+          <footer>nfa. just a dorky bot trading its own bag. · <a href="/disclaimer/" className="neon">terms &amp; disclaimer</a> · <a href="https://x.com/decentradork">@decentradork</a> · <ShareLink /></footer>
         </main>
       </body>
     </html>
