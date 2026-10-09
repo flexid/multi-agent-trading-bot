@@ -42,7 +42,7 @@ function AllTrades({ rows, onClose }: { rows: Closed[]; onClose: () => void }) {
   return (
     <div className="overlay" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="overlay-panel">
-        <div className="overlay-head"><h2>All closed trades ({rows.length}){allPaper(rows) && <span className="badge">paper</span>}</h2><button className="close" onClick={onClose} aria-label="close">✕</button></div>
+        <div className="overlay-head"><h2>All closed trades ({rows.length}){allPaper(rows) && <span className="badge right">paper</span>}</h2><button className="close" onClick={onClose} aria-label="close">✕</button></div>
         <ClosedTable rows={rows.slice(0, shown)} tagRows={!allPaper(rows)} />
         {shown < rows.length && <div ref={sentinel} className="muted small" style={{ padding: 12 }}>loading more…</div>}
       </div>
@@ -80,7 +80,7 @@ export default function Page() {
         <div className="tile"><div className="k">avg holding</div><div className="v">{st.avg_holding ?? "–"}</div></div>
       </div>
       <section className="panel">
-      <h2>Open trades{allPaper(s.open_trades) && <span className="badge">paper</span>}</h2>
+      <h2>Open trades{allPaper(s.open_trades) && <span className="badge right">paper</span>}</h2>
       {s.open_trades.length === 0 ? <p className="muted">Nothing open right now.</p> : (
         <div className="scroll-x"><table className="trades"><thead><tr><th>asset</th><th>side</th><th>entry</th><th>lev</th><th>stop</th><th>target</th><th>in trade</th><th>price</th><th>margin</th></tr></thead><tbody>
           {s.open_trades.map((t, i) => <tr key={i}><td>{tick(t.cashtag)}{!allPaper(s.open_trades) && t.paper && <span className="badge">paper</span>}</td><td><Side d={t.direction} /></td><td className="mono">{num(t.entry)}</td><td>{t.leverage}x</td><td className="mono">{num(t.stop)}</td><td className="mono">{num(t.target)}</td><td>{t.time_in_trade}</td><td className={cls(t.unrealized_price_pct)}>{pct(t.unrealized_price_pct)}</td><td className={cls(t.unrealized_margin_pct)}>{pct(t.unrealized_margin_pct)}</td></tr>)}
@@ -88,7 +88,7 @@ export default function Page() {
       )}
       </section>
       <section className="panel">
-      <h2>Closed trades <span className="muted small">last {Math.min(10, s.closed_trades.length)} of {s.closed_trades.length}</span>{allPaper(s.closed_trades) && <span className="badge">paper</span>}</h2>
+      <h2>Closed trades <span className="muted small">last {Math.min(10, s.closed_trades.length)} of {s.closed_trades.length}</span>{allPaper(s.closed_trades) && <span className="badge right">paper</span>}</h2>
       {s.closed_trades.length === 0 ? <p className="muted">No closed trades yet.</p> : (
         <>
           {s.closed_trades.length >= 5 && (

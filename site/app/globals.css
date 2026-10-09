@@ -53,3 +53,5 @@ button.more { margin-top: 10px; background: #141414; color: var(--fg); border: 1
 .panel > h2 { margin: -14px -16px 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); border-radius: 12px 12px 0 0; background: #121212; }
 .panel table { font-size: 14px; } .panel .best { margin-top: 2px; }
 .sign-off { display: flex; justify-content: center; margin: 72px 0 8px; } .sign-off img { width: 128px; height: 128px; border-radius: 50%; opacity: .9; }
+.panel > h2 { display: flex; align-items: center; gap: 8px; } .panel > h2 .badge.right, .overlay-head h2 .badge.right { margin-left: auto; }
+.overlay-head h2 { display: flex; align-items: center; gap: 8px; flex: 1; }
