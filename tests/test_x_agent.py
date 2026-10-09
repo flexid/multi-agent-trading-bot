@@ -98,3 +98,32 @@ def test_mention_volume_scales_confidence_and_flags_spikes_spx6900_twice_as_much
     )
     # an empty baseline (series too short) changes nothing
     assert xs.aggregate(rows, "BTC", 1, NOW, mentions=(0, 0.0)).evidence == btc_plain.evidence
+
+
+async def test_timeline_pages_follow_the_next_token_and_can_include_replies() -> None:
+    import httpx
+    from pydantic import SecretStr
+
+    from app.data.x import XClient
+
+    seen: list[dict[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        q = dict(request.url.params)
+        seen.append(q)
+        if q.get("pagination_token") == "p2":
+            return httpx.Response(200, json={"data": [{"id": "3", "text": "c"}], "meta": {}})
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"id": "1", "text": "a"}, {"id": "2", "text": "b"}],
+                "meta": {"next_token": "p2"},
+            },
+        )
+
+    async with XClient(SecretStr("t"), transport=httpx.MockTransport(handler)) as x:
+        first, tok = await x.user_timeline_page("u", 5, replies=True)
+        second, tok2 = await x.user_timeline_page("u", 5, replies=True, token=tok)
+    assert [p.id for p in first + second] == ["1", "2", "3"] and tok == "p2" and tok2 is None
+    assert seen[0]["exclude"] == "retweets" and "pagination_token" not in seen[0]
+    assert seen[1].get("pagination_token") == tok  # noqa: S105

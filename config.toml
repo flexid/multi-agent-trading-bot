@@ -88,7 +88,7 @@ admin_domain = "admin.dorkbot.dev"
 snapshot_interval_minutes = 5   # sanitized JSON pushed to Cloudflare for the public site
 
 [budget]
-api_usd_per_month = 550         # above this, downgrade models; never stop
+api_usd_per_month = 250         # owner 2026-10-09; above this, downgrade models; never stop
 x_reads_per_day = 600
 
 [models]                        # all nine IDs verified against both providers on 2026-10-09

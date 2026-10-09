@@ -24,25 +24,35 @@ def load() -> str:
     return FALLBACK
 
 
-async def build(handle: str, count: int = 200) -> str:
-    """Owned reads of the owner's recent posts, summarized into a style profile by the
-    writer model. Costs about count × $0.005 in X reads; run once, re-run rarely."""
+async def build(handle: str, count: int = 200, *, replies: bool = True) -> str:
+    """Owned reads of the owner's recent posts (replies included: that is where the
+    natural voice is, owner 2026-10-09), summarized into a style profile by the writer
+    model. Costs about count × $0.005 in X reads; run once, re-run rarely."""
     from pydantic import BaseModel
 
     from app.config import get_secrets
-    from app.data.x import XClient
+    from app.data.x import XClient, XPost
     from app.llm import complete, load_prompt
 
     class Profile(BaseModel):
         profile: str
 
+    posts: list[XPost] = []
     async with XClient(get_secrets().x_bearer_token) as x:
         user = await x.user_by_username(handle)
-        posts = await x.user_timeline(user.id, min(count, 100))
-        if count > 100:
-            posts += await x.user_timeline(user.id, count - 100)
-    texts = [p.text for p in posts if p.text]
+        token: str | None = None
+        while len(posts) < count:
+            page, token = await x.user_timeline_page(
+                user.id, min(100, count - len(posts)), replies=replies, token=token
+            )
+            posts += page
+            if not page or token is None:
+                break
     archive_posts(handle, posts)
+    # The account now carries the bot's own posts too; those must not teach the writer
+    # its own template back. Only the owner's hand-written posts and replies count.
+    ours = own_post_ids()
+    texts = [p.text for p in posts if p.text and p.id not in ours]
     result = await complete(
         "post_writer",
         Profile,
@@ -51,6 +61,18 @@ async def build(handle: str, count: int = 200) -> str:
     )
     PROFILE.write_text(result.parsed.profile.strip() + "\n")
     return result.parsed.profile
+
+
+def own_post_ids() -> set[str]:
+    """X ids of posts the bot sent itself (x_posts_out), to keep them out of the profile."""
+    from sqlalchemy import select
+
+    from app.db.models import XPostOut
+    from app.db.session import new_session
+
+    with new_session() as session:
+        ids = session.scalars(select(XPostOut.x_id).where(XPostOut.x_id.is_not(None))).all()
+        return {i for i in ids if i}
 
 
 def archive_posts(handle: str, posts: list) -> int:  # type: ignore[type-arg]
@@ -86,5 +108,5 @@ def archive_posts(handle: str, posts: list) -> int:  # type: ignore[type-arg]
 if __name__ == "__main__":
     from app.config import get_config
 
-    print(asyncio.run(build(get_config().posting.handle)))
+    print(asyncio.run(build(get_config().posting.handle, replies="--no-replies" not in sys.argv)))
     sys.exit(0)

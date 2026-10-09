@@ -7,10 +7,10 @@ const OG = SNAP.replace(/snapshot\.json$/, "og.png");
 const V = "6d8a4f25"; // brand asset version: bumps when assets/ change
 
 export const metadata: Metadata = {
-  title: "dorkbot",
+  title: "dorkbot - by @decentradork - nfa",
   description: "A bot trading its own bag on Bybit. Every trade posted to X.",
   icons: { icon: `/brand/favicon-32.png?v=${V}`, apple: `/brand/apple-touch-icon.png?v=${V}` },
-  openGraph: { title: "dorkbot", description: "A bot trading its own bag.", images: [{ url: OG }] },
+  openGraph: { title: "dorkbot - by @decentradork - nfa", description: "A bot trading its own bag.", images: [{ url: OG }] },
   twitter: { card: "summary_large_image", site: "@decentradork", images: [OG] },
 };
 
