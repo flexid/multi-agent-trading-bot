@@ -162,9 +162,10 @@ def _pct_curve(cfg: Config, s: Any, since: datetime) -> tuple[list[list[float]],
         .where(EquitySnapshot.mode == "paper:primary", EquitySnapshot.ts >= since)
         .order_by(EquitySnapshot.ts)
     ).all()
+    rows = [r for r in rows if float(r.equity) > 0]  # skip pre-funding zero snapshots
     if not rows:
         return [], 0.0, 0.0
-    base = float(rows[0].equity) or 1.0
+    base = float(rows[0].equity)
     curve, peak, dd = [], -1e9, 0.0
     for i, r in enumerate(rows):
         pct = (float(r.equity) / base - 1) * 100
