@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import ShareLink from "./share";
 
 const SNAP = process.env.NEXT_PUBLIC_SNAPSHOT_URL ?? "/data/snapshot.json";
 const OG = SNAP.replace(/snapshot\.json$/, "og.png");
@@ -21,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <header><a href="/"><img className="avatar" src={`/brand/avatar-96.png?v=${V}`} alt="" /></a><nav><a href="/">Overview</a><a href="/agents/">Agents</a></nav><a className="handle" href="https://x.com/decentradork">@decentradork</a></header>
           <a href="/" className="wordmark"><img src={`/brand/logo-1200.png?v=${V}`} alt="dorkbot" /></a>
           {children}
-          <footer>nfa. just a bot trading its own bag. · <a href="https://x.com/decentradork">@decentradork</a></footer>
+          <footer>nfa. just a bot trading its own bag. · <a href="https://x.com/decentradork">@decentradork</a> · <ShareLink /></footer>
         </main>
       </body>
     </html>

@@ -22,3 +22,15 @@ export async function loadSnapshot(): Promise<Snapshot | null> {
 export const pct = (x: number | null | undefined, d = 1) => (x == null ? "–" : `${x > 0 ? "+" : ""}${x.toFixed(d)}%`);
 export const cls = (x: number | null | undefined) => (x == null ? "" : x >= 0 ? "up" : "down");
 export const num = (x: number) => x.toLocaleString("en-US", { maximumFractionDigits: 4 });
+
+export async function shareUrl(): Promise<string> {
+  // WhatsApp and X cache link previews per URL, so the share link carries the current
+  // content hash of the preview image; a new hash means a fresh preview.
+  try {
+    const r = await fetch(`${SNAPSHOT_URL.replace(/snapshot\.json$/, "og-latest.json")}?t=${Math.floor(Date.now() / 60000)}`, { cache: "no-store" });
+    const j = r.ok ? ((await r.json()) as { stamp?: string }) : {};
+    return `https://dorkbot.dev/?s=${j.stamp ?? Date.now().toString(36)}`;
+  } catch {
+    return `https://dorkbot.dev/?s=${Date.now().toString(36)}`;
+  }
+}
