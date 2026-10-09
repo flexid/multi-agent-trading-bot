@@ -52,8 +52,6 @@ def test_caps_take_the_lowest() -> None:
 
 
 def test_disagreement_or_low_conviction_means_1x_no_borrow() -> None:
-    r = lev.compute(inputs(agreement=Agreement.PARTIAL))
-    assert r.leverage == D(1) and not r.borrow_allowed
     r = lev.compute(inputs(conviction=D("0.49")))
     assert r.leverage == D(1) and not r.borrow_allowed
     assert lev.compute(inputs(conviction=D("0.5"))).borrow_allowed
@@ -69,10 +67,10 @@ def test_liquidation_buffer_three_times_stop() -> None:
     assert lev.liquidation_buffer_ok(D(5), D("0.01"))  # liq 15% away ≥ 3%
     assert not lev.liquidation_buffer_ok(D(10), D("0.02"))  # liq 5% away < 6%
     assert lev.reduce_for_liquidation(D(10), D("0.02")) == D(9)  # first step where 1/L − 5% ≥ 6%
-    assert lev.reduce_for_liquidation(D(10), D("0.04")) == D(
-        "5.5"
-    )  # needs ≥ 12%: 1/5.5 − 5% = 13.2%
-    assert lev.reduce_for_liquidation(D(1), D("0.5")) == D(1)
+    assert lev.reduce_for_liquidation(D(10), D("0.04")) == D(6)  # needs ≥ 12%: 6x gives 12.4%
+    assert lev.liquidation_distance(D(5)) == pytest.approx(D("0.159"), abs=D("0.001"))
+    assert lev.liquidation_distance(D(4), short=True) == pytest.approx(D("0.2136"), abs=D("0.001"))
+    assert lev.liquidation_distance(D(1)) == D(1)
 
 
 # --- engine -----------------------------------------------------------------------
@@ -225,8 +223,8 @@ def test_capital_max_and_half_risk_bound_the_margin() -> None:
     assert half.plan is not None and half.plan.notional < capped.plan.notional
 
 
-def test_partial_agreement_trades_at_1x_without_borrow() -> None:
-    a = engine.assess(cons(agreement=Agreement.PARTIAL), account(), market(), limits())
+def test_low_conviction_long_trades_at_1x_without_borrow() -> None:
+    a = engine.assess(cons(conviction=0.4), account(), market(), limits())
     assert a.allowed and a.plan is not None
     assert a.plan.leverage == D("1.0") and not a.plan.borrow
 

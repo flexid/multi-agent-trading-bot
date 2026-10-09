@@ -1,4 +1,5 @@
-# M0 only needs Postgres; app services are added per milestone.
+# Local: `make up` starts Postgres only. Server: `docker compose --profile bot up -d` runs
+# everything. The executor is its own process (non-negotiable 3).
 services:
   postgres:
     image: postgres:16
@@ -15,3 +16,41 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+
+  migrate:
+    profiles: ["bot"]
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://bot:bot@postgres:5432/bot
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  scheduler:
+    profiles: ["bot"]
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://bot:bot@postgres:5432/bot
+    command: ["python", "-m", "app.scheduler"]
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  executor:
+    profiles: ["bot"]
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://bot:bot@postgres:5432/bot
+    command: ["python", "-m", "app.execution.executor"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped

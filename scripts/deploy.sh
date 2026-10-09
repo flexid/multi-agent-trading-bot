@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Deploy to the droplet: sync the repo and .env, build, migrate, start scheduler + executor.
+#   scripts/deploy.sh [root@164.90.211.109]
+set -euo pipefail
+HOST="${1:-root@164.90.211.109}"
+DIR=/opt/dorkbot
+cd "$(dirname "$0")/.."
+ssh "$HOST" 'command -v docker >/dev/null || (curl -fsSL https://get.docker.com | sh); mkdir -p '"$DIR"
+rsync -az --delete --exclude .git --exclude .venv --exclude pgdata --exclude logs --exclude '.env*' \
+  --exclude __pycache__ --exclude .pytest_cache --exclude .mypy_cache --exclude .ruff_cache \
+  ./ "$HOST:$DIR/"
+scp -q .env "$HOST:$DIR/.env"
+ssh "$HOST" "chmod 600 $DIR/.env && cd $DIR && docker compose --profile bot build -q && docker compose --profile bot up -d && docker compose --profile bot ps"

@@ -80,24 +80,57 @@ def compute(inp: LeverageInputs) -> LeverageResult:
     return LeverageResult(base=base, leverage=leverage, borrow_allowed=borrow_allowed, caps=applied)
 
 
-def liquidation_buffer_ok(
-    leverage: Decimal, stop_distance: Decimal, maintenance_margin: Decimal = Decimal("0.05")
-) -> bool:
-    """Liquidation must sit at least 3× the stop distance away (§8).
+def liquidation_distance(
+    leverage: Decimal,
+    *,
+    short: bool = False,
+    collateral_ratio: Decimal = Decimal("0.98"),
+    maintenance_rate: Decimal = Decimal("0.03"),
+) -> Decimal:
+    """Distance to liquidation as a fraction of entry, Bybit cross-margin rule per position.
 
-    Cross-margin liquidation distance ≈ 1/L − maintenance margin, as a fraction of price.
+    Long with leverage L: margin 1/L of notional, borrowed (L−1)/L; liquidation when
+    c·P/P0 ≤ (L−1)/L·(1+mm). Short: liquidation when 1/L + 1 ≤ P/P0·(1+mm).
     """
-    if leverage <= 1:
-        return True
-    liq_distance = ONE / leverage - maintenance_margin
-    return liq_distance >= 3 * stop_distance
+    if leverage <= 1 and not short:
+        return ONE  # nothing borrowed: cannot be liquidated
+    if short:
+        return (ONE + ONE / leverage) / (ONE + maintenance_rate) - ONE
+    borrowed = (leverage - ONE) / leverage
+    return ONE - borrowed * (ONE + maintenance_rate) / collateral_ratio
+
+
+def liquidation_buffer_ok(
+    leverage: Decimal,
+    stop_distance: Decimal,
+    *,
+    short: bool = False,
+    collateral_ratio: Decimal = Decimal("0.98"),
+    maintenance_rate: Decimal = Decimal("0.03"),
+) -> bool:
+    """Liquidation must sit at least 3× the stop distance away (§8)."""
+    dist = liquidation_distance(
+        leverage, short=short, collateral_ratio=collateral_ratio, maintenance_rate=maintenance_rate
+    )
+    return dist >= 3 * stop_distance
 
 
 def reduce_for_liquidation(
-    leverage: Decimal, stop_distance: Decimal, maintenance_margin: Decimal = Decimal("0.05")
+    leverage: Decimal,
+    stop_distance: Decimal,
+    *,
+    short: bool = False,
+    collateral_ratio: Decimal = Decimal("0.98"),
+    maintenance_rate: Decimal = Decimal("0.03"),
 ) -> Decimal:
     """Lower leverage in 0.5 steps until the liquidation buffer holds; never below 1."""
     lev = leverage
-    while lev > ONE and not liquidation_buffer_ok(lev, stop_distance, maintenance_margin):
+    while lev > ONE and not liquidation_buffer_ok(
+        lev,
+        stop_distance,
+        short=short,
+        collateral_ratio=collateral_ratio,
+        maintenance_rate=maintenance_rate,
+    ):
         lev = max(ONE, lev - Decimal("0.5"))
     return lev

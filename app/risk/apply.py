@@ -21,7 +21,10 @@ from app.db.models import (
     AccountSnapshot,
     AgentOutputRecord,
     DecisionRecord,
+    MacroObservation,
     OrderBookSnapshot,
+    PaperAccount,
+    Position,
     RiskRuleHit,
     RiskState,
 )
@@ -33,7 +36,7 @@ from app.risk import engine
 def limits_from_config(cfg: Config) -> engine.Limits:
     t = cfg.trading
     return engine.Limits(
-        capital_max=t.capital_max_usdc,
+        capital_max=t.capital_max_usdt,
         risk_per_trade=t.risk_per_trade,
         capital_share=t.capital_share_per_asset,
         leverage_max=Decimal(t.leverage_max),
@@ -61,9 +64,14 @@ def account_state(session: Session, cfg: Config, mode: str, now: datetime) -> en
         snap = session.execute(
             select(AccountSnapshot).order_by(AccountSnapshot.ts.desc()).limit(1)
         ).scalar_one_or_none()
-        equity = Decimal(str(snap.total_equity or 0)) if snap else Decimal(0)
+        exchange_equity = Decimal(str(snap.total_equity or 0)) if snap else Decimal(0)
+        # Live: start at 10% of capital_max, never beyond what the subaccount actually holds.
+        equity = min(
+            exchange_equity, cfg.trading.capital_max_usdt * cfg.trading.live_start_fraction
+        )
     else:
-        equity = cfg.trading.capital_max_usdc  # paper equity until the simulator (M6) tracks it
+        paper = session.get(PaperAccount, 1)
+        equity = paper.equity if paper and paper.equity > 0 else cfg.trading.capital_max_usdt
     peak = max(state.peak_equity or Decimal(0), equity)
     if state.peak_equity != peak:
         state.peak_equity, state.updated_at = peak, now
@@ -76,22 +84,55 @@ def account_state(session: Session, cfg: Config, mode: str, now: datetime) -> en
             .group_by(DecisionRecord.asset)
         ).all()
     )
-    ceiling = state.leverage_ceiling if mode == "live" else Decimal(cfg.trading.leverage_max)
+    ceiling = state.leverage_ceiling  # primary track follows live rules in shadow too (owner)
+    paper = session.get(PaperAccount, 1)
+    day_pnl = day_high = Decimal(0)
+    if paper and paper.day_start_equity > 0:
+        day_pnl = paper.equity / paper.day_start_equity - 1
+        day_high = paper.day_high_equity / paper.day_start_equity - 1
+    gross = Decimal(
+        str(
+            session.execute(
+                select(func.coalesce(func.sum(Position.notional), 0)).where(
+                    Position.status == "open"
+                )
+            ).scalar_one()
+        )
+    )
+    starting = state.starting_capital or (paper.starting_capital if paper else None)
     return engine.AccountState(
         equity=equity,
-        starting_capital=state.starting_capital,
+        starting_capital=starting if starting and starting > 0 else None,
         peak_equity=peak,
-        day_pnl_pct=Decimal(0),  # from the simulator / fills (M6)
-        day_high_pnl_pct=Decimal(0),
-        gross_exposure=Decimal(0),  # from positions (M6)
+        day_pnl_pct=day_pnl,
+        day_high_pnl_pct=day_high,
+        gross_exposure=gross,
         trades_today={k: int(v) for k, v in opened_today.items()},
-        losing_days_in_row=0,
+        losing_days_in_row=losing_days_in_row(session, now),
         paused_until=state.paused_until,
         pause_count_30d=state.pause_count_30d,
         emergency_brake=state.emergency_brake,
         half_risk=bool(state.half_risk_until and state.half_risk_until > now),
         leverage_ceiling=ceiling,
     )
+
+
+def losing_days_in_row(session: Session, now: datetime) -> int:
+    """Consecutive calendar days (before today) with negative realized P&L."""
+    day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    streak = 0
+    for i in range(1, 8):
+        start, end = day - timedelta(days=i), day - timedelta(days=i - 1)
+        pnl = session.execute(
+            select(func.coalesce(func.sum(Position.pnl), 0)).where(
+                Position.status == "closed", Position.closed_at >= start, Position.closed_at < end
+            )
+        ).scalar_one()
+        if Decimal(str(pnl)) < 0:
+            streak += 1
+        else:
+            break
+    return streak
 
 
 def market_state(
@@ -104,11 +145,12 @@ def market_state(
         .order_by(OrderBookSnapshot.ts.desc())
         .limit(1)
     ).scalar_one_or_none()
-    depth = Decimal(0)
+    depth, truncated = Decimal(0), True
     if book is not None:
         depth = Decimal(
             str(book.depth_ask_2pct if direction is Direction.LONG else book.depth_bid_2pct)
         )
+        truncated = bool(book.depth_truncated)
     flags = session.execute(
         select(
             AgentOutputRecord.agent, AgentOutputRecord.risk_flags, AgentOutputRecord.evidence
@@ -124,17 +166,52 @@ def market_state(
     except (IndexError, ValueError):
         coupling = 0.0
     fees = cfg_fee(cfg)
+    borrow_rate, collateral_ratio = margin_terms(session, cfg.base_coin(asset))
     return engine.MarketState(
         depth_quote_2pct=depth,
+        depth_truncated=truncated,
         atr_extreme=atr_extreme,
         event_today=event_today(now),
         risk_off_coupled=risk_off and coupling > 0.5,
         fng_extreme=fng_extreme,
         taker_fee=fees,
-        hourly_borrow_rate=Decimal("0.000005"),  # refreshed from the exchange in M6
-        margin_enabled=True,  # USDT pairs all have margin (M0 report); verified in M6
+        hourly_borrow_rate=borrow_rate,
+        margin_enabled=True,  # all USDT pairs have margin (M0 report); the executor re-checks
         short_allowed=cfg.trading.short_allowed,
+        collateral_ratio=collateral_ratio,
+        maintenance_rate=cfg.risk.maintenance_margin_rate,
     )
+
+
+def _plan_dict(p: engine.TradePlan) -> dict[str, Any]:
+    return {
+        "entry": str(p.entry),
+        "stop": str(p.stop),
+        "target": str(p.target),
+        "max_hold_hours": p.max_hold_hours,
+        "leverage": str(p.leverage),
+        "borrow": p.borrow,
+        "notional": str(p.notional),
+        "margin": str(p.margin),
+    }
+
+
+def margin_terms(session: Session, coin: str) -> tuple[Decimal, Decimal]:
+    """Latest hourly borrow rate and collateral ratio stored by the executor's refresh."""
+    row = session.execute(
+        select(MacroObservation.value, MacroObservation.date)
+        .where(MacroObservation.series == f"BORROW_{coin}")
+        .order_by(MacroObservation.date.desc())
+        .limit(1)
+    ).first()
+    cr = session.execute(
+        select(MacroObservation.value)
+        .where(MacroObservation.series == f"COLLATERAL_{coin}")
+        .order_by(MacroObservation.date.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    rate = Decimal(str(row.value)) if row else Decimal("0.000005")
+    return rate, Decimal(str(cr)) if cr is not None else Decimal("0.98")
 
 
 def cfg_fee(cfg: Config) -> Decimal:
@@ -161,6 +238,8 @@ def apply_risk(
     now = now or datetime.now(UTC)
     lim = limits_from_config(cfg)
     acct = account_state(session, cfg, mode, now)
+    # Comparison track (shadow only): same rules with the ceiling at leverage_max.
+    acct_max = engine.AccountState(**{**acct.__dict__, "leverage_ceiling": lim.leverage_max})
     account_hits = engine.account_rules(acct, lim, now)
     state = risk_state(session)
     for h in account_hits:
@@ -189,11 +268,18 @@ def apply_risk(
         mkt = market_state(session, cfg, d.asset, cycle_id, now, c.direction)
         a = engine.assess(c, acct, mkt, lim, account_hits=account_hits)
         out[d.asset] = a
+        a_max = (
+            engine.assess(c, acct_max, mkt, lim, account_hits=account_hits)
+            if mode != "live"
+            else None
+        )
         hits: list[dict[str, Any]] = [
             {"rule": h.rule, "detail": h.detail, "effect": h.effect} for h in a.hits
         ]
         d.risk_rule_hits = hits
         d.action = "open" if a.allowed else "none"
+        if a_max is not None and a_max.plan is not None:
+            d.proposal = {**(d.proposal or {}), "plan_max": _plan_dict(a_max.plan)}
         if a.plan is not None:
             d.proposal = {
                 **(d.proposal or {}),

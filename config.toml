@@ -3,7 +3,8 @@
 
 [trading]
 assets = ["BTC", "ETH", "SOL", "BNB", "SPX6900"]
-capital_max_usdc = 0            # owner sets; counted in the quote coin (USDT)
+capital_max_usdt = 10000        # paper equity in shadow; live starts at live_start_fraction of it
+live_start_fraction = 0.10      # and never sizes beyond actual subaccount equity
 live_allowed = false            # owner flips once; go-live itself is automatic (SPEC §10)
 leverage_max = 10
 leverage_max_spx6900 = 3
@@ -44,13 +45,31 @@ SOL = "$SOL"
 BNB = "$BNB"
 SPX6900 = "$SPX"
 
+[risk]
+# Bybit UTA cross-margin liquidation: collateral is haircut by the coin's collateral ratio
+# (from the API) and liabilities carry the maintenance margin rate. The rate is not exposed
+# by the API; 0.03 is the documented spot-margin figure, to be confirmed in the live
+# self-test (M9). See DECISIONS.
+maintenance_margin_rate = 0.03
+
 [agents.macro]                  # crypto-native weights, set from app/backtest_native.py (see DECISIONS)
 fng_weight = 0.25               # Fear & Greed, contrarian at extremes; also a risk flag
 dominance_weight = 0.0          # BTC dominance tilt: logged only until real dominance history exists
 
 [x]                             # X sentiment agent (SPEC §6)
-# Curated accounts, handles without "@". Placeholder until the owner supplies the list.
-accounts = ["decentradork"]
+# Curated accounts, handles without "@". Owner's list (2026-10-09), duplicates removed.
+accounts = [
+  "decentradork", "DrProfitCrypto", "MustStopMurad", "trader1sz", "MerlijnTrader", "Exitpump",
+  "benjamincowen", "CryptoCapo_", "Rektcapital", "Durov", "CryptoMichNL", "Duonine", "Devchart",
+  "Quintenfrancois", "Murocrypto", "VitalikButerin", "saylor", "cz_binance", "brian_armstrong",
+  "APompliano", "balajis", "LynAldenContact", "RaoulGMI", "CryptoHayes", "woonomic",
+  "100trillionUSD", "WClementeIII", "nic__carter", "lopp", "danheld", "zachxbt", "lookonchain",
+  "glassnode", "cryptoquant_com", "WuBlockchain", "tier10k", "EleanorTerrett", "hasufl", "cobie",
+  "ali_charts", "scottmelker", "CarpeNoctom", "TechDev_52", "sassal0x", "DefiIgnas",
+  "DocumentingBTC", "BTC_Archive", "MartyBent", "Gladstein", "natbrunell", "EricBalchunas",
+  "JSeyff", "Checkmatey", "MessariCrypto", "ErikVoorhees", "PeterLBrandt", "hsakatrades",
+  "spencernoon", "santiagoroel", "BittelJulien", "EmberCN", "Morecryptoonl", "punk9059",
+]
 search_per_asset = 20           # posts per asset per cycle from recent search
 reads_per_cycle_max = 90        # hard cap per 4h cycle; 6 cycles ≈ 540 of the 600/day budget
 

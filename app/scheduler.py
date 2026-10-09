@@ -26,6 +26,7 @@ def jobs(cfg: Config, secrets: Secrets) -> dict[str, fetch.Fetcher]:
         "bybit.books": fetch.make_fetch_books(cfg, secrets),
         "bybit.account": fetch.make_fetch_account(cfg, secrets),
         "bybit_global.perps": fetch.make_fetch_perps(cfg),
+        "bybit.margin_terms": fetch.make_fetch_margin_terms(cfg, secrets),
         "polymarket": fetch.make_fetch_polymarket(),
         "macro.fred": fetch.make_fetch_macro(secrets),
         "macro.gold_stables": fetch.make_fetch_gold_stables(),
@@ -40,8 +41,52 @@ async def run_all(cfg: Config, secrets: Secrets) -> dict[str, bool]:
     return results
 
 
+async def cycle_job(cfg: Config, kind: str = "scheduled", trigger: str | None = None) -> None:
+    from app.decision.cycle import run_cycle
+
+    await run_cycle(cfg, kind=kind, trigger=trigger)
+
+
+async def map_job() -> None:
+    from app.agents.polymarket_map import map_unmapped
+
+    n = await map_unmapped()
+    log.info("polymarket mapper stored %d markets", n)
+
+
+async def trigger_job(cfg: Config) -> None:
+    from app import triggers
+    from app.db.session import new_session
+
+    with new_session() as session:
+        reason = triggers.check(session, cfg)
+    if reason:
+        log.info("triggered cycle: %s", reason)
+        await cycle_job(cfg, kind="triggered", trigger=reason)
+
+
 async def serve(cfg: Config, secrets: Secrets) -> None:
     scheduler = AsyncIOScheduler(timezone="UTC")
+    scheduler.add_job(
+        cycle_job,
+        CronTrigger(hour=f"*/{cfg.trading.cycle_hours}", minute="2"),
+        args=[cfg],
+        id="cycle",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=600,
+    )
+    scheduler.add_job(
+        map_job, CronTrigger(hour="2", minute="30"), id="polymarket_map", max_instances=1
+    )
+    scheduler.add_job(
+        trigger_job,
+        CronTrigger(minute="3,18,33,48"),
+        args=[cfg],
+        id="triggers",
+        max_instances=1,
+        coalesce=True,
+    )
     for name, fetcher in jobs(cfg, secrets).items():
         # Macro data moves daily; the rest every 15 minutes, 20 s after the candle close.
         trigger = (
@@ -58,10 +103,22 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
             coalesce=True,
             misfire_grace_time=120,
         )
+    scheduler.add_job(heartbeat_job, CronTrigger(second="30"), id="heartbeat", max_instances=1)
     scheduler.start()
     log.info("scheduler started with %d jobs", len(scheduler.get_jobs()))
     await run_all(cfg, secrets)  # fill the tables right away
     await asyncio.Event().wait()
+
+
+async def heartbeat_job() -> None:
+    from datetime import UTC, datetime
+
+    from app.db.models import Heartbeat
+    from app.db.session import new_session
+
+    with new_session() as session:
+        session.merge(Heartbeat(process="scheduler", ts=datetime.now(UTC), detail="ok"))
+        session.commit()
 
 
 def main(argv: list[str] | None = None) -> int:

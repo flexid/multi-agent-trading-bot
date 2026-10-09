@@ -2,7 +2,7 @@
 
 An autonomous crypto trader on Bybit EU. Five analysis agents score BTC, ETH, SOL, BNB and SPX6900 every 4 hours; Claude and GPT independently turn those scores into trade proposals; a deterministic risk engine decides, and a separate executor places and manages the orders. Every trade is posted to X.
 
-> **Status:** M0 (connectivity) complete, including the live order self-test; see [`docs/M0_REPORT.md`](docs/M0_REPORT.md). M5 (leverage agent and risk engine) complete: every cycle ends with sized, rule-checked plans. No execution yet.
+> **Status:** M0 (connectivity) complete, including the live order self-test; see [`docs/M0_REPORT.md`](docs/M0_REPORT.md). M6 complete: shadow mode is running on the server (paper trades on two tracks). Live trading waits for the go-live checker (M9).
 
 ## How it works
 
@@ -36,7 +36,7 @@ data layer (15 min) → 5 agents → PM 1 + PM 2 → leverage agent → risk eng
 | [`CLAUDE.md`](CLAUDE.md) | Rules and conventions for Claude Code |
 | [`docs/SPEC.md`](docs/SPEC.md) | Full build spec and milestones |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Decision log |
-| [`docs/M0_REPORT.md`](docs/M0_REPORT.md), [`docs/M1_REPORT.md`](docs/M1_REPORT.md), [`docs/M2_REPORT.md`](docs/M2_REPORT.md), [`docs/M3_REPORT.md`](docs/M3_REPORT.md), [`docs/M4_REPORT.md`](docs/M4_REPORT.md), [`docs/M5_REPORT.md`](docs/M5_REPORT.md) | Milestone reports: what works, what doesn't, what the owner must provide |
+| [`docs/M0_REPORT.md`](docs/M0_REPORT.md), [`docs/M1_REPORT.md`](docs/M1_REPORT.md), [`docs/M2_REPORT.md`](docs/M2_REPORT.md), [`docs/M3_REPORT.md`](docs/M3_REPORT.md), [`docs/M4_REPORT.md`](docs/M4_REPORT.md), [`docs/M5_REPORT.md`](docs/M5_REPORT.md), [`docs/M6_REPORT.md`](docs/M6_REPORT.md) | Milestone reports: what works, what doesn't, what the owner must provide |
 | [`config.toml`](config.toml) | Bot parameters (the only thing the owner tunes) |
 | [`.env.example`](.env.example) | Required secrets, copy to `.env` |
 
@@ -53,17 +53,21 @@ make test lint
 make selftest           # read-only checks + paper round-trip
 ```
 
+## M6: executor and shadow mode
+
+The executor ([`app/execution/executor.py`](app/execution/executor.py)) is its own process: it opens paper positions for sized decisions through an order gateway ([`gateway.py`](app/execution/gateway.py)) and enforces stops, targets, trailing stops, time-stops and liquidation in code ([`simulator.py`](app/execution/simulator.py)). Two shadow tracks (live rules vs `leverage_max`), kill switch (`make kill`), heartbeats, equity snapshots. `make deploy` runs everything on the droplet with Docker Compose. Details and the seven failure-mode tests in [`docs/M6_REPORT.md`](docs/M6_REPORT.md).
+
 ## M5: leverage agent and risk engine
 
-Pure functions in [`app/risk/leverage.py`](app/risk/leverage.py) (base formula and the caps table of SPEC §8, LLM may only lower) and [`app/risk/engine.py`](app/risk/engine.py) (account limits, per-trade gates, cost rule, depth and exposure caps, liquidation buffer). [`app/risk/apply.py`](app/risk/apply.py) runs them at the end of each cycle and writes rule hits and the action to `decisions`. Details in [`docs/M5_REPORT.md`](docs/M5_REPORT.md).
+Pure functions in [`app/risk/leverage.py`](app/risk/leverage.py) (base formula and the caps table of SPEC §8, LLM may only lower) and [`app/risk/engine.py`](app/risk/engine.py) (account limits, per-trade gates, cost rule, depth and exposure caps, liquidation buffer). [`app/risk/apply.py`](app/risk/apply.py) runs them at the end of each cycle and writes rule hits and the action to `decisions`. Details in [`docs/M5_REPORT.md`](docs/M5_REPORT.md), [`docs/M6_REPORT.md`](docs/M6_REPORT.md).
 
 ## M4: decision layer
 
-`python -m app.decision.cycle` runs one cycle: the five agents in parallel, the evidence pack ([`app/decision/evidence.py`](app/decision/evidence.py)), both PMs on the same pack ([`pm.py`](app/decision/pm.py), prompt [`app/prompts/pm.md`](app/prompts/pm.md)), formula anchor and consensus ([`consensus.py`](app/decision/consensus.py)), all logged to `cycles`, `agent_outputs`, `pm_proposals` and `decisions`. Rules: fewer than 3 valid agents or any PM failure → no trade; opposite directions → no trade; one PM flat → trade marked partial (1x, no borrowing in M5); consensus clamped to formula ± 0.4. Details in [`docs/M4_REPORT.md`](docs/M4_REPORT.md), [`docs/M5_REPORT.md`](docs/M5_REPORT.md).
+`python -m app.decision.cycle` runs one cycle: the five agents in parallel, the evidence pack ([`app/decision/evidence.py`](app/decision/evidence.py)), both PMs on the same pack ([`pm.py`](app/decision/pm.py), prompt [`app/prompts/pm.md`](app/prompts/pm.md)), formula anchor and consensus ([`consensus.py`](app/decision/consensus.py)), all logged to `cycles`, `agent_outputs`, `pm_proposals` and `decisions`. Rules: fewer than 3 valid agents or any PM failure → no trade; opposite directions → no trade; one PM flat → trade marked partial (1x, no borrowing in M5); consensus clamped to formula ± 0.4. Details in [`docs/M4_REPORT.md`](docs/M4_REPORT.md), [`docs/M5_REPORT.md`](docs/M5_REPORT.md), [`docs/M6_REPORT.md`](docs/M6_REPORT.md).
 
 ## M3: LLM layer and agents
 
-Every model call goes through [`app/llm/`](app/llm/): model from `config.toml`, provider by prefix, pydantic-validated output, versioned prompts in [`app/prompts/`](app/prompts/), one retry then fail closed, and a row in `llm_calls` with tokens and cost. Agents: macro ([`app/agents/macro.py`](app/agents/macro.py)), chart patterns ([`chart_patterns.py`](app/agents/chart_patterns.py)), Polymarket ([`polymarket.py`](app/agents/polymarket.py) + daily [`polymarket_map.py`](app/agents/polymarket_map.py)), X sentiment ([`x_sentiment.py`](app/agents/x_sentiment.py)). Runners: `python -m app.agents.run_<name>`. Details and live costs in [`docs/M3_REPORT.md`](docs/M3_REPORT.md), [`docs/M4_REPORT.md`](docs/M4_REPORT.md), [`docs/M5_REPORT.md`](docs/M5_REPORT.md).
+Every model call goes through [`app/llm/`](app/llm/): model from `config.toml`, provider by prefix, pydantic-validated output, versioned prompts in [`app/prompts/`](app/prompts/), one retry then fail closed, and a row in `llm_calls` with tokens and cost. Agents: macro ([`app/agents/macro.py`](app/agents/macro.py)), chart patterns ([`chart_patterns.py`](app/agents/chart_patterns.py)), Polymarket ([`polymarket.py`](app/agents/polymarket.py) + daily [`polymarket_map.py`](app/agents/polymarket_map.py)), X sentiment ([`x_sentiment.py`](app/agents/x_sentiment.py)). Runners: `python -m app.agents.run_<name>`. Details and live costs in [`docs/M3_REPORT.md`](docs/M3_REPORT.md), [`docs/M4_REPORT.md`](docs/M4_REPORT.md), [`docs/M5_REPORT.md`](docs/M5_REPORT.md), [`docs/M6_REPORT.md`](docs/M6_REPORT.md).
 
 ## M2: indicators agent and backtest
 
@@ -74,7 +78,7 @@ Deterministic scores from fixed rules on closed candles ([`app/agents/indicators
 | `make indicators` | Scores all five assets from the stored 4h candles and perp metrics |
 | `make backtest ARGS="--interval 240 --days 180"` | IC, hit rate and top-minus-bottom-quintile spread of the score against 4h, 1d and 3d forward returns |
 
-Only code-based agents are backtested (SPEC §10). Current result: no measurable edge over the last 180 days; see [`docs/M2_REPORT.md`](docs/M2_REPORT.md), [`docs/M3_REPORT.md`](docs/M3_REPORT.md), [`docs/M4_REPORT.md`](docs/M4_REPORT.md), [`docs/M5_REPORT.md`](docs/M5_REPORT.md).
+Only code-based agents are backtested (SPEC §10). Current result: no measurable edge over the last 180 days; see [`docs/M2_REPORT.md`](docs/M2_REPORT.md), [`docs/M3_REPORT.md`](docs/M3_REPORT.md), [`docs/M4_REPORT.md`](docs/M4_REPORT.md), [`docs/M5_REPORT.md`](docs/M5_REPORT.md), [`docs/M6_REPORT.md`](docs/M6_REPORT.md).
 
 ## M1: data layer
 
@@ -114,7 +118,7 @@ Code: [`app/execution/bybit_client.py`](app/execution/bybit_client.py), [`app/da
 | M3 | LLM layer; macro, chart, Polymarket and X agents | done |
 | M4 | Decision layer: two PMs, consensus | done |
 | M5 | Leverage agent and risk engine | done |
-| M6 | Executor, paper simulator — shadow mode starts | – |
+| M6 | Executor, paper simulator — shadow mode starts | done; shadow running since 2026-10-09 |
 | M7 | X poster | – |
 | M8 | Dashboard | – |
 | M9 | Automatic go-live checker, leverage ramp, weight tuning | – |

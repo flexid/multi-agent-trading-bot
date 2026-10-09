@@ -47,6 +47,9 @@ class MarketState:
     hourly_borrow_rate: Decimal
     margin_enabled: bool
     short_allowed: bool  # base coin borrowable
+    collateral_ratio: Decimal = Decimal("0.98")  # of the base coin, from the API
+    maintenance_rate: Decimal = Decimal("0.03")
+    depth_truncated: bool = False  # 200 levels did not reach ±2%: depth is a lower bound
 
 
 @dataclass(frozen=True)
@@ -214,7 +217,13 @@ def assess(
         leverage = Decimal(1)
         hits.append(RuleHit("leverage_cap:no_margin", "pair has no margin: 1x", "cap"))
     if leverage > 1:
-        safe = lev.reduce_for_liquidation(leverage, stop_distance)
+        safe = lev.reduce_for_liquidation(
+            leverage,
+            stop_distance,
+            short=c.direction is Direction.SHORT,
+            collateral_ratio=mkt.collateral_ratio,
+            maintenance_rate=mkt.maintenance_rate,
+        )
         if safe < leverage:
             hits.append(RuleHit("liquidation_buffer", f"{leverage:.2f}x → {safe:.2f}x", "cap"))
             leverage = safe
@@ -245,6 +254,10 @@ def assess(
         margin /= 2
     notional = margin * leverage
     depth_cap = mkt.depth_quote_2pct * lim.depth_cap
+    if mkt.depth_truncated:
+        hits.append(
+            RuleHit("depth_truncated", "book ends inside ±2%: depth is a lower bound", "flag")
+        )
     if notional > depth_cap:
         hits.append(
             RuleHit("depth_cap", f"{notional:.0f} > 5% of ±2% depth ({depth_cap:.0f})", "cap")

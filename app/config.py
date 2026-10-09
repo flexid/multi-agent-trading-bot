@@ -21,7 +21,8 @@ class _Section(BaseModel):
 
 class TradingConfig(_Section):
     assets: list[str]
-    capital_max_usdc: Decimal
+    capital_max_usdt: Decimal
+    live_start_fraction: Decimal = Decimal("0.10")
     live_allowed: bool
     leverage_max: int
     leverage_max_spx6900: int
@@ -55,6 +56,10 @@ class PostingConfig(_Section):
     max_posts_per_day: int
     post_in_shadow: bool
     cashtags: dict[str, str]
+
+
+class RiskConfig(_Section):
+    maintenance_margin_rate: Decimal = Decimal("0.03")
 
 
 class MacroAgentConfig(_Section):
@@ -111,6 +116,7 @@ class Config(_Section):
     trading: TradingConfig
     exchange: ExchangeConfig = ExchangeConfig()
     posting: PostingConfig
+    risk: RiskConfig = RiskConfig()
     agents: AgentsConfig = AgentsConfig()
     x: XConfig = XConfig()
     site: SiteConfig = SiteConfig()
@@ -146,6 +152,7 @@ class Secrets(BaseSettings):
     coingecko_api_key: SecretStr = SecretStr("")
 
     database_url: SecretStr = SecretStr("")
+    test_database_url: SecretStr = SecretStr("")
 
 
 def load_config(path: Path = CONFIG_PATH) -> Config:

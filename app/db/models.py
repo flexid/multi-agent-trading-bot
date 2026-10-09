@@ -56,6 +56,7 @@ class OrderBookSnapshot(Base):
     spread_bps: Mapped[Decimal]
     depth_bid_2pct: Mapped[Decimal]  # quote value resting within -2% of mid
     depth_ask_2pct: Mapped[Decimal]
+    depth_truncated: Mapped[bool] = mapped_column(Boolean, default=False)  # 200 levels < ±2%
     bids: Mapped[list[Any]]  # [[price, qty], ...] top levels only
     asks: Mapped[list[Any]]
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -266,7 +267,128 @@ class DecisionRecord(Base):
     proposal: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # merged entry/stop/target/hold
     reason: Mapped[str] = mapped_column(String(120))
     risk_rule_hits: Mapped[list[Any]] = mapped_column(JSONB, default=list)  # filled by M5
-    action: Mapped[str] = mapped_column(String(12), default="none")  # none | open | close | adjust
+    action: Mapped[str] = mapped_column(
+        String(16), default="none"
+    )  # none|open|rejected|borrow_failed
+
+
+class Position(Base):
+    """An open or closed position, paper or live. One row per trade from open to close."""
+
+    __tablename__ = "positions"
+    __table_args__ = (Index("ix_positions_status_asset", "status", "asset"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    decision_id: Mapped[int | None] = mapped_column(BigInteger)
+    cycle_id: Mapped[int | None] = mapped_column(BigInteger)
+    mode: Mapped[str] = mapped_column(String(8))  # paper | live
+    track: Mapped[str] = mapped_column(String(8), default="primary")  # primary | max (shadow)
+    asset: Mapped[str] = mapped_column(String(10))
+    symbol: Mapped[str] = mapped_column(String(20))
+    direction: Mapped[str] = mapped_column(String(6))  # long | short
+    status: Mapped[str] = mapped_column(String(10))  # pending | open | closing | closed
+    qty: Mapped[Decimal]
+    entry_price: Mapped[Decimal | None]
+    exit_price: Mapped[Decimal | None]
+    leverage: Mapped[Decimal] = mapped_column(Numeric(4, 1))
+    margin: Mapped[Decimal]
+    notional: Mapped[Decimal]
+    borrowed: Mapped[Decimal] = mapped_column(default=0)  # base coin (short) or quote (long)
+    stop: Mapped[Decimal]
+    target: Mapped[Decimal]
+    trail_stop: Mapped[Decimal | None]
+    max_hold_hours: Mapped[int] = mapped_column(Integer)
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    close_reason: Mapped[str | None] = mapped_column(String(20))
+    fees: Mapped[Decimal] = mapped_column(default=0)
+    interest: Mapped[Decimal] = mapped_column(default=0)
+    pnl: Mapped[Decimal | None]  # net, quote
+    pnl_price_pct: Mapped[Decimal | None]
+    pnl_margin_pct: Mapped[Decimal | None]
+    liquidation_price: Mapped[Decimal | None]
+    order_link_id: Mapped[str | None] = mapped_column(String(36), unique=True)
+    x_post_id: Mapped[str | None] = mapped_column(String(32))  # M7
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class OrderRecord(Base):
+    __tablename__ = "orders"
+    __table_args__ = (Index("ix_orders_position", "position_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    position_id: Mapped[int] = mapped_column(ForeignKey("positions.id", ondelete="CASCADE"))
+    mode: Mapped[str] = mapped_column(String(8))
+    order_link_id: Mapped[str] = mapped_column(String(36), unique=True)
+    exchange_order_id: Mapped[str | None] = mapped_column(String(40))
+    side: Mapped[str] = mapped_column(String(4))
+    purpose: Mapped[str] = mapped_column(String(10))  # entry | exit
+    qty: Mapped[Decimal]
+    price: Mapped[Decimal]
+    status: Mapped[str] = mapped_column(String(12))  # new | filled | cancelled | rejected
+    filled_qty: Mapped[Decimal] = mapped_column(default=0)
+    avg_price: Mapped[Decimal | None]
+    fee: Mapped[Decimal] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+
+
+class PaperAccount(Base):
+    """Shadow ledgers: id 1 = primary track (live rules, 2x ceiling), id 2 = max-leverage
+    comparison track. Go-live criteria (M9) read the primary only."""
+
+    __tablename__ = "paper_account"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    track: Mapped[str] = mapped_column(String(8), default="primary")
+    starting_capital: Mapped[Decimal]
+    cash: Mapped[Decimal]  # free quote
+    equity: Mapped[Decimal]  # cash + open positions' margin ± unrealized
+    realized_pnl: Mapped[Decimal] = mapped_column(default=0)
+    fees_paid: Mapped[Decimal] = mapped_column(default=0)
+    interest_paid: Mapped[Decimal] = mapped_column(default=0)
+    liquidations: Mapped[int] = mapped_column(Integer, default=0)
+    day_start_equity: Mapped[Decimal]
+    day_date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    day_high_equity: Mapped[Decimal]
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class EquitySnapshot(Base):
+    __tablename__ = "equity_snapshots"
+
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    mode: Mapped[str] = mapped_column(
+        String(16), primary_key=True
+    )  # live | paper:primary | paper:max
+    equity: Mapped[Decimal]
+    cash: Mapped[Decimal]
+    open_positions: Mapped[int] = mapped_column(Integer)
+    gross_exposure: Mapped[Decimal]
+
+
+class ControlRequest(Base):
+    """Kill switch, pause, resume: written by the admin or CLI, applied by the executor."""
+
+    __tablename__ = "control_requests"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    kind: Mapped[str] = mapped_column(String(12))  # kill | pause | resume
+    source: Mapped[str] = mapped_column(String(20))
+    reason: Mapped[str | None] = mapped_column(Text)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    result: Mapped[str | None] = mapped_column(Text)
+
+
+class Heartbeat(Base):
+    __tablename__ = "heartbeats"
+
+    process: Mapped[str] = mapped_column(String(20), primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    detail: Mapped[str | None] = mapped_column(String(200))
 
 
 class RiskState(Base):

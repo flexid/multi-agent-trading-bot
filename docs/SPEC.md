@@ -99,7 +99,7 @@ During shadow mode every agent also runs on the other provider. Per task, keep t
 1. **Evidence pack:** the five agent outputs per asset, open positions, P&L for the day, the last 10 decisions with outcomes, macro regime and coupling.
 2. **Two PMs:** PM 1 = `claude-fable-5-1`, PM 2 = GPT-5.6 Sol. Same pack, no tools, no internet, neither sees the other's answer. Output per asset: direction (long, flat, short), entry zone, stop, target, maximum holding time (1 hour to 7 days), score, conviction, top three reasons, and which agents they weighted up or down.
 3. **Formula anchor:** a weighted sum of agent scores. Start weights: indicators 0.25, chart patterns 0.20, Polymarket 0.20, macro 0.20 × coupling, X 0.15, renormalized to 1.
-4. **Consensus:** same direction gives the conviction-weighted mean of both scores. Opposite directions mean no new trade for that asset. Any failure means no new trade. Consensus is clamped to formula score ± 0.4.
+4. **Consensus:** same direction gives the conviction-weighted mean of both scores. Opposite directions, or one PM flat while the other is directional, mean no new trade for that asset (owner, 2026-10-09). Any failure means no new trade. Consensus is clamped to formula score ± 0.4.
 5. **Triggered cycles** (max 2 per day): price move above 2× ATR within an hour, a Polymarket probability shift above 10 percentage points, or an X news shock.
 6. **Open positions** are re-assessed every cycle: hold, adjust stop, or close.
 7. **Weight auto-tuning** every 2 weeks: only after at least 100 closed trades, at most ±5 percentage points per agent per step, then shrink halfway toward equal weights. Measure each agent and each model by the correlation of its score with forward returns over 4 hours, 1 day and 3 days.
@@ -124,11 +124,11 @@ A 1% stop gives 2.5x, a 0.5% stop gives 5x. Then the lowest of these applies:
 | ATR above its 30-day 90th percentile | half the computed value |
 | FOMC, CPI or jobs report today | 2x |
 | Risk-off regime while coupling > 0.5 | 2x |
-| PMs disagree, or conviction < 0.5 | 1x, no borrowing |
+| Conviction < 0.5 (disagreement is already no trade) | 1x, no borrowing |
 | Two losing days in a row | half the computed value |
-| Liquidation price closer than 3× the stop distance | reduce until the buffer holds |
+| Liquidation price closer than 3× the stop distance (Bybit cross-margin rule: collateral ratios from the API, maintenance margin rate) | reduce until the buffer holds |
 | Gross exposure across all positions | at most 3× equity |
-| Position above 5% of ±2% book depth | shrink below that |
+| Position above 5% of ±2% book depth (200-level books; a truncated book is flagged and its depth treated as a lower bound) | shrink below that |
 
 An LLM may flag risks that are not in the numbers (thin books, news). It may only lower leverage, never raise it.
 
@@ -149,7 +149,9 @@ Limits:
 
 - Separate process. Limit orders near mid, repriced after 2 minutes. Idempotent `orderLinkId`. WebSocket for prices and fills.
 - Stops, targets, trailing stops and time-stops are enforced in code.
-- Paper-fill simulator for shadow mode: fills at bid or ask, fees, estimated borrow interest, leverage and liquidation price modeled.
+- Paper-fill simulator for shadow mode: fills at bid or ask, fees, borrow interest at the exchange's hourly rate, leverage and liquidation price modeled with Bybit's collateral ratios.
+- Two shadow tracks: the primary follows live rules (2x leverage ceiling at the start, ramping per §8) and is what the go-live criteria judge; a second track at `leverage_max` runs for comparison only.
+- Before shadow mode starts, tests must pass for: partial fill, rejected order, price-feed drop during an active stop, restart mid-trade, failed borrow, gap through a stop, exchange unreachable.
 - Reconciliation every cycle against real balances and borrows.
 - Kill switch from the dashboard and a Telegram command: close all, repay margin, freeze. Optional; the bot never needs it.
 
@@ -262,7 +264,7 @@ Content
 ```toml
 [trading]
 assets = ["BTC", "ETH", "SOL", "BNB", "SPX6900"]
-capital_max_usdc = 0            # owner sets
+capital_max_usdt = 10000        # paper equity; live starts at 10% of it, never beyond actual subaccount equity
 live_allowed = false            # owner flips once
 leverage_max = 10
 leverage_max_spx6900 = 3

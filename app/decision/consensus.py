@@ -21,7 +21,7 @@ CLAMP = 0.4
 
 class Agreement(StrEnum):
     AGREE = "agree"  # same non-flat direction
-    PARTIAL = "partial"  # one directional, one flat
+    PARTIAL = "partial"  # one directional, one flat: no trade
     OPPOSITE = "opposite"  # long vs short
     FLAT = "flat"  # both flat
     FAILED = "failed"  # a PM gave nothing valid
@@ -119,15 +119,5 @@ def consensus(
         return Consensus(
             d1, Agreement.AGREE, f_score, clamped, merged.conviction, n_valid, "PMs agree", merged
         )
-    directional = pm1 if d1 is not flat else pm2
-    # One PM flat: the trade may proceed, but SPEC §8 caps it at 1x without borrowing.
-    return Consensus(
-        directional.direction,
-        Agreement.PARTIAL,
-        f_score,
-        clamped,
-        min(directional.conviction, 0.49),
-        n_valid,
-        "one PM flat: 1x, no borrowing",
-        directional,
-    )
+    # One PM flat, the other directional: no trade (owner, 2026-10-09).
+    return Consensus(flat, Agreement.PARTIAL, f_score, clamped, None, n_valid, "one PM flat", None)

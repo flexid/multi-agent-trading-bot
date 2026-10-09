@@ -35,5 +35,5 @@ One cycle: agents ~$0.25 (without X reads), PMs ~$0.17, alt PMs ~$0.17. With X r
 
 ## Needed from the owner
 
-1. `capital_max_usdc` in `config.toml` (now 0): the amount the bot will trade with. M5 sizes paper positions from it.
+1. `capital_max_usdt` in `config.toml` (now 0): the amount the bot will trade with. M5 sizes paper positions from it.
 2. Unchanged, at your pace: `[x] accounts`; `[llm.pricing]` and `[budget]`; for M8 later, Cloudflare status of `dorkbot.dev` and the email provider for admin alerts.

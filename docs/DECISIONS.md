@@ -2,6 +2,15 @@
 
 Newest first. One entry per decision: what was decided, why, and what it rules out.
 
+## 2026-10-09 · M6 owner briefing: six execution rules
+
+1. One PM flat and the other directional is no trade; the "partial" path (1x, no borrowing) from the M4 entry below is removed. Disagreement never trades; only conviction < 0.5 still means 1x without borrowing.
+2. `capital_max_usdt = 10000` (renamed from `capital_max_usdc`): the paper equity in shadow mode. Live starts at `live_start_fraction = 0.10` of it and never sizes beyond the subaccount's actual equity.
+3. Shadow runs two tracks. The primary (paper ledger 1, `positions.track = "primary"`) follows live rules: the leverage ceiling from `risk_state` (2x at the start, ramping per §8). The comparison track (ledger 2, `"max"`) uses `leverage_max`. Go-live criteria (M9) read the primary only.
+4. Liquidation price follows Bybit's cross-margin rule per position: the coin side is haircut by its collateral ratio (from `/v5/spot-margin-trade/data`, stored every 15 minutes as `COLLATERAL_<coin>` alongside `BORROW_<coin>`), the liability carries the maintenance margin rate. The rate itself is not exposed by the API; `[risk] maintenance_margin_rate = 0.03` is the documented spot-margin figure and is confirmed in the live self-test (M9). Replaces the 1/L − 5% approximation in both the leverage buffer and the simulator.
+5. Order books are stored at 200 levels with `depth_truncated` set when the snapshot ends inside ±2%. The risk engine records a `depth_truncated` flag on every plan sized from such a book and treats the depth as a lower bound.
+6. `tests/test_executor_failures.py` covers partial fill, rejected order, feed drop during an active stop, restart mid-trade, failed borrow, gap through a stop and exchange unreachable, through a scripted order gateway against a dedicated `bot_test` database.
+
 ## 2026-10-09 · M5: shorts at 1x still borrow; Fear & Greed extreme caps leverage at 2x
 
 A short on spot margin is always a borrow of the base coin, so the "no borrowing" rule (PMs disagree or conviction < 0.5) blocks every short, including at 1x, while a long at 1x proceeds without borrowing. The owner's Fear & Greed briefing asked for a risk flag for the leverage agent; it is implemented as a 2x cap when the index is above 80 or below 20, the same tier as a scheduled event. Shadow mode uses `leverage_max` as the ceiling so the full caps table gets exercised; the live ramp (2x → 5x → 10x) lives in `risk_state.leverage_ceiling` for M9.

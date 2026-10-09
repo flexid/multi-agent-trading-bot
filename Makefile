@@ -1,7 +1,10 @@
-.PHONY: up down test lint migrate fetch-once scheduler indicators backtest selftest selftest-live bybit-authorize
+.PHONY: up down deploy test lint migrate fetch-once scheduler cycle executor kill resume indicators backtest selftest selftest-live bybit-authorize
 
 up:
-	docker compose up -d
+	docker compose up -d postgres
+
+deploy:
+	scripts/deploy.sh $(HOST)
 
 down:
 	docker compose down
@@ -18,6 +21,19 @@ fetch-once:
 
 scheduler:
 	uv run python -m app.scheduler
+
+# Decision cycle, executor and controls.
+cycle:
+	uv run python -m app.decision.cycle $(ARGS)
+
+executor:
+	uv run python -m app.execution.executor $(ARGS)
+
+kill:
+	uv run python -m app.control kill --reason "$(REASON)"
+
+resume:
+	uv run python -m app.control resume
 
 # Indicators agent on stored candles, and its backtest.
 indicators:

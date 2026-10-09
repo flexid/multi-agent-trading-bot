@@ -90,10 +90,10 @@ def test_opposite_directions_mean_no_trade() -> None:
     assert c.direction is Direction.FLAT and c.agreement is Agreement.OPPOSITE
 
 
-def test_one_flat_pm_is_partial_with_capped_conviction() -> None:
+def test_one_flat_pm_means_no_trade() -> None:
     c = consensus(FIVE, 1.0, prop(Direction.SHORT, -0.6, 0.9), prop(Direction.FLAT, 0.0, 0.5))
-    assert c.direction is Direction.SHORT and c.agreement is Agreement.PARTIAL
-    assert c.conviction is not None and c.conviction < 0.5
+    assert c.direction is Direction.FLAT and c.agreement is Agreement.PARTIAL
+    assert c.proposal is None and c.conviction is None
 
 
 def test_missing_pm_fails_closed() -> None:

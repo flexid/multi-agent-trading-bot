@@ -165,6 +165,13 @@ class OrderBook(BybitModel):
         asks = sum((lv.price * lv.qty for lv in self.asks if lv.price <= hi), Decimal(0))
         return bids, asks
 
+    def depth_truncated(self, pct: Decimal = Decimal("0.02")) -> bool:
+        """True when the snapshot ends inside the ±pct band, so the depth is a lower bound."""
+        if not self.bids or not self.asks:
+            return True
+        lo, hi = self.mid * (1 - pct), self.mid * (1 + pct)
+        return self.bids[-1].price > lo or self.asks[-1].price < hi
+
 
 class FeeRate(BybitModel):
     symbol: str

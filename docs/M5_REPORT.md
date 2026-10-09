@@ -12,7 +12,7 @@
 | Risk engine (`app/risk/engine.py`) | Account rules in severity order: emergency brake (−25% vs starting capital, or 2 pauses in 30 days, or already engaged), drawdown pause (−10% from peak: close all, 72 h, half risk, 2x cap), paused, day loss stop (−2%: close all until 00:00 UTC), day profit lock (from +1.5%: stops protect +0.75%). Per trade: consensus required, ≥3 valid agents, ≤3 trades per asset per day, shorts need margin and borrowing, cost rule (target ≥ 3× fees + borrow interest for the hold), sizing = capital share × leverage capped by 5% of ±2% book depth and by 3× equity gross exposure. |
 | Persistence (`app/risk/apply.py`) | `risk_state` (peak, pauses, brake, ceiling), `risk_rule_hits` per cycle, and `decisions.risk_rule_hits` / `decisions.action` / `decisions.proposal.plan`. Runs at the end of every cycle. |
 
-Cycle 1 re-assessed: SOL and BNB blocked (`short_needs_borrow`: conviction 0.40 < 0.5); BTC, ETH and SPX6900 are agreed shorts that would be sized, blocked by `no_room` because `capital_max_usdc = 0`.
+Cycle 1 re-assessed: SOL and BNB blocked (`short_needs_borrow`: conviction 0.40 < 0.5); BTC, ETH and SPX6900 are agreed shorts that would be sized, blocked by `no_room` because `capital_max_usdt = 0`.
 
 ## Not yet, or deferred
 
@@ -29,5 +29,5 @@ See `docs/DECISIONS.md`: "M5: shorts at 1x still borrow" and "M5: Fear & Greed e
 
 ## Needed from the owner
 
-1. `capital_max_usdc` in `config.toml` (now 0): shadow sizing uses it as paper equity.
+1. `capital_max_usdt` in `config.toml` (now 0): shadow sizing uses it as paper equity.
 2. Unchanged: `[x] accounts`; `[llm.pricing]` / `[budget]`; optional CoinGecko key; for M8 later, Cloudflare status and the email provider.
