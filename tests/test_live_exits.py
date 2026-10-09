@@ -69,7 +69,7 @@ async def test_exit_is_ioc_priced_one_percent_beyond_the_touch_never_post_only()
     assert bought.outcome is Outcome.FILLED and bought.avg_price == D("90.1")
     sell, buy = ex.created
     assert sell["timeInForce"] == buy["timeInForce"] == "IOC"
-    assert D(sell["price"]) == D("89.1")  # 1% below the bid it actually saw, not the stale quote
+    assert D(sell["price"]) == D("89.5")  # half the 1% band below the bid it actually saw
     assert D(buy["price"]) == D("91.1")  # 1% above the ask, rounded up to the tick
     assert sell["orderLinkId"] != buy["orderLinkId"] and sell["orderLinkId"].startswith("live-a-x")
 
@@ -168,7 +168,7 @@ async def test_price_gaps_through_a_stop_on_the_live_gateway(db: None) -> None: 
     assert pos.exit_price == D(90) and pos.exit_price < pos.stop  # the real fill, not the stop
     assert pos.backup_stop_link is None and ex.resting_stops() == []
     exits = [o for o in ex.created if o["side"] == "Sell" and "timeInForce" in o]
-    assert [o["timeInForce"] for o in exits] == ["IOC"] and D(exits[0]["price"]) == D("89.1")
+    assert [o["timeInForce"] for o in exits] == ["IOC"] and D(exits[0]["price"]) == D("89.5")
     assert not any(o.get("timeInForce") == "PostOnly" and o["side"] == "Sell" for o in ex.created)
     # The backup came off the book before the bot's own order went out.
     assert ex.calls.index(f"cancel:{stop['orderLinkId']}") < ex.calls.index("create:IOC")

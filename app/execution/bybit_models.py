@@ -49,6 +49,11 @@ def _quantize(value: Decimal, step: Decimal, rounding: str) -> Decimal:
     return (value / step).to_integral_value(rounding=rounding) * step
 
 
+class RiskParameters(BybitModel):
+    price_limit_ratio_x: Decimal = Decimal("0.01")  # orders must sit within ±X of the reference
+    price_limit_ratio_y: Decimal = Decimal("0.02")
+
+
 class Instrument(BybitModel):
     symbol: str
     base_coin: str
@@ -57,6 +62,7 @@ class Instrument(BybitModel):
     margin_trading: str
     lot_size_filter: LotSizeFilter
     price_filter: PriceFilter
+    risk_parameters: RiskParameters = RiskParameters()
 
     @property
     def is_trading(self) -> bool:

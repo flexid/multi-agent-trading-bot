@@ -253,8 +253,11 @@ class BybitGateway:
             touch = t.bid1_price if ex_side is ExSide.SELL else t.ask1_price
             if _is_dust(inst, remaining, touch):
                 break  # below the exchange minimum: nothing left that can be traded
+            # Bybit rejects orders outside ±priceLimitRatioX of its reference price
+            # (170194), so the cap stays at half that band, never more than EXIT_SLIPPAGE.
+            slip = min(EXIT_SLIPPAGE, inst.risk_parameters.price_limit_ratio_x / 2)
             limit = inst.round_price(
-                touch * (1 - EXIT_SLIPPAGE if ex_side is ExSide.SELL else 1 + EXIT_SLIPPAGE),
+                touch * (1 - slip if ex_side is ExSide.SELL else 1 + slip),
                 up=ex_side is ExSide.BUY,
             )
             lid = f"{link_id}{uuid.uuid4().hex[:6]}"
