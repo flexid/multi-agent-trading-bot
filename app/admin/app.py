@@ -8,6 +8,7 @@ control requests and parameter changes; the executor applies them within hard bo
 
 from __future__ import annotations
 
+import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -18,6 +19,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
 from sqlalchemy import func, select
 
 from app.admin import auth, notify
@@ -59,7 +61,20 @@ def fmt_price(value: Any) -> str:
     return text if text not in ("", "-0") else "0"
 
 
+SIDE_WORD = re.compile(r"\b(long|short)\b", re.IGNORECASE)
+
+
+def side_words(value: Any) -> Markup:
+    """Colour the words "long" (green) and "short" (red) wherever they appear
+    (owner, 2026-10-09). The text is escaped first, so it is safe on raw reasons."""
+    text = escape("" if value is None else str(value))
+    return Markup(
+        SIDE_WORD.sub(lambda m: f'<span class="{m.group(1).lower()}">{m.group(1)}</span>', text)
+    )
+
+
 templates.env.filters["price"] = fmt_price
+templates.env.filters["side"] = side_words
 COOKIE = "dorkbot_admin"
 STEP_UP = "dorkbot_stepup"
 CSRF = "dorkbot_csrf"

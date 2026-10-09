@@ -7,7 +7,7 @@ a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: un
 .badge { display: inline-block; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--muted); margin-left: 8px; } .badge.neon { border-color: var(--neon); color: var(--neon); } .badge.accent { border-color: var(--accent); color: var(--accent); }
 .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .tile { border: 1px solid var(--line); border-radius: 10px; padding: 12px; } .tile .k { color: var(--muted); font-size: 12px; } .tile .v { font-size: 20px; font-weight: 600; }
-.up { color: var(--up); } .down { color: var(--down); }
+.up { color: var(--up); } .down { color: var(--down); } .long { color: var(--up); } .short { color: var(--down); }
 table { width: 100%; border-collapse: collapse; font-size: 14px; } th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; } th { color: var(--muted); font-weight: 500; font-size: 12px; }
 .muted { color: var(--muted); } .mono { font-variant-numeric: tabular-nums; }
 footer { margin-top: 48px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; }

@@ -77,3 +77,14 @@ def test_toml_value_replacement_keeps_comments() -> None:
 @pytest.mark.parametrize("prefix", FORBIDDEN_PREFIXES)
 def test_forbidden_prefixes_are_not_in_admin_keys(prefix: str) -> None:
     assert not any(k.startswith(prefix) for k in ADMIN_ENV_KEYS)
+
+
+def test_side_filter_colours_long_and_short_and_escapes_html() -> None:
+    from app.admin.app import side_words
+
+    out = str(side_words("Short <b>BTC</b>, go long; longer is not a side"))
+    assert '<span class="short">Short</span>' in out
+    assert '<span class="long">long</span>' in out
+    assert "&lt;b&gt;" in out and "<b>" not in out
+    assert "longer" in out and '<span class="long">longer' not in out
+    assert str(side_words(None)) == ""
