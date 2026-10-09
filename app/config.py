@@ -73,7 +73,15 @@ class ModelsConfig(_Section):
     post_auditor: str
 
 
+class LLMConfig(_Section):
+    timeout_s: float = 120
+    max_output_tokens: int = 4000
+    effort: str = "medium"
+    pricing: dict[str, tuple[Decimal, Decimal]] = Field(default_factory=dict)
+
+
 class Config(_Section):
+    llm: LLMConfig = LLMConfig()
     trading: TradingConfig
     exchange: ExchangeConfig = ExchangeConfig()
     posting: PostingConfig

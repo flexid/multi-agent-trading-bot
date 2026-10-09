@@ -89,7 +89,11 @@ class PolymarketMarket(Base):
     end_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     active: Mapped[bool] = mapped_column(Boolean)
     closed: Mapped[bool] = mapped_column(Boolean)
-    asset: Mapped[str | None] = mapped_column(String(10), index=True)  # mapped daily in M3
+    asset: Mapped[str | None] = mapped_column(String(10), index=True)  # set by the mapper
+    # {"threshold": 84000, "direction": "above"|"below", "kind": "price"|"other"}; model output
+    # validated by app/agents/polymarket_map.py, never free text
+    mapping: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    mapped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -127,6 +131,34 @@ class MacroObservation(Base):
     date: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     value: Mapped[Decimal]
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class LLMCall(Base):
+    """One model call: what was asked (sizes only), what came back, what it cost."""
+
+    __tablename__ = "llm_calls"
+    __table_args__ = (Index("ix_llm_calls_task_ts", "task", "ts"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    task: Mapped[str] = mapped_column(String(40))
+    asset: Mapped[str | None] = mapped_column(String(10))
+    cycle_id: Mapped[int | None] = mapped_column(BigInteger)
+    provider: Mapped[str] = mapped_column(String(20))
+    model: Mapped[str] = mapped_column(String(60))
+    prompt_name: Mapped[str] = mapped_column(String(40))
+    prompt_version: Mapped[int] = mapped_column(Integer)
+    input_chars: Mapped[int] = mapped_column(Integer)
+    images: Mapped[int] = mapped_column(Integer, default=0)
+    input_tokens: Mapped[int] = mapped_column(Integer)
+    output_tokens: Mapped[int] = mapped_column(Integer)
+    cached_input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6))
+    latency_ms: Mapped[int] = mapped_column(Integer)
+    attempts: Mapped[int] = mapped_column(Integer)
+    ok: Mapped[bool] = mapped_column(Boolean)
+    error: Mapped[str | None] = mapped_column(Text)
+    output: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
 class DataSource(Base):
