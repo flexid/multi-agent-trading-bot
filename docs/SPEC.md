@@ -159,14 +159,18 @@ Limits:
 
 The bot goes live by itself when `live_allowed = true` and all of these hold:
 
-- At least 6 weeks of shadow mode, the last 2 without operational incidents
+- At least 4 weeks of shadow mode AND at least 100 closed trades on the primary paper track, whichever comes later (owner, 2026-10-09; was 6 weeks); the last 2 weeks without operational incidents
 - Net positive after fees and borrow interest, profit factor ≥ 1.3
 - Sharpe ratio above BTC buy-and-hold over the same period
 - Max drawdown below 10%, zero simulated liquidations
 - Each agent shows added value, or its weight goes to 0
 - Self-test on Bybit EU with minimal size: order, margin borrow, close, kill switch
 
-Live starts with 10% of `capital_max` and max 2x, then scales per §8.
+Live starts with 10% of `capital_max_usdt` and max 2x, then scales per §8.
+
+After the first 4 weeks of shadow mode the bot reports monthly running costs (LLM, X, server).
+
+**Execution pilot (after M9):** 200 USDT at 1x on the real Bybit gateway to test fills, slippage and borrowing. Pilot results are tracked separately (`positions.mode = "pilot"`) and do not count toward the go-live criteria.
 
 Backtesting: only the indicator agent and the risk engine on historical candles. Backtests with LLMs in the loop suffer look-ahead (the models know how history played out), so forward testing in shadow mode is the real test.
 

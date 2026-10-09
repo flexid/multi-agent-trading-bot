@@ -2,6 +2,13 @@
 
 Newest first. One entry per decision: what was decided, why, and what it rules out.
 
+## 2026-10-09 · Go-live after 4 weeks and 100 primary trades; execution pilot; post voice (owner)
+
+- Shadow mode lasts at least 4 weeks AND until at least 100 trades have closed on the primary paper track, whichever comes later (previously 6 weeks). The other §10 criteria are unchanged. After the first 4 weeks the bot reports monthly running costs (LLM, X, server); the admin's cost page (M8b) carries it.
+- After M9 an execution pilot runs 200 USDT at 1x on the real Bybit gateway to test fills, slippage and borrowing. Pilot trades are stored with `mode = "pilot"`, tracked separately, and never count toward go-live.
+- X posts: normal capitalization, plain and direct; dry humour when natural. Supersedes "lowercase, nonchalant" in SPEC §11. Dry-run posts (shadow with `post_in_shadow = false`) are templates only, so no model spend on posts nobody sees.
+- `dorkbot [HOURS]` zsh function on the owner's Mac runs `app.report` over SSH on the server: primary-track trades in the window, day and total P&L, LLM and X cost today.
+
 ## 2026-10-09 · M6 owner briefing: six execution rules
 
 1. One PM flat and the other directional is no trade; the "partial" path (1x, no borrowing) from the M4 entry below is removed. Disagreement never trades; only conviction < 0.5 still means 1x without borrowing.

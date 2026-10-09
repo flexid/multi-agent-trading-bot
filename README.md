@@ -53,6 +53,14 @@ make test lint
 make selftest           # read-only checks + paper round-trip
 ```
 
+## Owner's terminal report
+
+`dorkbot` (optionally `dorkbot 72` for a 72-hour window) prints every trade on the primary paper track in the window, day and total P&L, and today's LLM and X cost, over SSH from the server. Add to `~/.zshrc`:
+
+```zsh
+dorkbot() { ssh root@164.90.211.109 "cd /opt/dorkbot && docker compose --profile bot run --rm -T scheduler python -m app.report ${1:-24}"; }
+```
+
 ## M6: executor and shadow mode
 
 The executor ([`app/execution/executor.py`](app/execution/executor.py)) is its own process: it opens paper positions for sized decisions through an order gateway ([`gateway.py`](app/execution/gateway.py)) and enforces stops, targets, trailing stops, time-stops and liquidation in code ([`simulator.py`](app/execution/simulator.py)). Two shadow tracks (live rules vs `leverage_max`), kill switch (`make kill`), heartbeats, equity snapshots. `make deploy` runs everything on the droplet with Docker Compose. Details and the seven failure-mode tests in [`docs/M6_REPORT.md`](docs/M6_REPORT.md).
