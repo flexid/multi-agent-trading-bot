@@ -3,6 +3,12 @@ import { useEffect, useState } from "react";
 import { cls, loadSnapshot, pct, tick, type Snapshot } from "../snapshot";
 
 const name = (s: Snapshot, id: string) => { const m = (s.crew ?? []).find((c) => c.id === id); return m ? <><b>{m.name}</b> <span className="muted small">{id}</span></> : id; };
+const lname = (s: Snapshot, l: { name: string; kind: string }) => {
+  if (l.kind === "agent") return name(s, l.name);
+  const pm = l.name.includes("(pm_1") ? "pm_1" : l.name.includes("(pm_2") ? "pm_2" : null;
+  const m = pm ? (s.crew ?? []).find((c) => c.id === pm) : null;
+  return m ? <><b>{m.name}</b> <span className="muted small">{l.name}</span></> : l.name;
+};
 const sc = (x: number | null | undefined) => (x == null ? "–" : `${x > 0 ? "+" : ""}${x.toFixed(2)}`);
 
 export default function Agents() {
@@ -31,7 +37,7 @@ export default function Agents() {
       <h2>Leaderboard</h2>
       {s.leaderboard.length === 0 ? <p className="muted">Measured once enough trades have closed.</p> : (
         <table><thead><tr><th>name</th><th>kind</th><th>IC 1d</th><th>sample</th></tr></thead><tbody>
-          {s.leaderboard.map((l) => <tr key={l.name}><td>{l.name}</td><td>{l.kind}</td><td className={cls(l.ic_1d)}>{sc(l.ic_1d)}</td><td>{l.sample}</td></tr>)}
+          {s.leaderboard.map((l) => <tr key={l.name}><td>{lname(s, l)}</td><td>{l.kind}</td><td className={cls(l.ic_1d)}>{sc(l.ic_1d)}</td><td>{l.sample}</td></tr>)}
         </tbody></table>
       )}
     </>
