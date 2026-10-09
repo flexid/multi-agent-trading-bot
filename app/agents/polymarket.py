@@ -1,8 +1,10 @@
-"""Polymarket agent (SPEC §6): implied distribution from threshold ladders, 24h shift first.
+"""Polymarket agent (SPEC §6): implied distribution from threshold ladders, 24h shift first,
+plus the Up/Down markets as a momentum read.
 
-Code does the scoring. The model is only used once a day to map new markets to an asset
-and a threshold (``app/agents/polymarket_map.py``); its output is validated and stored on
-``polymarket_markets.asset`` / ``mapping`` and never re-read as free text.
+Code does the scoring. Question text is mapped to an asset and a threshold by the parser
+or, for the few questions it cannot read, by the model (``app/agents/polymarket_map.py``);
+the mapping is validated and stored on ``polymarket_markets.asset`` / ``mapping`` and never
+re-read as free text.
 
 Scoring per asset at time t, over mapped markets that pass the filters:
 
@@ -12,14 +14,20 @@ Scoring per asset at time t, over mapped markets that pass the filters:
   mapped to [-1, 1] by the ladder's spread; this is the slow component
 - shift: the volume-weighted mean 24h change of P(price ≥ X) across markets, scaled so a
   10-percentage-point shift is ±1; this is the fast component and weighs 2:1 over level
+- updown: the volume-weighted P(up) of the hourly, 4-hour and daily Up/Down markets,
+  centred and scaled so 65% is +1; 5- and 15-minute markets are never stored
 - confidence from market count and liquidity; BNB/SPX6900 get few or no markets, so
   confidence stays low there, which is how the agent "weighs less" (SPEC §6)
+
+``coverage`` tells "no markets at all" from "markets, none usable" with the reasons, for
+the agent's evidence and the admin health page.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -27,6 +35,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.agents.polymarket_parse import MIN_UPDOWN_WINDOW_MIN
 from app.agents.schema import AgentOutput, Horizon
 from app.db.models import PolymarketMarket, PolymarketPrice
 
@@ -35,7 +44,8 @@ MIN_VOLUME_24H = Decimal(1000)  # USD; thinner markets are noise
 MIN_HOURS_TO_RESOLUTION = 1
 MAX_DAYS_TO_RESOLUTION = 60  # year-end markets carry little 4h-to-3d information
 SHIFT_FULL_SCALE = 0.10  # 10 pp move in 24h = ±1
-WEIGHT_SHIFT, WEIGHT_LEVEL = 2 / 3, 1 / 3
+UPDOWN_FULL_SCALE = 0.15  # P(up) 65% = +1, 35% = −1
+WEIGHT_SHIFT, WEIGHT_LEVEL, WEIGHT_UPDOWN = 0.5, 0.25, 0.25
 
 
 @dataclass(frozen=True)
@@ -48,41 +58,44 @@ class LadderPoint:
     hours_to_resolution: float
 
 
+@dataclass(frozen=True)
+class UpDownPoint:
+    market_id: str
+    p_up: float
+    window_min: int
+    hours_to_resolution: float
+    volume_24h: float
+
+
+@dataclass
+class Coverage:
+    asset: str
+    open_markets: int = 0  # mapped to this asset and not closed
+    unmapped: int = 0  # open markets nobody has mapped yet (parser leftovers, model pending)
+    ladder: int = 0  # usable threshold points
+    updown: int = 0  # usable Up/Down markets
+    dropped: Counter[str] = field(default_factory=Counter)
+
+    @property
+    def usable(self) -> int:
+        return self.ladder + self.updown
+
+    @property
+    def status(self) -> str:
+        if self.open_markets == 0:
+            return "no markets"
+        if self.usable == 0:
+            why = ", ".join(f"{n} {k}" for k, n in self.dropped.most_common(3)) or "unknown"
+            return f"{self.open_markets} markets, none usable ({why})"
+        return f"ok: {self.ladder} ladder points, {self.updown} up/down"
+
+
 def _p_above(direction: str, p_yes: float) -> float:
     return p_yes if direction == "above" else 1 - p_yes
 
 
-def ladder(session: Session, asset: str, now: datetime) -> list[LadderPoint]:
-    """Mapped, open, liquid markets for ``asset`` with their latest and 24h-ago prices."""
-    markets = session.scalars(
-        select(PolymarketMarket).where(
-            PolymarketMarket.asset == asset,
-            PolymarketMarket.closed.is_(False),
-            PolymarketMarket.mapping.is_not(None),
-        )
-    ).all()
-    points: list[LadderPoint] = []
-    for m in markets:
-        mapping: dict[str, Any] = m.mapping or {}
-        threshold, direction = mapping.get("threshold"), mapping.get("direction")
-        if not threshold or direction not in ("above", "below") or m.end_date is None:
-            continue
-        hours = (m.end_date - now).total_seconds() / 3600
-        if hours < MIN_HOURS_TO_RESOLUTION or hours > MAX_DAYS_TO_RESOLUTION * 24:
-            continue
-        latest = _price_at(session, m.id, now)
-        if latest is None or latest[1] < MIN_VOLUME_24H:
-            continue
-        earlier = _price_at(session, m.id, now - timedelta(hours=24))
-        yes_index = next((i for i, o in enumerate(m.outcomes) if str(o).lower() == "yes"), 0)
-        p_now = _p_above(direction, float(latest[0][yes_index]))
-        p_prev = (
-            _p_above(direction, float(earlier[0][yes_index]))
-            if earlier is not None and earlier[2] <= now - timedelta(hours=20)
-            else None
-        )
-        points.append(LadderPoint(m.id, float(threshold), p_now, p_prev, float(latest[1]), hours))
-    return points
+def _outcome_index(outcomes: list[Any], name: str) -> int:
+    return next((i for i, o in enumerate(outcomes) if str(o).lower() == name), 0)
 
 
 def _price_at(
@@ -97,6 +110,92 @@ def _price_at(
     if row is None:
         return None
     return [Decimal(str(p)) for p in row[0]], Decimal(str(row[1])), row[2]
+
+
+def _points(
+    session: Session, asset: str, now: datetime, cov: Coverage
+) -> tuple[list[LadderPoint], list[UpDownPoint]]:
+    """Mapped, open, liquid markets for ``asset`` as ladder and Up/Down points, counting
+    every drop reason into ``cov``."""
+    markets = session.scalars(
+        select(PolymarketMarket).where(
+            PolymarketMarket.asset == asset, PolymarketMarket.closed.is_(False)
+        )
+    ).all()
+    ladder: list[LadderPoint] = []
+    updown: list[UpDownPoint] = []
+    for m in markets:
+        mapping: dict[str, Any] = m.mapping or {}
+        kind = mapping.get("kind")
+        if kind is None:
+            cov.unmapped += 1
+            continue
+        cov.open_markets += 1
+        if kind == "range":
+            cov.dropped["range market"] += 1
+            continue
+        if kind == "other":
+            cov.dropped["not a price market"] += 1
+            continue
+        if m.end_date is None:
+            cov.dropped["no end date"] += 1
+            continue
+        hours = (m.end_date - now).total_seconds() / 3600
+        if kind == "updown":
+            window = int(mapping.get("window_min") or 0)
+            if window < MIN_UPDOWN_WINDOW_MIN:
+                cov.dropped["window under an hour"] += 1
+                continue
+            if hours <= 0:
+                cov.dropped["resolved"] += 1
+                continue
+        elif kind == "price":
+            threshold = float(mapping.get("threshold") or 0)
+            direction = str(mapping.get("direction") or "")
+            if threshold <= 0 or direction not in ("above", "below"):
+                cov.dropped["bad mapping"] += 1
+                continue
+            if hours < MIN_HOURS_TO_RESOLUTION:
+                cov.dropped["resolves within the hour"] += 1
+                continue
+            if hours > MAX_DAYS_TO_RESOLUTION * 24:
+                cov.dropped["resolves beyond 60 days"] += 1
+                continue
+        else:
+            cov.dropped["bad mapping"] += 1
+            continue
+        latest = _price_at(session, m.id, now)
+        if latest is None:
+            cov.dropped["no price yet"] += 1
+            continue
+        if latest[1] < MIN_VOLUME_24H:
+            cov.dropped["24h volume under $1,000"] += 1
+            continue
+        if kind == "updown":
+            p_up = float(latest[0][_outcome_index(m.outcomes, "up")])
+            updown.append(UpDownPoint(m.id, p_up, window, hours, float(latest[1])))
+            continue
+        earlier = _price_at(session, m.id, now - timedelta(hours=24))
+        yes_index = _outcome_index(m.outcomes, "yes")
+        p_now = _p_above(direction, float(latest[0][yes_index]))
+        p_prev = (
+            _p_above(direction, float(earlier[0][yes_index]))
+            if earlier is not None and earlier[2] <= now - timedelta(hours=20)
+            else None
+        )
+        ladder.append(LadderPoint(m.id, threshold, p_now, p_prev, float(latest[1]), hours))
+    cov.ladder, cov.updown = len(ladder), len(updown)
+    return ladder, updown
+
+
+def ladder(session: Session, asset: str, now: datetime) -> list[LadderPoint]:
+    return _points(session, asset, now, Coverage(asset))[0]
+
+
+def coverage(session: Session, asset: str, now: datetime | None = None) -> Coverage:
+    cov = Coverage(asset)
+    _points(session, asset, now or datetime.now(UTC), cov)
+    return cov
 
 
 def implied_median(points: list[LadderPoint]) -> float:
@@ -137,6 +236,8 @@ def score_ladder(points: list[LadderPoint], spot: float) -> tuple[float, float, 
     else:
         shift = 0.0
     score = WEIGHT_SHIFT * shift + WEIGHT_LEVEL * level if shifted else level
+    if shifted:
+        score /= WEIGHT_SHIFT + WEIGHT_LEVEL
 
     top = sorted(points, key=lambda p: -p.volume_24h)[:3]
     evidence = [
@@ -152,23 +253,77 @@ def score_ladder(points: list[LadderPoint], spot: float) -> tuple[float, float, 
     return score, level, shift, evidence
 
 
+def score_updown(points: list[UpDownPoint]) -> tuple[float, list[str]]:
+    """Volume-weighted P(up) over the open Up/Down windows, centred on 50%."""
+    if not points:
+        return 0.0, []
+    weights = [max(p.volume_24h, 1.0) for p in points]
+    p_up = sum(w * p.p_up for w, p in zip(weights, points, strict=True)) / sum(weights)
+    score = max(-1.0, min(1.0, (p_up - 0.5) / UPDOWN_FULL_SCALE))
+    top = sorted(points, key=lambda p: -p.volume_24h)[:2]
+    evidence = [
+        f"P(up) {p.p_up:.0%} over {_window_text(p.window_min)}, "
+        f"resolves in {p.hours_to_resolution:.1f} h, ${p.volume_24h:,.0f}/24h"
+        for p in top
+    ]
+    return score, evidence
+
+
+def _window_text(minutes: int) -> str:
+    if minutes % (24 * 60) == 0:
+        return f"{minutes // (24 * 60)} d"
+    if minutes % 60 == 0:
+        return f"{minutes // 60} h"
+    return f"{minutes} min"
+
+
+def combine(*, level: float, shift: float | None, updown: float | None) -> float:
+    """Weighted sum over the components that exist, renormalized to the weights present."""
+    parts = [(WEIGHT_LEVEL, level)]
+    if shift is not None:
+        parts.append((WEIGHT_SHIFT, shift))
+    if updown is not None:
+        parts.append((WEIGHT_UPDOWN, updown))
+    total = sum(w for w, _ in parts)
+    return sum(w * v for w, v in parts) / total
+
+
 def evaluate(
     session: Session, asset: str, spot: float, data_age_min: int, now: datetime | None = None
 ) -> AgentOutput:
     now = now or datetime.now(UTC)
-    points = ladder(session, asset, now)
-    score, level, shift, evidence = score_ladder(points, spot)
-    n = len(points)
-    liquidity = sum(p.volume_24h for p in points)
+    cov = Coverage(asset)
+    points, ud_points = _points(session, asset, now, cov)
+    _, level, shift, evidence = score_ladder(points, spot)
+    has_shift = any(p.p_above_24h is not None for p in points)
+    ud_score, ud_evidence = score_updown(ud_points)
+    score = combine(
+        level=level if points else 0.0,
+        shift=shift if has_shift else None,
+        updown=ud_score if ud_points else None,
+    )
+    n = len(points) + len(ud_points)
+    liquidity = sum(p.volume_24h for p in points) + sum(p.volume_24h for p in ud_points)
     confidence = min(1.0, 0.15 * n) * min(1.0, liquidity / 50_000)
-    if not any(p.p_above_24h is not None for p in points):
-        confidence *= 0.5  # no 24h history yet: only the level is known
+    if not has_shift:
+        confidence *= 0.5  # no 24h history yet: only the level and the momentum are known
     risk_flags = []
     if n == 0:
-        evidence = ["no mapped Polymarket markets for this asset"]
-        risk_flags.append("no polymarket coverage")
+        evidence = [
+            "no Polymarket markets for this asset"
+            if cov.open_markets == 0
+            else f"Polymarket: {cov.status}"
+        ]
+        risk_flags.append(
+            "no polymarket coverage" if cov.open_markets == 0 else "polymarket: none usable"
+        )
     else:
-        evidence.insert(0, f"{n} markets, level {level:+.2f}, 24h shift {shift:+.2f}")
+        evidence = [
+            f"{len(points)} ladder points, {len(ud_points)} up/down, level {level:+.2f}, "
+            f"24h shift {shift:+.2f}, up/down {ud_score:+.2f}",
+            *evidence,
+            *ud_evidence,
+        ]
     return AgentOutput(
         agent=AGENT,
         asset=asset,

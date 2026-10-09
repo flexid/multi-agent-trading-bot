@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import logging
 import sys
+from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -77,7 +78,12 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
         misfire_grace_time=600,
     )
     scheduler.add_job(
-        map_job, CronTrigger(hour="2", minute="30"), id="polymarket_map", max_instances=1
+        map_job,
+        CronTrigger(minute="1,16,31,46"),  # right after each Polymarket fetch, and at startup
+        id="polymarket_map",
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(UTC),
     )
     scheduler.add_job(
         trigger_job,

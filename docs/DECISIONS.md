@@ -163,3 +163,8 @@ Why: the first full self-test closed all eight shadow positions four hours into 
 ## 2026-10-09 · Spot-margin borrows are repaid explicitly
 
 After a cover, the gateway calls `POST /v5/account/quick-repayment` for the base coin. Bybit UTA keeps the liability open after the coin is bought back; it settles on its own only later.
+
+## 2026-10-09 · Polymarket: parser first, model second, every 15 minutes
+
+Polymarket's crypto questions come from a handful of templates ("Will the price of Bitcoin be above $84,000 on October 9?", "Will Solana dip to $100 October 5-11?", "Bitcoin Up or Down - October 9, 4AM ET"). A regex parser maps them; the model only gets questions that mention one of our assets in a form the parser does not know. Mapping runs every 15 minutes right after the fetch, and at startup. Markets are fetched per Gamma event so ladders arrive whole; 5- and 15-minute Up/Down markets are not stored. Hourly, 4-hour and daily Up/Down markets add a momentum component (weight 0.25 next to shift 0.5 and level 0.25).
+Why: the first day ran with zero mapped markets. The daily 02:30 UTC mapper never fired because the stack started after it, and every asset reported "no coverage" without saying why. The parser removes the model from the critical path and costs nothing.

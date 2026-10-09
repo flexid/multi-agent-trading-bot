@@ -234,7 +234,10 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         posted = {
             r.position_id: r
             for r in s.scalars(
-                select(XPostOut).where(XPostOut.posted_at.is_not(None), XPostOut.kind == "open")
+                select(XPostOut).where(
+                    XPostOut.x_id.is_not(None),  # a blocked post is "posted" but has no id
+                    XPostOut.kind == "open",
+                )
             ).all()
         }
         open_rows = s.scalars(

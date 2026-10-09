@@ -1,7 +1,9 @@
-"""Daily mapping of Polymarket markets to assets and thresholds (SPEC §6).
+"""Incremental mapping of Polymarket markets to assets and thresholds (SPEC §6).
 
-The only place a model reads Polymarket question text. Its output is a schema the code
-validates and stores; the agent never sees the text again.
+Runs every 15 minutes and at startup. The deterministic parser
+(``app/agents/polymarket_parse.py``) handles the templated crypto questions; only what
+it cannot parse but does mention one of our assets goes to the model. The model's output
+is a schema the code validates and stores; the agent never sees the text again.
 
     python -m app.agents.polymarket_map          # map unmapped markets
 """
@@ -10,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sys
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -17,10 +20,13 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
+from app.agents.polymarket_parse import parse
 from app.config import get_config
 from app.db.models import PolymarketMarket
 from app.db.session import new_session
 from app.llm import LLMError, complete, load_prompt
+
+log = logging.getLogger(__name__)
 
 TASK = "polymarket"
 BATCH = 40
@@ -69,20 +75,38 @@ def _sane(m: MarketMapping) -> bool:
     return True
 
 
-async def map_unmapped(limit: int = 400) -> int:
-    """Map markets without a mapping. Returns how many were stored."""
-    prompt = load_prompt("polymarket_map")
+def map_parsed() -> tuple[int, list[tuple[str, str]]]:
+    """Parser pass over every unmapped open market. Returns (stored, leftovers for the
+    model as (id, question))."""
+    now = datetime.now(UTC)
+    leftovers: list[tuple[str, str]] = []
+    stored = 0
     with new_session() as session:
-        rows = session.execute(
-            select(PolymarketMarket.id, PolymarketMarket.question)
-            .where(PolymarketMarket.mapped_at.is_(None), PolymarketMarket.closed.is_(False))
-            .limit(limit)
+        rows = session.scalars(
+            select(PolymarketMarket).where(
+                PolymarketMarket.mapped_at.is_(None), PolymarketMarket.closed.is_(False)
+            )
         ).all()
+        for market in rows:
+            parsed = parse(market.question, market.slug)
+            if parsed is None:
+                leftovers.append((market.id, market.question))
+                continue
+            market.asset = parsed.asset
+            market.mapping = parsed.mapping()
+            market.mapped_at = now
+            stored += 1
+        session.commit()
+    return stored, leftovers
+
+
+async def map_with_model(rows: list[tuple[str, str]]) -> int:
+    prompt = load_prompt("polymarket_map")
     stored = 0
     for start in range(0, len(rows), BATCH):
         batch = rows[start : start + BATCH]
-        ids = {r.id for r in batch}
-        payload = json.dumps([{"id": r.id, "question": r.question[:300]} for r in batch])
+        ids = {r[0] for r in batch}
+        payload = json.dumps([{"id": r[0], "question": r[1][:300]} for r in batch])
         try:
             result = await complete(TASK, MappingBatch, prompt=prompt, user_text=payload)
         except LLMError:
@@ -97,9 +121,14 @@ async def map_unmapped(limit: int = 400) -> int:
                     continue
                 market.asset = m.asset.value if m.asset is not Asset.OTHER else None
                 market.mapping = (
-                    {"kind": "price", "threshold": m.threshold, "direction": m.direction}
+                    {
+                        "kind": "price",
+                        "threshold": m.threshold,
+                        "direction": m.direction,
+                        "source": "model",
+                    }
                     if m.kind is Kind.PRICE
-                    else {"kind": "other"}
+                    else {"kind": "other", "source": "model"}
                 )
                 market.mapped_at = now
                 stored += 1
@@ -107,10 +136,19 @@ async def map_unmapped(limit: int = 400) -> int:
     return stored
 
 
+async def map_unmapped(limit: int = 400) -> int:
+    """Map markets without a mapping: parser first, the model for the rest. Returns how
+    many were stored."""
+    parsed, leftovers = map_parsed()
+    modelled = await map_with_model(leftovers[:limit]) if leftovers else 0
+    log.info("polymarket mapper: %d parsed, %d by model, %d left", parsed, modelled, len(leftovers))
+    return parsed + modelled
+
+
 def main() -> int:
     cfg = get_config()
     n = asyncio.run(map_unmapped())
-    print(f"mapped {n} markets with {cfg.models.polymarket}")
+    print(f"mapped {n} markets (parser first, {cfg.models.polymarket} for the rest)")
     with new_session() as session:
         for asset in cfg.trading.assets + ["SP500"]:
             count = session.execute(

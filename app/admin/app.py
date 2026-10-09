@@ -23,6 +23,7 @@ from markupsafe import Markup, escape
 from sqlalchemy import func, select
 
 from app.admin import auth, notify
+from app.agents.polymarket import coverage as pm_coverage
 from app.config import get_config, get_secrets
 from app.db.models import (
     AdminUser,
@@ -245,6 +246,7 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
             .select_from(ControlRequest)
             .where(ControlRequest.applied_at.is_(None))
         ).scalar_one()
+        pm_cov = [pm_coverage(s, a, now) for a in cfg.trading.assets]
     x_month = Decimal(reads_month) * Decimal("0.005") + Decimal(posts_month) * Decimal("0.015")
     stale = {h.process: (now - h.ts) > timedelta(minutes=5) for h in heartbeats}
     return render(
@@ -259,6 +261,7 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
         heartbeats=heartbeats,
         stale=stale,
         sources=sources,
+        pm_cov=pm_cov,
         risk=risk,
         llm_day=llm_day,
         llm_month=llm_month,
