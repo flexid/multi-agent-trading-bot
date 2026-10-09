@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import AdminUser, AuditLog
 
-SESSION_TTL_S = 30 * 60
+SESSION_TTL_S = 8 * 60 * 60  # one owner, one dashboard: a working day; step-up stays short
 STEP_UP_TTL_S = 5 * 60
 MAX_FAILED = 5
 LOCKOUT = timedelta(minutes=15)

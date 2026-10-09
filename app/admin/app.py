@@ -130,6 +130,10 @@ def stepped_up(request: Request) -> bool:
 
 def check_csrf(request: Request, csrf: str) -> None:
     token = request.cookies.get(COOKIE) or ""
+    if not _sessions().read(token):
+        # The page was rendered under a session that has since expired: back to login,
+        # not a bare 403 (owner hit this on 2026-10-09 after leaving the tab open).
+        raise HTTPException(status_code=303, headers={"Location": "/login"})
     if not _sessions().csrf_ok(token, csrf):
         raise HTTPException(status_code=403, detail="bad csrf")
 
