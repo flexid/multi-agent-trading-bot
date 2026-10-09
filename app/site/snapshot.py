@@ -364,6 +364,17 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
                     )
                 )
         hb = s.execute(select(func.max(Heartbeat.ts))).scalar_one()
+        from app.decision.tuning import leaderboard as _leaderboard
+
+        leaders = [
+            Leader(
+                name=r.name[:60],
+                kind=r.kind,
+                ic_1d=_f(r.ic.get("1d"), 3) if r.ic.get("1d") is not None else None,
+                sample=r.sample,
+            )
+            for r in _leaderboard(s, cfg, since)
+        ]
     return Snapshot(
         generated_at=now,
         mode="live" if cfg.trading.live_allowed else "shadow",
@@ -379,7 +390,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         open_trades=open_trades,
         closed_trades=closed_trades,
         assets=assets,
-        leaderboard=[],  # filled by M9's agent/model scoring
+        leaderboard=leaders,
         heartbeat_ok=bool(hb and now - hb < timedelta(minutes=5)),
         handle=cfg.posting.handle,
     )

@@ -39,15 +39,19 @@ class Consensus:
     proposal: Proposal | None  # the directional proposal to size (merged when both agree)
 
 
-def formula_score(outputs: list[AgentOutput], coupling: float | None) -> tuple[float | None, int]:
-    """Weighted sum over valid agents, macro scaled by coupling, weights renormalized."""
+def formula_score(
+    outputs: list[AgentOutput], coupling: float | None, weights: dict[str, float] | None = None
+) -> tuple[float | None, int]:
+    """Weighted sum over valid agents, macro scaled by coupling, weights renormalized.
+    ``weights`` defaults to the spec's start weights; the cycle passes the tuned ones."""
     valid = [o for o in outputs if o.valid]
     if len(valid) < MIN_VALID_AGENTS:
         return None, len(valid)
+    table = weights or WEIGHTS
     total = 0.0
     weighted = 0.0
     for o in valid:
-        w = WEIGHTS.get(o.agent, 0.0)
+        w = table.get(o.agent, 0.0)
         if o.agent == "macro":
             w *= coupling if coupling is not None else 0.0
         weighted += w * o.score
@@ -83,8 +87,9 @@ def consensus(
     coupling: float | None,
     pm1: Proposal | None,
     pm2: Proposal | None,
+    weights: dict[str, float] | None = None,
 ) -> Consensus:
-    f_score, n_valid = formula_score(outputs, coupling)
+    f_score, n_valid = formula_score(outputs, coupling, weights)
     flat = Direction.FLAT
     if n_valid < MIN_VALID_AGENTS:
         return Consensus(

@@ -28,6 +28,7 @@ from app.db.session import new_session
 from app.decision.consensus import Consensus, consensus
 from app.decision.evidence import build_pack
 from app.decision.pm import Proposal, ask_both
+from app.decision.tuning import current_weights
 from app.llm import load_prompt
 from app.risk.apply import apply_risk
 
@@ -219,8 +220,12 @@ async def run_cycle(
             for pm, (props, _, _) in alt_answers.items():
                 store_proposals(cycle_id, pm, "alt", alt_models[pm], props)
         pm1, pm2 = answers["pm_1"][0], answers["pm_2"][0]
+        with new_session() as session:
+            weights = current_weights(session)
         results = {
-            asset: consensus(by_asset[asset], couplings.get(asset), pm1.get(asset), pm2.get(asset))
+            asset: consensus(
+                by_asset[asset], couplings.get(asset), pm1.get(asset), pm2.get(asset), weights
+            )
             for asset in cfg.trading.assets
         }
         store_decisions(cycle_id, now, results, spots, pm1, pm2)

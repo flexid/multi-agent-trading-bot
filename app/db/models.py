@@ -458,6 +458,17 @@ class ParamChange(Base):
     result: Mapped[str | None] = mapped_column(String(200))
 
 
+class AgentWeights(Base):
+    """Formula weights after each tuning step (SPEC §7.7); the latest row is current."""
+
+    __tablename__ = "agent_weights"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    weights: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    basis: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+
 class RiskState(Base):
     """One row: the risk engine's memory across cycles (SPEC §8 limits)."""
 
@@ -474,6 +485,11 @@ class RiskState(Base):
     brake_reason: Mapped[str | None] = mapped_column(Text)
     day_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     leverage_ceiling: Mapped[Decimal] = mapped_column(Numeric(4, 1), default=2)  # ramps per §8
+    mode: Mapped[str] = mapped_column(String(8), default="shadow")  # shadow | live (M9 decides)
+    live_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    live_selftest_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_golive_check: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    golive_report: Mapped[list[Any] | None] = mapped_column(JSONB)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
