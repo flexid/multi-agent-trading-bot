@@ -120,3 +120,28 @@ def test_memo_markdown_becomes_clean_html_for_mail() -> None:
     assert out.count("<li style='margin:8px 0'>") == 2 and out.count("<ul style='margin:4px") == 2
     assert "&lt;tag&gt;" in out and "**" not in out
     assert out.count("<ol") == out.count("</ol>") and out.count("<ul") == out.count("</ul>")
+
+
+def test_improvement_brief_lists_proposals_as_checkboxes() -> None:
+    from app.memo import improvement_prompt
+
+    memo = Memo(
+        summary="s",
+        keep=["stops"],
+        proposals=[
+            Proposal(
+                title="Wait", evidence="4 trades", change="none yet", risk="none", effort="small"
+            ),
+            Proposal(
+                title="Tune X",
+                evidence="IC +0.1",
+                change="x_sentiment 0.2",
+                risk="noise",
+                effort="small",
+            ),
+        ],
+    )
+    brief = improvement_prompt({"week_ending": "2026-10-09"}, memo)
+    assert "- [ ] 1. Wait (small)" in brief and "- [ ] 2. Tune X (small)" in brief
+    assert "change: x_sentiment 0.2" in brief and "## Owner notes" in brief and "- stops" in brief
+    assert "(the memo produced no proposals" in improvement_prompt({"week_ending": "x"}, None)

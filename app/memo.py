@@ -328,6 +328,52 @@ def to_html(markdown: str) -> str:
     return f"<div style='{_STYLE}'>" + "\n".join(out) + "</div>"
 
 
+def improvement_prompt(f: dict[str, Any], memo: Memo | None) -> str:
+    """A ready-to-paste brief for Claude Code: the owner ticks the proposals to apply."""
+    date = f["week_ending"]
+    lines = [
+        f"# dorkbot improvement brief, week ending {date}",
+        "",
+        "Paste this into Claude Code in the multi-agent-trading-bot repo after ticking the",
+        "proposals to apply. Untouched boxes mean: do not apply, just note it.",
+        "",
+        f"Context: the weekly memo of {date} (logs/memo-{date}.md on the server, also mailed).",
+        "Standing goal: an average of 1% per day on capital, net of every cost, reached by",
+        "tuning parameters as the evidence comes in. The hard risk rules (stops, liquidation",
+        "guard, drawdown pause, day-loss lock, one-PM-flat, kill switch, order idempotency)",
+        "and the non-negotiables in CLAUDE.md are not levers.",
+        "",
+        "For every ticked proposal: implement the exact change, add or adjust tests, bump the",
+        "version of any prompt you touch, record the decision in docs/DECISIONS.md with the",
+        "evidence quoted, deploy, and list what changed with before/after numbers where they",
+        "exist. Finish with one message summarizing all changes and what the next memo should",
+        "measure to judge them.",
+        "",
+        "## Proposals",
+        "",
+    ]
+    if memo is None or not memo.proposals:
+        lines.append("(the memo produced no proposals this week)")
+    for i, p in enumerate(memo.proposals if memo else [], 1):
+        lines += [
+            f"- [ ] {i}. {p.title} ({p.effort})",
+            f"  - change: {p.change}",
+            f"  - evidence: {p.evidence}",
+            f"  - risk: {p.risk}",
+        ]
+    if memo and memo.keep:
+        lines += ["", "## Leave alone (per the memo)", ""] + [f"- {k}" for k in memo.keep]
+    lines += [
+        "",
+        "## Owner notes",
+        "",
+        "(add anything here: a parameter value you want instead, a proposal to skip, a",
+        "question for the next memo)",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 async def propose(f: dict[str, Any]) -> tuple[Memo | None, str | None]:
     from app.llm import LLMError, complete, load_prompt
 
@@ -347,13 +393,20 @@ async def build(cfg: Config | None = None, *, mail: bool = True) -> Path:
         f = facts(session, cfg, now)
     memo, error = await propose(f)
     text = render(f, memo, error)
+    brief = improvement_prompt(f, memo)
     path = MEMO_DIR / f"memo-{now:%Y-%m-%d}.md"
+    brief_path = MEMO_DIR / f"brief-{now:%Y-%m-%d}.md"
     await asyncio.to_thread(_write, path, text)
+    await asyncio.to_thread(_write, brief_path, brief)
     if mail:
         from app.admin import notify
 
         await asyncio.to_thread(
-            notify.send, f"dorkbot weekly memo, week ending {now:%Y-%m-%d}", text, to_html(text)
+            notify.send,
+            f"dorkbot weekly memo, week ending {now:%Y-%m-%d}",
+            text,
+            to_html(text),
+            [(path.name, text), (brief_path.name, brief)],
         )
     return path
 

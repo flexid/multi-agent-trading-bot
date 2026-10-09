@@ -6,6 +6,7 @@ Provider from .env: ``ALERT_EMAIL_TO`` plus either ``RESEND_API_KEY`` or ``SMTP_
 
 from __future__ import annotations
 
+import base64
 import logging
 import smtplib
 from email.message import EmailMessage
@@ -18,8 +19,14 @@ from app.config import get_secrets
 log = logging.getLogger("alerts")
 
 
-def send(subject: str, body: str, html: str | None = None) -> bool:
-    """Plain-text mail, with an HTML part when given (the memo: Gmail shows no markdown)."""
+def send(
+    subject: str,
+    body: str,
+    html: str | None = None,
+    attachments: list[tuple[str, str]] | None = None,
+) -> bool:
+    """Plain-text mail, with an HTML part when given (the memo: Gmail shows no markdown)
+    and text attachments as (filename, content)."""
     s = get_secrets()
     to = s.alert_email_to
     if not to:
@@ -35,6 +42,16 @@ def send(subject: str, body: str, html: str | None = None) -> bool:
                 "subject": subject,
                 "text": body,
                 **({"html": html} if html else {}),
+                **(
+                    {
+                        "attachments": [
+                            {"filename": name, "content": base64.b64encode(data.encode()).decode()}
+                            for name, data in attachments
+                        ]
+                    }
+                    if attachments
+                    else {}
+                ),
             },
             timeout=15,
         )
@@ -48,6 +65,8 @@ def send(subject: str, body: str, html: str | None = None) -> bool:
         msg.set_content(body)
         if html:
             msg.add_alternative(html, subtype="html")
+        for name, data in attachments or []:
+            msg.add_attachment(data.encode(), maintype="text", subtype="markdown", filename=name)
         with smtplib.SMTP(u.hostname or "localhost", u.port or 587, timeout=15) as smtp:
             smtp.starttls()
             if u.username:
