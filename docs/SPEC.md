@@ -119,8 +119,8 @@ A 1% stop gives 2.5x, a 0.5% stop gives 5x. Then the lowest of these applies:
 
 | Situation | Max leverage |
 | --- | --- |
-| Absolute cap (`leverage_max`) | 10x |
-| SPX6900 | 3x |
+| Absolute cap (`leverage_max`) | 10x by default; the owner can set it from the admin up to 20x |
+| SPX6900 (`leverage_max_spx6900`) | 3x by default; settable up to 10x |
 | ATR above its 30-day 90th percentile | half the computed value |
 | FOMC, CPI or jobs report today | 2x |
 | Risk-off regime while coupling > 0.5 | 2x |

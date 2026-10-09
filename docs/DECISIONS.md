@@ -168,3 +168,7 @@ After a cover, the gateway calls `POST /v5/account/quick-repayment` for the base
 
 Polymarket's crypto questions come from a handful of templates ("Will the price of Bitcoin be above $84,000 on October 9?", "Will Solana dip to $100 October 5-11?", "Bitcoin Up or Down - October 9, 4AM ET"). A regex parser maps them; the model only gets questions that mention one of our assets in a form the parser does not know. Mapping runs every 15 minutes right after the fetch, and at startup. Markets are fetched per Gamma event so ladders arrive whole; 5- and 15-minute Up/Down markets are not stored. Hourly, 4-hour and daily Up/Down markets add a momentum component (weight 0.25 next to shift 0.5 and level 0.25).
 Why: the first day ran with zero mapped markets. The daily 02:30 UTC mapper never fired because the stack started after it, and every asset reported "no coverage" without saying why. The parser removes the model from the critical path and costs nothing.
+
+## 2026-10-09 · Leverage caps editable up to 20x (SPX6900 10x)
+
+The admin's parameter bounds allow `leverage_max` up to 20 and `leverage_max_spx6900` up to 10; the defaults in `config.toml` stay 10 and 3. Owner instruction. The other caps still apply on top: the leverage agent's liquidation-distance and depth rules, the live ramp (2x → 5x → 10x), the 2x cap after a drawdown pause, and what Bybit will actually lend per pair (the gateway sizes the borrow from `instruments-info` and the margin terms, so a 20x setting on a pair Bybit lends 10x on fills at what the exchange allows).
