@@ -104,3 +104,15 @@ def test_stale_session_logs_out_with_a_notice_instead_of_403() -> None:
     assert any(
         c.startswith(f"{COOKIE}=") and "Max-Age=0" in c for c in page.headers.get_list("set-cookie")
     )
+
+
+def test_money_filter_formats_european_with_dollar() -> None:
+    from decimal import Decimal
+
+    from app.admin.app import fmt_money
+
+    assert fmt_money(Decimal("10019.95")) == "$ 10.019,95"
+    assert fmt_money(185) == "$ 185,00"
+    assert fmt_money(Decimal("-15.7069")) == "-$ 15,71"
+    assert fmt_money(Decimal("13.38"), signed=True) == "+$ 13,38"
+    assert fmt_money(None) == "$ 0,00"

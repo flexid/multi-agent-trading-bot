@@ -74,7 +74,20 @@ def side_words(value: Any) -> Markup:
     )
 
 
+def fmt_money(value: Any, signed: bool = False) -> str:
+    """Ledger amounts on the overview as "$ 10.019,95" (owner, 2026-10-09): dot for
+    thousands, comma for decimals. Tables keep plain numbers."""
+    try:
+        q = Decimal(str(value or 0)).quantize(Decimal("0.01"))
+    except Exception:
+        return str(value)
+    body = f"{abs(q):,.2f}".replace(",", "\u0000").replace(".", ",").replace("\u0000", ".")
+    sign = "-" if q < 0 else ("+" if signed and q > 0 else "")
+    return f"{sign}$ {body}"
+
+
 templates.env.filters["price"] = fmt_price
+templates.env.filters["money"] = fmt_money
 templates.env.filters["side"] = side_words
 COOKIE = "dorkbot_admin"
 STEP_UP = "dorkbot_stepup"
