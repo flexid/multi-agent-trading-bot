@@ -171,17 +171,53 @@ function Heatmap({ history, assets }: { history: Snapshot["history"]; assets: st
   );
 }
 
-/** The orange curve on the front page: hover readout, trade dots, tap or button to expand. */
+const RANGES: { label: string; ms: number | null }[] = [
+  { label: "24h", ms: 86400e3 }, { label: "7d", ms: 7 * 86400e3 }, { label: "30d", ms: 30 * 86400e3 },
+  { label: "90d", ms: 90 * 86400e3 }, { label: "all", ms: null },
+];
+
+/** 24h / 7d / 30d / 90d / all. Ranges longer than the record are hidden. */
+function RangePicker({ span, value, onChange }: { span: number; value: number | null; onChange: (ms: number | null) => void }) {
+  const shown = RANGES.filter((r) => r.ms === null || r.ms < span * 1.1 || r.ms === 86400e3);
+  if (shown.length <= 2) return null;
+  return (
+    <span className="toggle">
+      {shown.map((r) => <button key={r.label} className={value === r.ms ? "on" : ""} onClick={() => onChange(r.ms)}>{r.label}</button>)}
+    </span>
+  );
+}
+
+/** The equity series to draw for a window: the dense last-7-days series when it fits. */
+function pickEquity(p: Snapshot["performance"], range: Range): Pt[] {
+  const full = p.equity_curve as Pt[];
+  const recent = (p.equity_recent ?? []) as Pt[];
+  return range && recent.length > 1 && range[0] >= recent[0][0] ? recent : full;
+}
+
+function windowOf(points: Pt[], ms: number | null): Range {
+  if (!ms || points.length < 2) return null;
+  const end = points[points.length - 1][0];
+  return [Math.max(points[0][0], end - ms), end];
+}
+
+/** The orange curve on the front page: hover readout, trade dots, range picker, tap or button to expand. */
 export function EquityChart({ s, onExpand }: { s: Snapshot; onExpand: () => void }) {
   const p = s.performance;
+  const [ms, setMs] = useState<number | null>(null);
+  const full = p.equity_curve as Pt[];
+  const range = windowOf(full, ms);
+  const equity = pickEquity(p, range);
   const markers = s.closed_trades.map((t) => {
     const x = Date.parse(t.closed_at);
-    const y = nearest(p.equity_curve as Pt[], x)?.[1] ?? 0;
+    const y = nearest(equity, x)?.[1] ?? 0;
     return { x, y, color: t.margin_pct >= 0 ? "var(--up)" : "var(--down)", label: `${tick(t.cashtag)} ${t.direction} ${pct(t.margin_pct)}` };
   });
+  const visible = markers.filter((m) => !range || (m.x >= range[0] && m.x <= range[1]));
+  const span = full.length > 1 ? full[full.length - 1][0] - full[0][0] : 0;
   return (
     <div className="chart-wrap">
-      <LineChart series={[{ name: "dorkbot", points: p.equity_curve as Pt[], color: "var(--accent)", width: 1.8 }]} markers={markers.length <= 40 ? markers : []} height={220} />
+      <div className="chart-tools"><RangePicker span={span} value={ms} onChange={setMs} /></div>
+      <LineChart series={[{ name: "dorkbot", points: equity, color: "var(--accent)", width: 1.8 }]} markers={visible.length <= 40 ? markers : []} range={range} height={220} />
       <button className="expand" onClick={onExpand} aria-label="open the detailed charts">details ⤢</button>
     </div>
   );
@@ -198,9 +234,9 @@ export function DetailOverlay({ s, onClose }: { s: Snapshot; onClose: () => void
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [onClose]);
   const full = p.equity_curve as Pt[];
-  const recent = (p.equity_recent ?? []) as Pt[];
-  // a zoom inside the last week switches to the dense series, so detail survives the zoom
-  const equity = range && recent.length > 1 && range[0] >= recent[0][0] ? recent : full;
+  const equity = pickEquity(p, range);  // a zoom inside the last week uses the dense series
+  const span = full.length > 1 ? full[full.length - 1][0] - full[0][0] : 0;
+  const picked = range && range[1] === full[full.length - 1]?.[0] ? range[1] - range[0] : null;
   const series: Series[] = [
     { name: "dorkbot", points: equity, color: "var(--accent)", width: 2 },
     ...(p.btc_curve.length > 1 ? [{ name: "BTC hold", points: p.btc_curve as Pt[], color: "#8f958f" }] : []),
@@ -219,7 +255,8 @@ export function DetailOverlay({ s, onClose }: { s: Snapshot; onClose: () => void
       <div className="overlay-panel">
         <div className="overlay-head">
           <h2>Details since {monthYear(p.since)}</h2>
-          <div className="muted small">drag to zoom · double-click to reset{range && <> · <button className="link" onClick={() => setRange(null)}>reset</button></>}</div>
+          <RangePicker span={span} value={picked && RANGES.some((r) => r.ms === picked) ? picked : range ? -1 : null} onChange={(ms) => setRange(windowOf(full, ms))} />
+          <div className="muted small">or drag to zoom · double-click resets{range && <> · <button className="link" onClick={() => setRange(null)}>reset</button></>}</div>
           <button className="close" onClick={onClose} aria-label="close">✕</button>
         </div>
         <h3>Equity vs BTC buy &amp; hold vs equal-weight basket</h3>
