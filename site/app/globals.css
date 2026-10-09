@@ -31,3 +31,7 @@ nav a { margin-right: 16px; }
 .bars { display: flex; flex-direction: column; gap: 6px; } .bar-row { display: grid; grid-template-columns: 74px 1fr 64px; align-items: center; gap: 8px; font-size: 13px; } .bar-note { grid-column: 2 / 4; font-size: 11px; margin-top: -4px; }
 .bar-track { position: relative; height: 12px; background: #141414; border-radius: 3px; overflow: hidden; } .bar-zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--line); } .bar-fill { position: absolute; top: 0; bottom: 0; } .bar-fill.pos { background: var(--up); } .bar-fill.neg { background: var(--down); } .bar-value { text-align: right; font-variant-numeric: tabular-nums; }
 .heat { display: grid; gap: 3px; font-size: 11px; justify-content: start; } .heat-cell { height: 22px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #fff; text-shadow: 0 0 2px rgba(0,0,0,.6); } .heat-y { align-self: center; } .heat-x { text-align: center; overflow: hidden; white-space: nowrap; }
+
+/* the open and closed trade tables sit under each other: same widths for the first three columns */
+table.trades { table-layout: fixed; } table.trades th:nth-child(1) { width: 20%; } table.trades th:nth-child(2) { width: 10%; } table.trades th:nth-child(3) { width: 14%; } table.trades td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 520px) { table.trades th:nth-child(1) { width: 30%; } table.trades th:nth-child(2) { width: 16%; } table.trades th:nth-child(3) { width: 22%; } }
