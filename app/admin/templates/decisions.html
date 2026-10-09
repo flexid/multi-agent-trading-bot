@@ -1,7 +1,17 @@
 {% extends "base.html" %}{% block body %}
 
 <h1>Decision log</h1>
-<p class="muted">{% for c in cycles %}<a href="/decisions?cycle={{ c.id }}">#{{ c.id }} {{ c.started_at.strftime('%m-%d %H:%M') }} {{ c.kind }} {{ c.status }} ${{ '%.2f'|format(c.cost_usd or 0) }}</a> · {% endfor %}</p>
+<article>
+<p class="muted" style="margin-bottom:.8rem">A <strong>cycle</strong> is one full pass of the bot: every four hours (or when a trigger fires) the five agents score each asset, both PMs propose a trade, and the risk engine decides. Pick a cycle to see what each agent saw, what the PMs proposed, which risk rules fired and what was done.</p>
+<form method="get" action="/decisions" class="inline" style="margin:0">
+<label for="cycle" style="display:inline-block;margin-right:.6rem">Cycle</label>
+<select id="cycle" name="cycle" onchange="this.form.submit()" style="width:auto;display:inline-block;margin:0">
+{% for c in cycles %}<option value="{{ c.id }}" {% if chosen and c.id == chosen.id %}selected{% endif %}>#{{ c.id }} · {{ c.started_at.strftime('%a %d %b %H:%M') }} UTC · {{ c.kind }}{% if c.trigger %} ({{ c.trigger }}){% endif %} · {{ c.status }} · ${{ '%.2f'|format(c.cost_usd or 0) }}</option>{% endfor %}
+</select>
+<noscript><button class="outline" style="width:auto;display:inline-block;margin:0 0 0 .5rem">Show</button></noscript>
+</form>
+{% if chosen %}<p class="muted small" style="margin:.6rem 0 0">Showing cycle #{{ chosen.id }}, started {{ chosen.started_at.strftime('%Y-%m-%d %H:%M') }} UTC. Newest first in the list; a <em>triggered</em> cycle ran outside the schedule because of a price move, a Polymarket shift or an X news shock.</p>{% endif %}
+</article>
 {% if chosen %}<article><header>Cycle #{{ chosen.id }} · {{ chosen.kind }}{% if chosen.trigger %} · {{ chosen.trigger }}{% endif %} · {{ chosen.status }}{% if chosen.error %} · <span class="down">{{ chosen.error[:200] }}</span>{% endif %}</header>
 <div class="overflow"><table><tr><th>asset</th><th>valid</th><th>formula</th><th>Claude</th><th>GPT</th><th>agreement</th><th>consensus</th><th>direction</th><th>conv</th><th>action</th><th>reason</th><th></th></tr>
 {% for d in decs %}<tr><td>{{ d.asset }}</td><td>{{ d.valid_agents }}</td><td>{{ '%+.2f'|format(d.formula_score) if d.formula_score is not none else '-' }}</td><td>{{ (d.pm1_direction or '-')|side }}</td><td>{{ (d.pm2_direction or '-')|side }}</td><td>{{ d.agreement }}</td><td>{{ '%+.2f'|format(d.consensus_score) if d.consensus_score is not none else '-' }}</td><td>{{ d.direction|side }}</td><td>{{ '%.2f'|format(d.conviction) if d.conviction is not none else '-' }}</td><td>{{ d.action }}</td><td class="muted">{{ d.reason|side }}</td><td>{% if plans[d.id] %}<button class="outline" style="padding:.15rem .6rem;font-size:.75rem;width:auto;margin:0" onclick="document.getElementById('plan-{{ d.id }}').showModal()">View plan</button>{% endif %}</td></tr>{% endfor %}</table></div>
