@@ -282,3 +282,22 @@ async def test_self_test_kill_spares_the_paper_tracks_an_admin_kill_does_not(db:
 
 def test_timeline_helper() -> None:
     assert NOW + timedelta(hours=1) > NOW
+
+
+@needs_db
+async def test_entry_is_sized_down_to_free_cash_instead_of_skipped(db: None) -> None:
+    """Five 20% shares plus fees do not fit five times: the last entry takes what is free."""
+    from app.db.session import new_session
+
+    seed_decision()  # plan: notional 2000 at 2x → margin 1000
+    ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+    with new_session() as s:
+        ex.ledger(s, NOW)  # create the primary ledger, then leave it short of cash
+        acct = s.get(PaperAccount, 1)
+        assert acct is not None
+        acct.cash = D("600")
+        s.commit()
+    await ex.tick()
+    (pos,) = positions()
+    assert pos.notional <= D("600") * 2 and pos.notional >= D("1000")  # fitted, not skipped
+    assert pos.margin <= D("600")

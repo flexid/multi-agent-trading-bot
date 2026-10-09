@@ -70,6 +70,8 @@ TRACKS: dict[str, dict[str, str]] = {
 }
 LEDGER_IDS = {"primary": 1, "max": 2, "pilot": 3, "live": 4}
 TAKER_FEE = {"USDT": Decimal("0.001"), "USDC": Decimal("0.0005")}
+CASH_FIT_BUFFER = Decimal("0.995")  # leave the entry fee in cash when sizing to what is free
+MIN_FIT_FRACTION = Decimal("0.25")  # a trade smaller than a quarter of the plan is skipped
 QTY_STEP_FALLBACK = Decimal("0.000001")
 HOURLY_BORROW_FALLBACK = Decimal("0.000005")
 
@@ -634,10 +636,25 @@ class Executor:
                 }
                 log.info("%s: entry clamped to spot (%+.2f%% from plan)", d.asset, drift * 100)
             if notional / leverage > acct.cash:
-                log.warning(
-                    "%s: margin %s exceeds cash %s", d.asset, notional / leverage, acct.cash
-                )
-                continue
+                # The last asset to open finds the cash already committed as margin by the
+                # others (five shares of 20%, fees paid). Size down to what is free rather
+                # than skip; the trade's risk only ever shrinks. Below a quarter of the
+                # plan it is not worth a trade.
+                fit = (acct.cash * leverage * CASH_FIT_BUFFER).quantize(Decimal("0.01"))
+                key = f"cash:{track}:{d.id}"
+                if fit < notional * MIN_FIT_FRACTION:
+                    if key not in self._alerted:
+                        self._alerted.add(key)
+                        log.warning(
+                            "%s (%s): margin %s exceeds free cash %s; skipped until cash frees",
+                            d.asset,
+                            track,
+                            notional / leverage,
+                            acct.cash,
+                        )
+                    continue
+                log.info("%s (%s): sized down to free cash: %s → %s", d.asset, track, notional, fit)
+                notional = fit
             try:
                 pos = sim.open_position(
                     side,
