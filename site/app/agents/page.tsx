@@ -35,17 +35,17 @@ export default function Agents() {
           <h2>{tick(a.cashtag)} · {a.consensus} <span className="badge">Dyne {a.pm_claude ?? "–"}</span><span className="badge">Dork {a.pm_gpt ?? "–"}</span></h2>
           <p className="muted">{a.reason}. Formula {sc(a.formula_score)}, consensus {sc(a.consensus_score)}.
             {a.macro_regime && <> Macro regime {a.macro_regime}, tradfi coupling {a.coupling?.toFixed(2)}; macro parts tradfi {sc(a.macro_tradfi)} / crypto-native {sc(a.macro_native)}.</>}</p>
-          <table><thead><tr><th>agent</th><th>score</th><th>confidence</th><th>notes</th></tr></thead><tbody>
+          <div className="scroll-x"><table className="wide"><thead><tr><th>agent</th><th>score</th><th>confidence</th><th>notes</th></tr></thead><tbody>
             {a.agents.map((g) => <tr key={g.agent}><td>{name(s, g.agent)}{!g.valid && <span className="badge">stale</span>}</td><td className={cls(g.score)}>{sc(g.score)}</td><td>{pct(g.confidence * 100, 0)}</td><td className="muted">{g.reasons.join(" · ")}</td></tr>)}
-          </tbody></table>
+          </tbody></table></div>
         </section>
       ))}
       <section className="panel">
       <h2>Leaderboard <span className="muted small">how well each reading predicted the next day</span></h2>
       {s.leaderboard.length === 0 ? <p className="muted">Measured once enough trades have closed.</p> : (
-        <table><thead><tr><th>name</th><th>kind</th><th>IC 1d</th><th>sample</th></tr></thead><tbody>
+        <div className="scroll-x"><table><thead><tr><th>name</th><th>kind</th><th>IC 1d</th><th>sample</th></tr></thead><tbody>
           {s.leaderboard.map((l) => <tr key={l.name}><td>{lname(s, l)}</td><td>{l.kind}</td><td className={cls(l.ic_1d)}>{sc(l.ic_1d)}</td><td>{l.sample}</td></tr>)}
-        </tbody></table>
+        </tbody></table></div>
       )}
       </section>
     </>

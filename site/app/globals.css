@@ -13,7 +13,11 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; } th, td { text
 footer { margin-top: 24px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; text-align: center; }
 nav a { margin-right: 16px; }
 .curve { width: 100%; height: 120px; display: block; }
-@media (max-width: 520px) { table { font-size: 13px; } th:nth-child(n+6), td:nth-child(n+6) { display: none; } }
+@media (max-width: 520px) { table { font-size: 13px; } }
+/* on phones every table scrolls sideways instead of losing columns */
+.scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -16px; padding: 0 16px; }
+.scroll-x > table { min-width: 100%; }
+@media (max-width: 720px) { .scroll-x > table.trades { min-width: 720px; } .scroll-x > table.wide { min-width: 640px; } .panel .scroll-x { margin: 0 -16px; padding: 0 16px; } }
 
 /* interactive charts and the detail overlay */
 .chart { position: relative; width: 100%; touch-action: pan-y; user-select: none; cursor: crosshair; } .chart.dragging { cursor: col-resize; }
@@ -33,7 +37,7 @@ nav a { margin-right: 16px; }
 .heat { display: grid; gap: 2px; font-size: 11px; } .heat-cell { aspect-ratio: 4 / 1; min-height: 10px; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #fff; text-shadow: 0 0 2px rgba(0,0,0,.6); } .heat-y { align-self: center; } .heat-x { text-align: center; overflow: hidden; white-space: nowrap; }
 
 /* the open and closed trade tables sit under each other: same widths for the first three columns */
-table.trades { table-layout: fixed; } table.trades th:nth-child(1) { width: 20%; } table.trades th:nth-child(2) { width: 10%; } table.trades th:nth-child(3) { width: 14%; } table.trades td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.trades { table-layout: fixed; } table.trades th:nth-child(1) { width: 20%; } table.trades th:nth-child(2) { width: 10%; } table.trades th:nth-child(3) { width: 14%; } table.trades td { white-space: nowrap; }
 @media (max-width: 520px) { table.trades th:nth-child(1) { width: 30%; } table.trades th:nth-child(2) { width: 16%; } table.trades th:nth-child(3) { width: 22%; } }
 /* legal page */
 .legal { max-width: 760px; } .legal h1 { font-size: 22px; margin: 8px 0 12px; } .legal h2 { margin: 26px 0 8px; } .legal p { margin: 0 0 12px; line-height: 1.6; }

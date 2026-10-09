@@ -13,9 +13,9 @@ type Closed = Snapshot["closed_trades"][number];
 
 function ClosedTable({ rows }: { rows: Closed[] }) {
   return (
-    <table className="trades"><thead><tr><th>asset</th><th>side</th><th>entry</th><th>exit</th><th>lev</th><th>price</th><th>margin</th><th>held</th><th></th></tr></thead><tbody>
+    <div className="scroll-x"><table className="trades"><thead><tr><th>asset</th><th>side</th><th>entry</th><th>exit</th><th>lev</th><th>price</th><th>margin</th><th>held</th><th></th></tr></thead><tbody>
       {rows.map((t, i) => <tr key={i}><td>{tick(t.cashtag)}{t.paper && <span className="badge">paper</span>}</td><td><Side d={t.direction} /></td><td className="mono">{num(t.entry)}</td><td className="mono">{num(t.exit)}</td><td>{t.leverage}x</td><td className={cls(t.price_pct)}>{pct(t.price_pct)}</td><td className={cls(t.margin_pct)}>{pct(t.margin_pct)}</td><td>{t.holding}</td><td>{t.x_url && <a href={t.x_url}>thread</a>}</td></tr>)}
-    </tbody></table>
+    </tbody></table></div>
   );
 }
 
@@ -80,9 +80,9 @@ export default function Page() {
       <section className="panel">
       <h2>Open trades</h2>
       {s.open_trades.length === 0 ? <p className="muted">Nothing open right now.</p> : (
-        <table className="trades"><thead><tr><th>asset</th><th>side</th><th>entry</th><th>lev</th><th>stop</th><th>target</th><th>in trade</th><th>price</th><th>margin</th></tr></thead><tbody>
+        <div className="scroll-x"><table className="trades"><thead><tr><th>asset</th><th>side</th><th>entry</th><th>lev</th><th>stop</th><th>target</th><th>in trade</th><th>price</th><th>margin</th></tr></thead><tbody>
           {s.open_trades.map((t, i) => <tr key={i}><td>{tick(t.cashtag)}{t.paper && <span className="badge">paper</span>}</td><td><Side d={t.direction} /></td><td className="mono">{num(t.entry)}</td><td>{t.leverage}x</td><td className="mono">{num(t.stop)}</td><td className="mono">{num(t.target)}</td><td>{t.time_in_trade}</td><td className={cls(t.unrealized_price_pct)}>{pct(t.unrealized_price_pct)}</td><td className={cls(t.unrealized_margin_pct)}>{pct(t.unrealized_margin_pct)}</td></tr>)}
-        </tbody></table>
+        </tbody></table></div>
       )}
       </section>
       <section className="panel">
