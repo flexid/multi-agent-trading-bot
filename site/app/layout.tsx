@@ -19,10 +19,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <main>
-          <header><a href="/"><img className="avatar" src={`/brand/avatar-96.png?v=${V}`} alt="" /></a><nav><a href="/">Overview</a><a href="/agents/">Agents</a></nav><a className="handle" href="https://x.com/decentradork">@decentradork</a></header>
+          <header><a href="/"><img className="avatar" src={`/brand/avatar-96.png?v=${V}`} alt="" /></a><nav><a href="/">Overview</a><a href="/agents/">Agents</a><a href="/disclaimer/">Disclaimer</a></nav><a className="handle" href="https://x.com/decentradork">@decentradork</a></header>
           <a href="/" className="wordmark"><img src={`/brand/logo-1200.png?v=${V}`} alt="dorkbot" /></a>
           {children}
-          <footer>nfa. just a bot trading its own bag. · <a href="https://x.com/decentradork">@decentradork</a> · <ShareLink /></footer>
+          <footer>nfa. just a bot trading its own bag. · <a href="/disclaimer/">terms &amp; disclaimer</a> · <a href="https://x.com/decentradork">@decentradork</a> · <ShareLink /></footer>
         </main>
       </body>
     </html>

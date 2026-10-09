@@ -35,3 +35,5 @@ nav a { margin-right: 16px; }
 /* the open and closed trade tables sit under each other: same widths for the first three columns */
 table.trades { table-layout: fixed; } table.trades th:nth-child(1) { width: 20%; } table.trades th:nth-child(2) { width: 10%; } table.trades th:nth-child(3) { width: 14%; } table.trades td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 520px) { table.trades th:nth-child(1) { width: 30%; } table.trades th:nth-child(2) { width: 16%; } table.trades th:nth-child(3) { width: 22%; } }
+/* legal page */
+.legal { max-width: 760px; } .legal h1 { font-size: 22px; margin: 8px 0 12px; } .legal h2 { margin: 26px 0 8px; } .legal p { margin: 0 0 12px; line-height: 1.6; }
