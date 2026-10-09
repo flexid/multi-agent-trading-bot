@@ -73,7 +73,7 @@ def sharpe(returns: list[float], periods_per_year: float) -> float | None:
     mean = sum(returns) / len(returns)
     var = sum((r - mean) ** 2 for r in returns) / (len(returns) - 1)
     sd = math.sqrt(var)
-    return (mean / sd) * math.sqrt(periods_per_year) if sd > 0 else None
+    return (mean / sd) * math.sqrt(periods_per_year) if sd > 1e-9 else None
 
 
 def daily_returns(series: list[tuple[datetime, Decimal]]) -> list[float]:

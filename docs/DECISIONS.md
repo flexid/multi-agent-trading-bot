@@ -2,6 +2,10 @@
 
 Newest first. One entry per decision: what was decided, why, and what it rules out.
 
+## 2026-10-09 · M9: the bot flips itself to live; pilot is a separate mode
+
+`risk_state.mode` is set to live by the nightly go-live check when every §10 criterion holds, including the owner's 4-weeks-AND-100-trades rule and a passed live self-test; `live_allowed` in config is the owner's single switch and is one of the criteria, not a trigger. The executor decides its mode on start and each restart from that state. The pilot (`[pilot] enabled`) is a third mode with its own ledger (id 3) and `positions.mode = "pilot"`, so pilot fills, slippage and borrow behaviour are measured without touching the shadow statistics. Backups are nightly `pg_dump` files kept 14 days and mirrored to R2 once credentials exist.
+
 ## 2026-10-09 · M8: server-rendered admin, Cloudflare Tunnel, SSH-only firewall
 
 The admin is FastAPI with Jinja templates rather than a separate Next.js app: one container, no build step, nothing the owner needs beyond a browser; a Next.js front can replace the templates later without touching auth or the data layer. The admin never gets the trading secrets: it runs from `.env.admin`, an allow-listed subset of `.env`, and a test enforces the list. Public exposure goes through a Cloudflare Tunnel (outbound only), so the droplet's firewall allows SSH and nothing else; SPEC §12's "443 only from Cloudflare ranges" is satisfied by having no 443 at all. Shadow posts' marker words and the site footer's "bot"/"nfa" are the only whitelist exceptions, and only in site mode.

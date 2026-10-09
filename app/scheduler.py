@@ -105,6 +105,34 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
         )
     scheduler.add_job(heartbeat_job, CronTrigger(second="30"), id="heartbeat", max_instances=1)
     scheduler.add_job(
+        ops_job,
+        CronTrigger(hour="0", minute="40"),
+        args=["golive", cfg],
+        id="golive",
+        max_instances=1,
+    )
+    scheduler.add_job(
+        ops_job,
+        CronTrigger(hour="1", minute="10"),
+        args=["backup", cfg],
+        id="backup",
+        max_instances=1,
+    )
+    scheduler.add_job(
+        ops_job,
+        CronTrigger(day="1,15", hour="1", minute="30"),
+        args=["tuning", cfg],
+        id="tuning",
+        max_instances=1,
+    )
+    scheduler.add_job(
+        ops_job,
+        CronTrigger(day="1", hour="2", minute="0"),
+        args=["costs", cfg],
+        id="costs",
+        max_instances=1,
+    )
+    scheduler.add_job(
         publish_job,
         CronTrigger(minute=f"*/{cfg.site.snapshot_interval_minutes}", second="40"),
         id="site_snapshot",
@@ -124,6 +152,23 @@ async def publish_job() -> None:
         await asyncio.to_thread(publish)
     except Exception as exc:  # the site is never a reason to stop trading
         log.warning("site snapshot failed: %s", exc)
+
+
+async def ops_job(kind: str, cfg: Config) -> None:
+    from app import ops
+
+    try:
+        if kind == "golive":
+            await asyncio.to_thread(ops.golive_check, cfg)
+        elif kind == "backup":
+            await asyncio.to_thread(ops.backup)
+        elif kind == "tuning":
+            await asyncio.to_thread(ops.tuning, cfg)
+        elif kind == "costs":
+            await asyncio.to_thread(ops.write_cost_report)
+            log.info("cost report written to logs/costs.md")
+    except Exception as exc:
+        log.warning("ops job %s failed: %s", kind, exc)
 
 
 async def heartbeat_job() -> None:

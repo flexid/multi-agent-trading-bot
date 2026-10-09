@@ -62,7 +62,18 @@ class Executor:
     ) -> None:
         self.cfg = cfg
         self.secrets = secrets
-        self.mode = "paper"  # "live" only when this process decides so (see docstring)
+        self._client: BybitClient | None = None
+        self.mode = self.decide_mode(cfg)  # paper | pilot | live; this process decides
+        if gateway is None and self.mode in ("pilot", "live"):
+            from app.execution.bybit_gateway import BybitGateway
+
+            self._client = BybitClient(
+                secrets.bybit_base_url,
+                secrets.bybit_api_key,
+                secrets.bybit_api_secret,
+                allow_orders=True,
+            )
+            gateway = BybitGateway(self._client)
         self.gateway: Gateway = gateway or PaperGateway(
             TAKER_FEE.get(cfg.exchange.quote, Decimal("0.001"))
         )
@@ -74,7 +85,23 @@ class Executor:
         self.collateral_ratios: dict[str, Decimal] = {}
         self.frozen = False  # after a kill switch: no new positions until resumed
         self.style = style.load()
-        self._client: BybitClient | None = None
+
+    @staticmethod
+    def decide_mode(cfg: Config) -> str:
+        """live only when risk_state.mode is live AND live_allowed (go-live checker, M9);
+        pilot when the owner enabled it in config; paper otherwise."""
+        from app.db.models import RiskState
+
+        try:
+            with new_session() as session:
+                state = session.get(RiskState, 1)
+        except Exception:
+            return "paper"
+        if state is not None and state.mode == "live" and cfg.trading.live_allowed:
+            return "live"
+        if cfg.pilot.enabled:
+            return "pilot"
+        return "paper"
 
     # --- market data ------------------------------------------------------------
 
@@ -121,9 +148,11 @@ class Executor:
     # --- ledger ---------------------------------------------------------------------
 
     def ledger(self, session: Session, now: datetime, track: str = "primary") -> PaperAccount:
-        track_id = 1 if track == "primary" else 2
+        track_id = {"primary": 1, "max": 2, "pilot": 3}[track]
         acct = session.get(PaperAccount, track_id)
-        capital = self.cfg.trading.capital_max_usdt
+        capital = (
+            self.cfg.pilot.capital_usdt if track == "pilot" else self.cfg.trading.capital_max_usdt
+        )
         if acct is None:
             acct = PaperAccount(
                 id=track_id,
@@ -335,14 +364,14 @@ class Executor:
     async def open_new(self, session: Session, now: datetime) -> None:
         if self.frozen or self.quotes_stale:
             return
-        tracks = ["primary", "max"] if self.mode == "paper" else ["primary"]
+        tracks = {"paper": ["primary", "max"], "pilot": ["pilot"], "live": ["primary"]}[self.mode]
         for track in tracks:
             await self._open_track(session, now, track)
 
     async def _open_track(self, session: Session, now: datetime, track: str) -> None:
         fee = TAKER_FEE.get(self.cfg.exchange.quote, Decimal("0.001"))
         acct = self.ledger(session, now, track)
-        plan_key = "plan" if track == "primary" else "plan_max"
+        plan_key = "plan_max" if track == "max" else "plan"
         open_assets = set(
             session.scalars(
                 select(Position.asset).where(Position.status == "open", Position.track == track)
@@ -372,6 +401,13 @@ class Executor:
                 continue
             side = Side.LONG if d.direction == "long" else Side.SHORT
             notional, leverage = Decimal(plan["notional"]), Decimal(plan["leverage"])
+            if track == "pilot":  # owner: 200 USDT at 1x, to test fills, slippage, borrowing
+                leverage = Decimal(1)
+                notional = min(
+                    notional,
+                    acct.cash,
+                    self.cfg.pilot.capital_usdt * self.cfg.trading.capital_share_per_asset,
+                )
             entry_mid = Decimal(plan["entry"])
             # Limit near mid (SPEC §9): take it only while the market is within ±0.5% of entry.
             if abs(quote.mid / entry_mid - 1) > Decimal("0.005"):
@@ -524,7 +560,9 @@ class Executor:
 
     def snapshot(self, session: Session, now: datetime) -> None:
         summary = []
-        for track in ["primary", "max"] if self.mode == "paper" else ["primary"]:
+        for track in {"paper": ["primary", "max"], "pilot": ["pilot"], "live": ["primary"]}[
+            self.mode
+        ]:
             acct = self.ledger(session, now, track)
             unreal = margin_total = gross = Decimal(0)
             rows = session.scalars(
@@ -544,7 +582,7 @@ class Executor:
             session.merge(
                 EquitySnapshot(
                     ts=now,
-                    mode=f"{self.mode}:{track}" if self.mode == "paper" else self.mode,
+                    mode=f"{self.mode}:{track}" if self.mode != "live" else self.mode,
                     equity=acct.equity,
                     cash=acct.cash,
                     open_positions=len(rows),

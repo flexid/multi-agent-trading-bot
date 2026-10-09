@@ -1,4 +1,4 @@
-.PHONY: up down deploy deploy-site snapshot test lint migrate fetch-once scheduler cycle executor kill resume indicators backtest selftest selftest-live bybit-authorize
+.PHONY: up down deploy deploy-site snapshot golive costs selftest-live-full test lint migrate fetch-once scheduler cycle executor kill resume indicators backtest selftest selftest-live bybit-authorize
 
 up:
 	docker compose up -d postgres
@@ -40,6 +40,17 @@ kill:
 
 resume:
 	uv run python -m app.control resume
+
+# M9: go-live verdict, cost report, live self-test (server only; real orders at minimal size).
+golive:
+	uv run python -c "from app.config import get_config; from app.db.session import new_session; from app.risk.golive import evaluate; \
+	  s=new_session(); v=evaluate(s, get_config()); print('READY' if v.ready else 'not yet'); [print(('ok  ' if c.ok else 'FAIL'), c.name, '=', c.value) for c in v.criteria]"
+
+costs:
+	uv run python -c "from app.ops import cost_report; print(cost_report())"
+
+selftest-live-full:
+	uv run python -m app.execution.live_selftest --confirm "$(CONFIRM)"
 
 # Indicators agent on stored candles, and its backtest.
 indicators:

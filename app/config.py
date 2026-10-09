@@ -39,6 +39,11 @@ class TradingConfig(_Section):
     cycle_hours: int
 
 
+class PilotConfig(_Section):
+    enabled: bool = False
+    capital_usdt: Decimal = Decimal(200)
+
+
 class ExchangeConfig(_Section):
     quote: str = "USDC"
     alt_quote: str | None = None
@@ -114,6 +119,7 @@ class LLMConfig(_Section):
 class Config(_Section):
     llm: LLMConfig = LLMConfig()
     trading: TradingConfig
+    pilot: PilotConfig = PilotConfig()
     exchange: ExchangeConfig = ExchangeConfig()
     posting: PostingConfig
     risk: RiskConfig = RiskConfig()

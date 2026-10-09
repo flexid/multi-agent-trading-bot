@@ -20,6 +20,10 @@ emergency_brake = -0.25
 depth_cap = 0.05
 cycle_hours = 4
 
+[pilot]                         # execution pilot after M9 (owner): real orders, 1x, small
+enabled = false                 # owner flips once the subaccount holds capital_usdt
+capital_usdt = 200
+
 [exchange]
 quote = "USDT"                  # quote coin of every traded pair
 alt_quote = "USDC"              # compared in the self-test report only, never traded
