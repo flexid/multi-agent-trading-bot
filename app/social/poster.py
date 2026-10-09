@@ -84,9 +84,7 @@ async def compose(
             prompt=load_prompt("post_writer"),
             user_text=f'{{"kind": "{kind}", "record": {record}, "style": {style!r}}}',
         )
-        text = draft.parsed.text.strip()
-        if facts.paper and not text.lower().startswith("paper"):
-            text = "Paper: " + text
+        text = tpl.enforce_marker(draft.parsed.text.strip(), facts.paper)
         audit = await complete(
             "post_auditor",
             Audit,
@@ -120,7 +118,10 @@ async def enqueue(
     text, source, audit_ok, notes = await compose(
         kind, facts_for(pos, cfg, reason, paper), style, use_models=not dry_run
     )
+    text = tpl.enforce_marker(text, paper)
     wl = check(text)
+    if tpl.has_marker(text) != paper:  # belt and braces: never leaks either way
+        wl = type(wl)(False, [*wl.problems, "shadow marker mismatch"])
     lo, hi = cfg.posting.delay_minutes
     reply_to = None
     if kind == "close":

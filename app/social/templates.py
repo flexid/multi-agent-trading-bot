@@ -24,6 +24,30 @@ class TradeFacts:
     paper: bool = False
 
 
+SHADOW_MARKERS = ("dorking...", "just dorking", "still dorking around")
+
+
+def has_marker(text: str) -> bool:
+    return any(m in text for m in SHADOW_MARKERS)
+
+
+def with_marker(text: str, rng: random.Random | None = None) -> str:
+    """Append a test-mode marker to a shadow post (owner, 2026-10-09)."""
+    if has_marker(text):
+        return text
+    rng = rng or random.Random()
+    return f"{text.rstrip()} {rng.choice(SHADOW_MARKERS)}"
+
+
+def enforce_marker(text: str, paper: bool, rng: random.Random | None = None) -> str:
+    """Shadow posts always carry a marker; live posts never do. Code, not the model."""
+    if paper:
+        return with_marker(text, rng)
+    for m in SHADOW_MARKERS:
+        text = text.replace(f" {m}", "").replace(m, "")
+    return text.strip()
+
+
 def fmt(x: Decimal) -> str:
     s = f"{x:.6g}" if x < 10 else f"{x:,.2f}".rstrip("0").rstrip(".")
     return s
@@ -73,7 +97,7 @@ def render_open(f: TradeFacts, rng: random.Random | None = None) -> str:
         target=fmt(f.target),
         reason=reason,
     )
-    return ("Paper: " + text) if f.paper else text
+    return enforce_marker(text, f.paper, rng)
 
 
 def render_close(f: TradeFacts, rng: random.Random | None = None) -> str:
@@ -87,7 +111,7 @@ def render_close(f: TradeFacts, rng: random.Random | None = None) -> str:
         pp=pct(f.pnl_price_pct),
         pm=pct(f.pnl_margin_pct),
     )
-    return ("Paper: " + text) if f.paper else text
+    return enforce_marker(text, f.paper, rng)
 
 
 def holding_text(hours: float) -> str:

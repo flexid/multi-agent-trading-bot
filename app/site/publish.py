@@ -24,6 +24,7 @@ def og_image(snap: Snapshot) -> bytes:
 
     img = Image.new("RGB", (1200, 630), "#0b0d10")
     d = ImageDraw.Draw(img)
+
     def font(name: str, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
         try:
             return ImageFont.truetype(name, size)

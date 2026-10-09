@@ -33,10 +33,18 @@ def test_every_close_template_passes_the_whitelist() -> None:
         assert "+4.7%" in text and "+13.6%" in text and "9 hours" in text
 
 
-def test_paper_posts_are_labelled() -> None:
+def test_shadow_posts_carry_a_marker_and_live_posts_never_do() -> None:
     paper = tpl.TradeFacts(**{**FACTS.__dict__, "paper": True})
-    assert tpl.render_open(paper).startswith("Paper: ")
-    assert tpl.render_close(paper).startswith("Paper: ")
+    for i in range(5):
+        o, c = tpl.render_open(paper, random.Random(i)), tpl.render_close(paper, random.Random(i))
+        assert tpl.has_marker(o) and tpl.has_marker(c)
+        assert check(o).ok and check(c).ok
+    assert not tpl.has_marker(tpl.render_open(FACTS))
+    assert (
+        tpl.enforce_marker("Closed $SOL at 77.6. just dorking", paper=False)
+        == "Closed $SOL at 77.6."
+    )
+    assert tpl.has_marker(tpl.enforce_marker("Closed $SOL at 77.6.", paper=True))
 
 
 def test_holding_text() -> None:
