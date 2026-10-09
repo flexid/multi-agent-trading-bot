@@ -3,13 +3,14 @@
 <h1>Decision log</h1>
 <article>
 <p class="muted" style="margin-bottom:.8rem">A <strong>cycle</strong> is one full pass of the bot: every four hours (or when a trigger fires) the five agents score each asset, both PMs propose a trade, and the risk engine decides. Pick a cycle to see what each agent saw, what the PMs proposed, which risk rules fired and what was done.</p>
-<form method="get" action="/decisions" class="inline" style="margin:0">
-<label for="cycle" style="display:inline-block;margin-right:.6rem">Cycle</label>
-<select id="cycle" name="cycle" onchange="this.form.submit()" style="width:auto;display:inline-block;margin:0">
-{% for c in cycles %}<option value="{{ c.id }}" {% if chosen and c.id == chosen.id %}selected{% endif %}>#{{ c.id }} · {{ c.started_at.strftime('%a %d %b %H:%M') }} UTC · {{ 'regular 4h cycle' if c.kind == 'scheduled' else 'triggered' }}{% if c.trigger %} ({{ c.trigger }}){% endif %} · {{ c.status }} · ${{ '%.2f'|format(c.cost_usd or 0) }}</option>{% endfor %}
-</select>
-<noscript><button class="outline" style="width:auto;display:inline-block;margin:0 0 0 .5rem">Show</button></noscript>
-</form>
+<div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:.6rem">
+<span class="muted small">next cycle in <span class="countdown" style="color:#fe7e1c"></span> ({{ next_cycle_at.strftime('%H:%M') }} UTC)</span>
+{% if chosen %}{% set idx = cycles|map(attribute='id')|list %}{% set i = idx.index(chosen.id) if chosen.id in idx else -1 %}
+<span class="small">{% if i >= 0 and i + 1 < idx|length %}<a href="/decisions?cycle={{ idx[i + 1] }}">← older</a>{% endif %}{% if i > 0 %} · <a href="/decisions?cycle={{ idx[i - 1] }}">newer →</a>{% endif %}</span>{% endif %}
+<form method="get" action="/decisions" class="inline" style="margin:0 0 0 auto"><input name="cycle" type="number" placeholder="jump to #" style="width:8rem"> <button class="outline" style="width:auto;display:inline-block;margin:0">Go</button></form>
+</div>
+<div class="cycles">{% for c in cycles %}<a href="/decisions?cycle={{ c.id }}" class="{{ 'on' if chosen and c.id == chosen.id else '' }}"><span class="muted">#{{ c.id }}</span><span>{{ c.started_at.strftime('%a %d %b %H:%M') }}</span><span>{{ 'regular 4h cycle' if c.kind == 'scheduled' else 'triggered' }}{% if c.trigger %} <span class="muted">({{ c.trigger }})</span>{% endif %}</span><span class="st-{{ c.status }}">{{ c.status }}</span><span class="muted">${{ '%.2f'|format(c.cost_usd or 0) }}</span></a>{% endfor %}</div>
+<p class="muted small" style="margin:.4rem 0 0">Last {{ cycles|length }} cycles, newest first; scroll for older or jump by number.</p>
 {% if chosen %}<p class="muted small" style="margin:.6rem 0 0">Showing cycle #{{ chosen.id }}, started {{ chosen.started_at.strftime('%Y-%m-%d %H:%M') }} UTC. Newest first in the list. <em>regular</em> = the every-4-hours cycle; <em>triggered</em> = an extra cycle fired by a price move, a Polymarket shift or an X news shock. Status: <em>done</em>, <em>aborted</em> (the scheduler restarted mid-cycle, no decisions) or <em>failed</em>.</p>{% endif %}
 </article>
 {% if chosen %}<article><header>Cycle #{{ chosen.id }} · {{ chosen.kind }}{% if chosen.trigger %} · {{ chosen.trigger }}{% endif %} · {{ chosen.status }}{% if chosen.error %} · <span class="down">{{ chosen.error[:200] }}</span>{% endif %}</header>

@@ -173,10 +173,23 @@ def check_csrf(request: Request, csrf: str) -> None:
         raise _to_login("session")
 
 
+def next_cycle_at(now: datetime | None = None) -> datetime:
+    """The next regular cycle: every ``cycle_hours`` at minute 2 (app/scheduler.py)."""
+    now = now or datetime.now(UTC)
+    step = max(1, get_config().trading.cycle_hours)
+    base = now.replace(minute=2, second=0, microsecond=0)
+    base = base.replace(hour=(base.hour // step) * step)
+    while base <= now:
+        base += timedelta(hours=step)
+    return base
+
+
 def render(request: Request, name: str, **ctx: Any) -> HTMLResponse:
     token = request.cookies.get(COOKIE) or ""
     csrf = _sessions().csrf(token) if token else ""
-    return templates.TemplateResponse(request, name, {"csrf": csrf, **ctx})
+    return templates.TemplateResponse(
+        request, name, {"csrf": csrf, "next_cycle_at": next_cycle_at(), **ctx}
+    )
 
 
 # --- login -------------------------------------------------------------------------
@@ -339,7 +352,7 @@ def decisions(
     decision: int | None = None,
 ) -> HTMLResponse:
     with new_session() as s:
-        cycles = s.scalars(select(Cycle).order_by(Cycle.id.desc()).limit(40)).all()
+        cycles = s.scalars(select(Cycle).order_by(Cycle.id.desc()).limit(120)).all()
         if decision and not cycle:  # a link from a position: open that decision's cycle
             target = s.get(DecisionRecord, decision)
             cycle = target.cycle_id if target else None
