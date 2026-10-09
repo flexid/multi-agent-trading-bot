@@ -1,0 +1,68 @@
+# multi-agent-trading-bot
+
+An autonomous crypto trader on Bybit EU. Five analysis agents score BTC, ETH, SOL, BNB and SPX6900 every 4 hours; Claude and GPT independently turn those scores into trade proposals; a deterministic risk engine decides, and a separate executor places and manages the orders. Every trade is posted to X.
+
+> **Status:** planning complete, build starting at milestone M0. Nothing runs yet.
+
+## How it works
+
+```
+data layer (15 min) → 5 agents → PM 1 + PM 2 → leverage agent → risk engine → executor
+                                                                            → X poster
+                                                                            → dashboard / Telegram
+```
+
+| Layer | What it does |
+| --- | --- |
+| Data | Bybit candles and order books, Polymarket odds, X posts, macro data (rates, dollar, VIX, equities, gold) |
+| Agents | Macro (with crypto–tradfi coupling), chart patterns, indicators, Polymarket, X sentiment. Each outputs a score per asset |
+| Portfolio managers | Claude Fable 5.1 and GPT-5.6 Sol, same input, no sight of each other. A trade needs both to agree |
+| Leverage agent | 1x–10x from stop distance, volatility, events and liquidity; can only be lowered by an LLM, never raised |
+| Risk engine | Consensus, exposure and liquidity caps, daily loss stop, drawdown pause, emergency brake |
+| Executor | Separate process; limit orders, stops and time-stops in code on the WebSocket; paper simulator for shadow mode |
+| X poster | Casual post per open and close on @decentradork, cashtag always, amounts never |
+
+## Safety principles
+
+- No LLM ever touches an order.
+- Every model output is schema-validated; anything invalid means no new trade.
+- Live trading only after at least 6 weeks of shadow mode that meets the criteria in [SPEC §10](docs/SPEC.md#10-shadow-mode-and-automatic-go-live), and only when `live_allowed = true`.
+- Secrets stay in `.env`, never in git, logs or prompts.
+
+## Repository
+
+| Path | Contents |
+| --- | --- |
+| [`CLAUDE.md`](CLAUDE.md) | Rules and conventions for Claude Code |
+| [`docs/SPEC.md`](docs/SPEC.md) | Full build spec and milestones |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Decision log |
+| [`config.toml`](config.toml) | Bot parameters (the only thing the owner tunes) |
+| [`.env.example`](.env.example) | Required secrets, copy to `.env` |
+
+Code (`app/`, `api/`, `web/`, `tests/`) arrives milestone by milestone.
+
+## Getting started
+
+Prerequisites: Python 3.12 with [uv](https://docs.astral.sh/uv/), Docker with Compose, Node.js for the dashboard, a server outside the US (Bybit refuses US IPs).
+
+```bash
+cp .env.example .env    # fill in the keys
+# make targets (up, test, lint, selftest) are added in M0
+```
+
+## Milestones
+
+| # | Milestone | Status |
+| --- | --- | --- |
+| M0 | Connectivity: Bybit EU, Polymarket, X self-tests | next |
+| M1 | Data layer and database | – |
+| M2 | Indicators agent and backtest harness | – |
+| M3 | Macro, chart, Polymarket and X agents | – |
+| M4 | Decision layer: two PMs, consensus | – |
+| M5 | Leverage agent and risk engine | – |
+| M6 | Executor, paper simulator, Telegram — shadow mode starts | – |
+| M7 | X poster | – |
+| M8 | Dashboard | – |
+| M9 | Automatic go-live checker, leverage ramp, weight tuning | – |
+
+Details per milestone: [SPEC §14](docs/SPEC.md#14-milestones).
