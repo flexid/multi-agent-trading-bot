@@ -59,7 +59,7 @@ async def test_entries_stay_post_only() -> None:
     assert [o["timeInForce"] for o in ex.created] == ["PostOnly"]
 
 
-async def test_exit_is_ioc_priced_one_percent_beyond_the_touch_never_post_only() -> None:
+async def test_exit_is_ioc_priced_half_the_band_beyond_the_touch_never_post_only() -> None:
     ex = FakeBybit(SYMBOL, "90", "90.1")
     async with ex.client() as client:
         gw = BybitGateway(client)
@@ -70,7 +70,7 @@ async def test_exit_is_ioc_priced_one_percent_beyond_the_touch_never_post_only()
     sell, buy = ex.created
     assert sell["timeInForce"] == buy["timeInForce"] == "IOC"
     assert D(sell["price"]) == D("89.5")  # half the 1% band below the bid it actually saw
-    assert D(buy["price"]) == D("91.1")  # 1% above the ask, rounded up to the tick
+    assert D(buy["price"]) == D("90.6")  # half the 1% band above the ask, rounded up to the tick
     assert sell["orderLinkId"] != buy["orderLinkId"] and sell["orderLinkId"].startswith("live-a-x")
 
 
@@ -306,3 +306,5 @@ async def test_long_exit_sells_what_is_held_and_cover_buys_the_fee_back() -> Non
     gw2 = BybitGateway(fake2.client())
     r2 = await gw2.close("BTCUSDT", Side.SHORT, D("0.1"), "y-", q("100", "100.1"))
     assert r2.filled_qty > D("0.1")
+    assert fake2.repaid == ["BTC"]  # the buy-back does not clear the borrow by itself
+    assert fake.repaid == []

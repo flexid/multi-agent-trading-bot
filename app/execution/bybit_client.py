@@ -11,6 +11,7 @@ import hmac
 import json
 import time
 from datetime import UTC, datetime
+from decimal import Decimal
 from types import TracebackType
 from typing import Any, Self
 from urllib.parse import urlencode
@@ -232,6 +233,14 @@ class BybitClient:
             "/v5/account/wallet-balance", {"accountType": "UNIFIED"}, auth=True
         )
         return WalletBalance.model_validate(result["list"][0])
+
+    async def repay(self, coin: str) -> Decimal:
+        """Repay the UTA liability in ``coin`` from the balance held; the quantity repaid.
+        Bybit keeps a spot-margin borrow on the books after the coin is bought back."""
+        result = await self._post("/v5/account/quick-repayment", {"coin": coin})
+        return sum(
+            (Decimal(str(row["repaymentQty"])) for row in result.get("list", [])), Decimal(0)
+        )
 
     async def fee_rate(self, symbol: str) -> FeeRate:
         result = await self._get(

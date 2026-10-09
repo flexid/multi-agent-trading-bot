@@ -209,7 +209,7 @@ class BybitGateway:
         qty = inst.round_qty(qty)
         # Spot fees are taken from the coin received: a long holds slightly less than it
         # bought, so sell what is actually there; a short must buy back a little more so
-        # the borrow repays in full (Bybit auto-repays from the buy).
+        # the borrow can be repaid in full (explicit repay below).
         try:
             if ex_side is ExSide.SELL:
                 wallet = await self.client.wallet_balance()
@@ -292,6 +292,13 @@ class BybitGateway:
 
         if not pending:
             self._unsettled.pop(link_id, None)
+        if ex_side is ExSide.BUY and filled_total > 0:
+            # The buy-back lands in the wallet; the borrow stays open until repaid.
+            try:
+                repaid = await self.client.repay(inst.base_coin)
+                log.info("%s: repaid %s %s", symbol, repaid, inst.base_coin)
+            except BybitError as exc:
+                log.error("%s: borrow not repaid after cover: %s", symbol, exc)
         avg_price = value_total / filled_total if filled_total > 0 else None
         left = inst.round_qty(qty - filled_total)
         if left <= 0 or (not blocked and not rejected and attempts < EXIT_ATTEMPTS):

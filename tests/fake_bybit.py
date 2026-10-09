@@ -33,6 +33,7 @@ class FakeBybit:
         self.drop_next_create = False  # the request reaches the exchange, the reply is lost
         self.fail_cancel = False
         self.holdings: dict[str, D] = {}  # base-coin balance; empty = plenty (not under test)
+        self.repaid: list[str] = []  # coins sent to quick-repayment, in order
 
     def client(self) -> BybitClient:
         return BybitClient(
@@ -90,6 +91,9 @@ class FakeBybit:
             return self._create(body)
         if path == "/v5/order/cancel":
             return self._cancel(body)
+        if path == "/v5/account/quick-repayment":
+            self.repaid.append(body["coin"])
+            return self._ok({"list": [{"coin": body["coin"], "repaymentQty": "0.1"}]})
         raise AssertionError(f"unexpected call {path}")
 
     def _instrument(self) -> dict[str, Any]:
