@@ -36,3 +36,5 @@ export async function shareUrl(): Promise<string> {
     return `https://dorkbot.dev/?s=${Date.now().toString(36)}`;
   }
 }
+
+export const tick = (cashtag: string) => cashtag.replace(/^\$/, "");  // tickers without the dollar sign on the site (owner, 2026-10-09)

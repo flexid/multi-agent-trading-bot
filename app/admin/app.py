@@ -86,7 +86,15 @@ def fmt_money(value: Any, signed: bool = False) -> str:
     return f"{sign}$ {body}"
 
 
+TICKERS = {"SPX6900": "SPX"}  # how assets are named in the UI (owner, 2026-10-09)
+
+
+def asset_tick(value: Any) -> str:
+    return TICKERS.get(str(value), str(value))
+
+
 templates.env.filters["price"] = fmt_price
+templates.env.filters["tick"] = asset_tick
 templates.env.filters["money"] = fmt_money
 templates.env.filters["side"] = side_words
 COOKIE = "dorkbot_admin"

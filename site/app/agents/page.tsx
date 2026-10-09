@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { cls, loadSnapshot, pct, type Snapshot } from "../snapshot";
+import { cls, loadSnapshot, pct, tick, type Snapshot } from "../snapshot";
 
 const sc = (x: number | null | undefined) => (x == null ? "–" : `${x > 0 ? "+" : ""}${x.toFixed(2)}`);
 
@@ -15,7 +15,7 @@ export default function Agents() {
       <p className="muted">Five agents score each asset every four hours. Two portfolio managers (Claude and GPT) read the same evidence without seeing each other; a trade needs both. Scores run from −1 to +1.</p>
       {s.assets.map((a) => (
         <section key={a.asset}>
-          <h2>{a.cashtag} · {a.consensus} <span className="badge">Claude {a.pm_claude ?? "–"}</span><span className="badge">GPT {a.pm_gpt ?? "–"}</span></h2>
+          <h2>{tick(a.cashtag)} · {a.consensus} <span className="badge">Claude {a.pm_claude ?? "–"}</span><span className="badge">GPT {a.pm_gpt ?? "–"}</span></h2>
           <p className="muted">{a.reason}. Formula {sc(a.formula_score)}, consensus {sc(a.consensus_score)}.
             {a.macro_regime && <> Macro regime {a.macro_regime}, tradfi coupling {a.coupling?.toFixed(2)}; macro parts tradfi {sc(a.macro_tradfi)} / crypto-native {sc(a.macro_native)}.</>}</p>
           <table><thead><tr><th>agent</th><th>score</th><th>confidence</th><th>notes</th></tr></thead><tbody>

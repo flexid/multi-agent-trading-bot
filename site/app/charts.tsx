@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { pct, type Snapshot } from "./snapshot";
+import { pct, tick, type Snapshot } from "./snapshot";
 
 /* Hand-rolled SVG charts: no chart library, so nothing leaves the page but the snapshot.
    Geometry is computed in pixel space from the element's measured width, so text and
@@ -177,7 +177,7 @@ export function EquityChart({ s, onExpand }: { s: Snapshot; onExpand: () => void
   const markers = s.closed_trades.map((t) => {
     const x = Date.parse(t.closed_at);
     const y = nearest(p.equity_curve as Pt[], x)?.[1] ?? 0;
-    return { x, y, color: t.margin_pct >= 0 ? "var(--up)" : "var(--down)", label: `${t.cashtag} ${t.direction} ${pct(t.margin_pct)}` };
+    return { x, y, color: t.margin_pct >= 0 ? "var(--up)" : "var(--down)", label: `${tick(t.cashtag)} ${t.direction} ${pct(t.margin_pct)}` };
   });
   return (
     <div className="chart-wrap">
@@ -205,7 +205,7 @@ export function DetailOverlay({ s, onClose }: { s: Snapshot; onClose: () => void
   ];
   const markers = s.closed_trades.map((t) => {
     const x = Date.parse(t.closed_at);
-    return { x, y: nearest(equity, x)?.[1] ?? 0, color: t.margin_pct >= 0 ? "var(--up)" : "var(--down)", label: `${t.cashtag} ${t.direction} ${pct(t.margin_pct)}` };
+    return { x, y: nearest(equity, x)?.[1] ?? 0, color: t.margin_pct >= 0 ? "var(--up)" : "var(--down)", label: `${tick(t.cashtag)} ${t.direction} ${pct(t.margin_pct)}` };
   });
   const dd = drawdown(equity);
   const inRange = (ms: string) => !range || (Date.parse(ms) >= range[0] && Date.parse(ms) <= range[1]);
@@ -232,11 +232,11 @@ export function DetailOverlay({ s, onClose }: { s: Snapshot; onClose: () => void
         <div className="two-col">
           <div>
             <h3>By asset <span className="muted small">realized, % of starting capital</span></h3>
-            <Bars rows={s.by_asset.map((a) => ({ label: a.cashtag, value: a.pct, note: a.trades ? `${a.wins}/${a.trades} won` : "no trades yet" }))} />
+            <Bars rows={s.by_asset.map((a) => ({ label: tick(a.cashtag), value: a.pct, note: a.trades ? `${a.wins}/${a.trades} won` : "no trades yet" }))} />
           </div>
           <div>
             <h3>Trades <span className="muted small">margin %, newest last{range ? ", in range" : ""}</span></h3>
-            {trades.length ? <Bars rows={trades.map((t, i) => ({ label: `${t.cashtag} ${t.direction === "long" ? "▲" : "▼"}`, value: t.margin_pct, note: `${t.holding}${t.paper ? " · paper" : ""}`, cls: t.direction }))} /> : <p className="muted">No closed trades here.</p>}
+            {trades.length ? <Bars rows={trades.map((t, i) => ({ label: `${tick(t.cashtag)} ${t.direction === "long" ? "▲" : "▼"}`, value: t.margin_pct, note: `${t.holding}${t.paper ? " · paper" : ""}`, cls: t.direction }))} /> : <p className="muted">No closed trades here.</p>}
           </div>
         </div>
         <h3>Consensus per cycle, last 7 days <span className="muted small">green = bullish, red = bearish, arrow = direction taken</span></h3>
