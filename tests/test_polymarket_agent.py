@@ -172,6 +172,12 @@ def test_updown_momentum_and_component_weights() -> None:
     # ... and a window three-quarters done weighs a quarter of a fresh one
     fresh, stale = UpDownPoint("f", 0.5, 240, 4.0, 10_000), UpDownPoint("s", 0.9, 240, 1.0, 10_000)
     assert 0 < score_updown([fresh, stale])[0] < score_updown([stale])[0]
+    # one twitchy hourly market does not move a daily read much
+    hourly, daily = (
+        UpDownPoint("h", 0.9, 60, 1.0, 10_000),
+        UpDownPoint("d", 0.5, 1440, 20.0, 10_000),
+    )
+    assert 0 < score_updown([hourly, daily])[0] < 0.2
     # shift dominates; the components present share the weight
     assert combine(level=0.0, shift=1.0, updown=0.0) == pytest.approx(0.5)
     assert combine(level=1.0, shift=None, updown=None) == pytest.approx(1.0)

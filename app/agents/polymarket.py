@@ -264,11 +264,13 @@ def score_updown(points: list[UpDownPoint]) -> tuple[float, list[str]]:
 
     A window that is almost over prices the move that already happened, not the one
     ahead, so each market weighs by the fraction of its window still remaining and
-    the last quarter of a window does not count at all."""
+    the last quarter of a window does not count at all. Longer windows carry more of
+    the 1-3 day horizon this agent speaks to, so the weight also scales with the window
+    length: a daily market weighs 24 hourly ones."""
     points = [p for p in points if remaining_fraction(p) >= MIN_UPDOWN_REMAINING]
     if not points:
         return 0.0, []
-    weights = [max(p.volume_24h, 1.0) * remaining_fraction(p) for p in points]
+    weights = [max(p.volume_24h, 1.0) * remaining_fraction(p) * p.window_min / 60 for p in points]
     p_up = sum(w * p.p_up for w, p in zip(weights, points, strict=True)) / sum(weights)
     score = max(-1.0, min(1.0, (p_up - 0.5) / UPDOWN_FULL_SCALE))
     top = sorted(points, key=lambda p: -p.volume_24h)[:2]
