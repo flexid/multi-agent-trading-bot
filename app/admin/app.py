@@ -53,15 +53,14 @@ templates = Jinja2Templates(directory=str(Path(__file__).with_name("templates"))
 
 
 def fmt_price(value: Any) -> str:
-    """Prices with at most 4 decimals and thousands separators (owner, 2026-10-09)."""
+    """Prices with two decimals and thousands separators (owner, 2026-10-09)."""
     if value is None or value == "":
         return "-"
     try:
-        q = Decimal(str(value)).quantize(Decimal("0.0001"))
+        q = Decimal(str(value)).quantize(Decimal("0.01"))
     except Exception:
         return str(value)
-    text = f"{q:,.4f}".rstrip("0").rstrip(".")
-    return text if text not in ("", "-0") else "0"
+    return f"{q:,.2f}"
 
 
 SIDE_WORD = re.compile(r"\b(long|short)\b", re.IGNORECASE)

@@ -24,7 +24,7 @@ export async function loadSnapshot(): Promise<Snapshot | null> {
 
 export const pct = (x: number | null | undefined, d = 1) => (x == null ? "–" : `${x > 0 ? "+" : ""}${x.toFixed(d)}%`);
 export const cls = (x: number | null | undefined) => (x == null ? "" : x >= 0 ? "up" : "down");
-export const num = (x: number) => x.toLocaleString("en-US", { maximumFractionDigits: 4 });
+export const num = (x: number) => x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export async function shareUrl(): Promise<string> {
   // WhatsApp and X cache link previews per URL, so the share link carries the current
