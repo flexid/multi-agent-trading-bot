@@ -85,6 +85,7 @@ class Executor:
         self.collateral_ratios: dict[str, Decimal] = {}
         self.frozen = False  # after a kill switch: no new positions until resumed
         self.style = style.load()
+        self._alerted: set[str] = set()  # risk states already emailed this episode
 
     @staticmethod
     def decide_mode(cfg: Config) -> str:
@@ -614,8 +615,7 @@ class Executor:
         state = session.get(RiskState, 1)
         if state is None:
             return False
-        alerted = getattr(self, "_alerted", set())
-        self._alerted = alerted
+        alerted = self._alerted
         for flag, cond, subject in (
             ("brake", state.emergency_brake, "dorkbot: EMERGENCY BRAKE, waiting for you"),
             (
