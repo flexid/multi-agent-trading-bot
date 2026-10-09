@@ -36,7 +36,7 @@ data layer (15 min) → 5 agents → PM 1 + PM 2 → leverage agent → risk eng
 | [`CLAUDE.md`](CLAUDE.md) | Rules and conventions for Claude Code |
 | [`docs/SPEC.md`](docs/SPEC.md) | Full build spec and milestones |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Decision log |
-| [`docs/M0_REPORT.md`](docs/M0_REPORT.md) | Connectivity report |
+| [`docs/M0_REPORT.md`](docs/M0_REPORT.md), [`docs/M1_REPORT.md`](docs/M1_REPORT.md) | Milestone reports: what works, what doesn't, what the owner must provide |
 | [`config.toml`](config.toml) | Bot parameters (the only thing the owner tunes) |
 | [`.env.example`](.env.example) | Required secrets, copy to `.env` |
 
