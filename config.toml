@@ -22,7 +22,7 @@ cycle_hours = 4
 
 [pilot]                         # execution pilot after M9 (owner): real orders, 1x, small
 enabled = false                 # owner flips once the subaccount holds capital_usdt
-capital_usdt = 200
+capital_usdt = 185              # what the subaccount holds (owner, 2026-10-09)
 
 [exchange]
 quote = "USDT"                  # quote coin of every traded pair

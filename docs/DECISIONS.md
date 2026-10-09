@@ -27,7 +27,7 @@ The admin is FastAPI with Jinja templates rather than a separate Next.js app: on
 ## 2026-10-09 · Go-live after 4 weeks and 100 primary trades; execution pilot; post voice (owner)
 
 - Shadow mode lasts at least 4 weeks AND until at least 100 trades have closed on the primary paper track, whichever comes later (previously 6 weeks). The other §10 criteria are unchanged. After the first 4 weeks the bot reports monthly running costs (LLM, X, server); the admin's cost page (M8b) carries it.
-- After M9 an execution pilot runs 200 USDT at 1x on the real Bybit gateway to test fills, slippage and borrowing. Pilot trades are stored with `mode = "pilot"`, tracked separately, and never count toward go-live.
+- After M9 an execution pilot runs 185 USDT (what the subaccount holds; spec said 200) at 1x on the real Bybit gateway to test fills, slippage and borrowing. Pilot trades are stored with `mode = "pilot"`, tracked separately, and never count toward go-live.
 - Shadow posts carry a random test-mode marker ("dorking...", "just dorking", "still dorking around") instead of a "Paper:" prefix; `templates.enforce_marker` adds it to every shadow post and strips it from every live post, and the poster blocks a post whose marker state does not match its mode. The site keeps the shadow badge.
 - X posts: normal capitalization, plain and direct; dry humour when natural. Supersedes "lowercase, nonchalant" in SPEC §11. Dry-run posts (shadow with `post_in_shadow = false`) are templates only, so no model spend on posts nobody sees.
 - `dorkbot [HOURS]` zsh function on the owner's Mac runs `app.report` over SSH on the server: primary-track trades in the window, day and total P&L, LLM and X cost today.
