@@ -333,10 +333,16 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
 
 @app.get("/decisions", response_class=HTMLResponse)
 def decisions(
-    request: Request, user: str = Depends(current_user), cycle: int | None = None
+    request: Request,
+    user: str = Depends(current_user),
+    cycle: int | None = None,
+    decision: int | None = None,
 ) -> HTMLResponse:
     with new_session() as s:
         cycles = s.scalars(select(Cycle).order_by(Cycle.id.desc()).limit(40)).all()
+        if decision and not cycle:  # a link from a position: open that decision's cycle
+            target = s.get(DecisionRecord, decision)
+            cycle = target.cycle_id if target else None
         chosen = s.get(Cycle, cycle) if cycle else (cycles[0] if cycles else None)
         decs = (
             s.scalars(select(DecisionRecord).where(DecisionRecord.cycle_id == chosen.id)).all()
@@ -366,6 +372,7 @@ def decisions(
     return render(
         request,
         "decisions.html",
+        focus=decision,
         user=user,
         cycles=cycles,
         chosen=chosen,

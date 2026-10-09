@@ -67,15 +67,25 @@ def price_trigger(session: Session, cfg: Config, now: datetime) -> str | None:
     return None
 
 
+POLY_MIN_HOURS_LEFT = 6  # a daily market swings to 0 or 100 by itself near resolution
+POLY_MIN_VOLUME = Decimal(1000)
+
+
 def polymarket_trigger(session: Session, now: datetime) -> str | None:
+    """A > 10 pp move within an hour on a threshold market the agent would use: mapped as
+    a price market, liquid, and not in its last hours before resolution."""
     markets = session.scalars(
         select(PolymarketMarket).where(
-            PolymarketMarket.asset.is_not(None), PolymarketMarket.closed.is_(False)
+            PolymarketMarket.asset.is_not(None),
+            PolymarketMarket.closed.is_(False),
+            PolymarketMarket.end_date > now + timedelta(hours=POLY_MIN_HOURS_LEFT),
         )
     ).all()
     for m in markets:
+        if (m.mapping or {}).get("kind") != "price":
+            continue
         prices = session.execute(
-            select(PolymarketPrice.ts, PolymarketPrice.prices)
+            select(PolymarketPrice.ts, PolymarketPrice.prices, PolymarketPrice.volume_24h)
             .where(
                 PolymarketPrice.market_id == m.id,
                 PolymarketPrice.ts >= now - timedelta(hours=1, minutes=5),
@@ -83,6 +93,8 @@ def polymarket_trigger(session: Session, now: datetime) -> str | None:
             .order_by(PolymarketPrice.ts)
         ).all()
         if len(prices) < 2 or not prices[0].prices:
+            continue
+        if Decimal(str(prices[-1].volume_24h or 0)) < POLY_MIN_VOLUME:
             continue
         shift = Decimal(str(prices[-1].prices[0])) - Decimal(str(prices[0].prices[0]))
         if abs(shift) > POLY_SHIFT:

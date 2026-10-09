@@ -13,11 +13,12 @@ import argparse
 import asyncio
 import logging
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.agents import run_chart, run_indicators, run_macro, run_polymarket, run_x
 from app.agents.indicators_summary import summarize
@@ -173,6 +174,25 @@ def cycle_cost(cycle_id: int) -> Decimal:
     return Decimal(str(total))
 
 
+STALE_CYCLE_MIN = 15  # a cycle takes ~2.5 min; older "running" rows belong to a dead process
+
+
+def abort_stale_cycles(session: Session, now: datetime | None = None) -> int:
+    """Cycles left "running" by a restart (deploy, crash) are marked aborted, so the log
+    and the memo do not show an empty cycle as still in progress."""
+    now = now or datetime.now(UTC)
+    rows = session.scalars(
+        select(Cycle).where(
+            Cycle.status == "running", Cycle.started_at < now - timedelta(minutes=STALE_CYCLE_MIN)
+        )
+    ).all()
+    for c in rows:
+        c.status, c.finished_at = "aborted", now
+        c.error = "the scheduler stopped during this cycle (restart); no decisions were made"
+    session.commit()
+    return len(rows)
+
+
 async def run_cycle(
     cfg: Config,
     *,
@@ -185,6 +205,7 @@ async def run_cycle(
     now = datetime.now(UTC)
     mode = "live" if cfg.trading.live_allowed else "shadow"  # the go-live checker (M9) refines this
     with new_session() as session:
+        abort_stale_cycles(session, now)
         cycle = Cycle(started_at=now, kind=kind, trigger=trigger, mode=mode, status="running")
         session.add(cycle)
         session.commit()

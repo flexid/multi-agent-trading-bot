@@ -67,6 +67,13 @@ async def trigger_job(cfg: Config) -> None:
 
 
 async def serve(cfg: Config, secrets: Secrets) -> None:
+    from app.db.session import new_session
+    from app.decision.cycle import abort_stale_cycles
+
+    with new_session() as session:
+        n = abort_stale_cycles(session)
+    if n:
+        log.warning("%d cycle(s) left running by the previous process marked aborted", n)
     scheduler = AsyncIOScheduler(timezone="UTC")
     scheduler.add_job(
         cycle_job,
