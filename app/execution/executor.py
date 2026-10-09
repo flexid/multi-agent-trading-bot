@@ -106,6 +106,7 @@ class Executor:
         self.borrow_rates: dict[str, Decimal] = {}
         self.collateral_ratios: dict[str, Decimal] = {}
         self.frozen = False  # after a kill switch: no new positions until resumed
+        self.kill_real_only = False  # a self-test kill leaves the paper tracks alone
         self.style = style.load()
         self._alerted: set[str] = set()  # risk states already emailed this episode
 
@@ -245,7 +246,14 @@ class Executor:
         for req in pending:
             if req.kind == "kill":
                 kill, self.frozen = True, True
-                req.result = "closing all positions, frozen"
+                # The live self-test exercises the kill path on the exchange; the paper
+                # tracks are a running experiment and keep their positions.
+                self.kill_real_only = req.source == "live_selftest"
+                req.result = (
+                    "closing real positions, frozen"
+                    if self.kill_real_only
+                    else "closing all positions, frozen"
+                )
                 self._alert(
                     "dorkbot: kill switch applied",
                     f"Requested by {req.source}. Reason: {req.reason or '-'}. "
@@ -332,7 +340,9 @@ class Executor:
                 pos, now, self.borrow_rates.get(row.symbol, HOURLY_BORROW_FALLBACK), quote.mid
             )
             pos = sim.update_trail(pos, quote)
-            reason = sim.exit_reason(pos, quote, now, kill=kill)
+            reason = sim.exit_reason(
+                pos, quote, now, kill=kill and not (self.kill_real_only and row.mode == "paper")
+            )
             if reason is None and close_all:
                 reason = ExitReason.RISK
             if reason is None and row.status == "closing":
@@ -429,13 +439,13 @@ class Executor:
         net = fill.net_pnl - row.exit_fee
         row.status, row.closed_at, row.close_reason = "closed", now, reason.value
         row.exit_price, row.fees = fill.price, row.fees + row.exit_fee
-        if row.track == "primary":
-            await self.post(session, row, "close", None, now)
         row.pnl, row.pnl_price_pct, row.pnl_margin_pct = (
             net,
             fill.pnl_price_pct,
             net / pos.margin if pos.margin else Decimal(0),
         )
+        if row.track == "primary":
+            await self.post(session, row, "close", None, now)  # needs the P&L fields
         acct = self.ledger(session, now, row.track)
         acct.cash += row.margin + net
         acct.realized_pnl += net

@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import delete, select
 
 from app.config import get_config, get_secrets
-from app.db.models import Cycle, DecisionRecord, PaperAccount, Position, XPostOut
+from app.db.models import ControlRequest, Cycle, DecisionRecord, PaperAccount, Position, XPostOut
 from app.execution.executor import Executor
 from app.execution.gateway import OrderOutcome, Outcome, ScriptedGateway
 from app.execution.simulator import Quote
@@ -36,6 +36,7 @@ def db() -> Iterator[None]:
 
     with new_session() as s:
         s.execute(delete(XPostOut))
+        s.execute(delete(ControlRequest))
         s.execute(delete(Position))
         s.execute(delete(DecisionRecord))
         s.execute(delete(Cycle))
@@ -44,6 +45,7 @@ def db() -> Iterator[None]:
     yield
     with new_session() as s:
         s.execute(delete(XPostOut))
+        s.execute(delete(ControlRequest))
         s.execute(delete(Position))
         s.execute(delete(DecisionRecord))
         s.execute(delete(Cycle))
@@ -227,6 +229,53 @@ async def test_unreachable_entry_is_retried_next_tick_not_duplicated(db: None) -
     assert positions() == []
     await ex.tick()
     assert len(positions()) == 1
+
+
+@needs_db
+async def test_close_post_is_queued_with_the_booked_pnl(db: None) -> None:
+    """The close post renders from the P&L fields, so it must be queued after they are set
+    (before this fix every close post failed inside the never-block-trading catch)."""
+    from app.db.session import new_session
+
+    seed_decision(stop="98")
+    ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+    await ex.tick()
+    ex.quotes[get_config().symbol(ASSET)] = quote("97", "97.1")
+    await ex.tick()
+    (pos,) = positions()
+    assert pos.status == "closed"
+    with new_session() as s:
+        kinds = (
+            s.execute(
+                select(XPostOut.kind).where(XPostOut.position_id == pos.id).order_by(XPostOut.id)
+            )
+            .scalars()
+            .all()
+        )
+    assert kinds == ["open", "close"]
+
+
+def _kill(source: str) -> None:
+    from app.db.session import new_session
+
+    with new_session() as s:
+        s.add(ControlRequest(ts=NOW, kind="kill", source=source, reason="test"))
+        s.commit()
+
+
+@needs_db
+async def test_self_test_kill_spares_the_paper_tracks_an_admin_kill_does_not(db: None) -> None:
+    seed_decision()
+    ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+    await ex.tick()
+    assert len(positions()) == 1 and len(positions("max")) == 1
+    _kill("live_selftest")
+    await ex.tick()
+    assert ex.frozen
+    assert {p.status for p in positions() + positions("max")} == {"open"}
+    _kill("admin")
+    await ex.tick()
+    assert {p.close_reason for p in positions() + positions("max")} == {"kill"}
 
 
 def test_timeline_helper() -> None:

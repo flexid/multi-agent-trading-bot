@@ -154,3 +154,12 @@ Why: owner requirement. Backtests with LLMs in the loop suffer look-ahead, so th
 ## 2026-10-08 · Trades posted to X as @decentradork
 
 Every fill is posted in casual, human language: cashtag, entry, leverage, stop, target on open; exit, % result and holding time on close. Never amounts. Claude writes, GPT audits, code whitelists the numbers.
+
+## 2026-10-09 · A self-test kill closes real positions only
+
+The live self-test's kill request (`source = live_selftest`) closes live and pilot positions and freezes the executor, but leaves the paper tracks' positions open. An admin kill still closes everything.
+Why: the first full self-test closed all eight shadow positions four hours into the experiment. The shadow book is a running forward test; the self-test only needs to prove the kill path on the exchange. The eight positions closed with reason `kill` on 2026-10-09 15:19 UTC stay in the data as-is.
+
+## 2026-10-09 · Spot-margin borrows are repaid explicitly
+
+After a cover, the gateway calls `POST /v5/account/quick-repayment` for the base coin. Bybit UTA keeps the liability open after the coin is bought back; it settles on its own only later.
