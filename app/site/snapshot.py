@@ -299,8 +299,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
                 ),
                 paper=p.mode == "paper",
             )
-            for p in closed
-            if p.id in posted and not posted[p.id].dry_run
+            for p in closed  # every closed primary trade; the thread link only when posted
         ]
         last_cycle = s.execute(
             select(Cycle).where(Cycle.status == "done").order_by(Cycle.id.desc()).limit(1)
