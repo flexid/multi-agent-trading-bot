@@ -18,7 +18,8 @@ from app.config import get_secrets
 log = logging.getLogger("alerts")
 
 
-def send(subject: str, body: str) -> bool:
+def send(subject: str, body: str, html: str | None = None) -> bool:
+    """Plain-text mail, with an HTML part when given (the memo: Gmail shows no markdown)."""
     s = get_secrets()
     to = s.alert_email_to
     if not to:
@@ -33,6 +34,7 @@ def send(subject: str, body: str) -> bool:
                 "to": [to],
                 "subject": subject,
                 "text": body,
+                **({"html": html} if html else {}),
             },
             timeout=15,
         )
@@ -44,6 +46,8 @@ def send(subject: str, body: str) -> bool:
         msg = EmailMessage()
         msg["From"], msg["To"], msg["Subject"] = s.alert_email_from or u.username or to, to, subject
         msg.set_content(body)
+        if html:
+            msg.add_alternative(html, subtype="html")
         with smtplib.SMTP(u.hostname or "localhost", u.port or 587, timeout=15) as smtp:
             smtp.starttls()
             if u.username:

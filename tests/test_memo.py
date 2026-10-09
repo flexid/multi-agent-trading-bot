@@ -104,3 +104,19 @@ def test_render_includes_facts_and_proposals_and_degrades_without_a_model() -> N
     assert "ETH short: entry +1.5 bps worse, still open" in text
     assert "1. **Wait** (small)" in text and "Nothing in this memo changes the bot" in text
     assert "(no proposals: model down)" in render(f, None, "model down")
+
+
+def test_memo_markdown_becomes_clean_html_for_mail() -> None:
+    from app.memo import to_html
+
+    md = (
+        "# Title\n\nIntro **bold** line.\n\n## Trades\n- one\n- two\n\n## Proposals\n"
+        "1. **Wait** (small)\n   - evidence: 4 trades\n   - change: none\n"
+        "2. **Next** (medium)\n   - evidence: x\n\nFooter <tag>.\n"
+    )
+    out = to_html(md)
+    assert "<h1" in out and "Title</h1>" in out and "<b>bold</b>" in out
+    assert out.count("<li style='margin:3px 0'>") == 2 and "<ol" in out
+    assert out.count("<li style='margin:8px 0'>") == 2 and out.count("<ul style='margin:4px") == 2
+    assert "&lt;tag&gt;" in out and "**" not in out
+    assert out.count("<ol") == out.count("</ol>") and out.count("<ul") == out.count("</ul>")

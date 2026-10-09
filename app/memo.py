@@ -9,8 +9,10 @@ changes the bot; a proposal becomes a change only when a human applies it.
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import logging
+import re
 import sys
 from collections import Counter
 from dataclasses import dataclass
@@ -269,6 +271,63 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
     return "\n".join(lines) + "\n"
 
 
+_STYLE = (
+    "font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;"
+    "line-height:1.5;color:#1a1a1a;max-width:720px;margin:0 auto;padding:16px"
+)
+
+
+def _inline(text: str) -> str:
+    text = html.escape(text)
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+    return re.sub(r"`(.+?)`", r"<code>\1</code>", text)
+
+
+def to_html(markdown: str) -> str:
+    """The memo's own small markdown (headings, bullets, numbered items with sub-bullets,
+    bold, code) as clean HTML for mail clients. No library: the dialect is ours."""
+    out: list[str] = []
+    stack: list[str] = []  # open list tags
+
+    def close_to(depth: int) -> None:
+        while len(stack) > depth:
+            out.append(f"</{stack.pop()}>")
+
+    for raw in markdown.splitlines():
+        line = raw.rstrip()
+        if not line.strip():
+            continue
+        if line.startswith("# "):
+            close_to(0)
+            out.append(f"<h1 style='font-size:20px;margin:18px 0 8px'>{_inline(line[2:])}</h1>")
+        elif line.startswith("## "):
+            close_to(0)
+            h2 = "font-size:16px;margin:22px 0 6px;color:#c85a00"
+            out.append(f"<h2 style='{h2}'>{_inline(line[3:])}</h2>")
+        elif re.match(r"^\d+\. ", line):
+            close_to(0) if not stack or stack[0] != "ol" else close_to(1)
+            if not stack:
+                out.append("<ol style='padding-left:22px'>")
+                stack.append("ol")
+            out.append(f"<li style='margin:8px 0'>{_inline(line.split('. ', 1)[1])}")
+        elif line.startswith("   - "):
+            if len(stack) == 1:
+                out.append("<ul style='margin:4px 0 4px 0;padding-left:18px'>")
+                stack.append("ul")
+            out.append(f"<li>{_inline(line[5:])}</li>")
+        elif line.startswith("- "):
+            if not stack or stack[0] != "ul":
+                close_to(0)
+                out.append("<ul style='padding-left:22px'>")
+                stack.append("ul")
+            out.append(f"<li style='margin:3px 0'>{_inline(line[2:])}</li>")
+        else:
+            close_to(0)
+            out.append(f"<p style='margin:8px 0'>{_inline(line)}</p>")
+    close_to(0)
+    return f"<div style='{_STYLE}'>" + "\n".join(out) + "</div>"
+
+
 async def propose(f: dict[str, Any]) -> tuple[Memo | None, str | None]:
     from app.llm import LLMError, complete, load_prompt
 
@@ -294,7 +353,7 @@ async def build(cfg: Config | None = None, *, mail: bool = True) -> Path:
         from app.admin import notify
 
         await asyncio.to_thread(
-            notify.send, f"dorkbot weekly memo, week ending {now:%Y-%m-%d}", text
+            notify.send, f"dorkbot weekly memo, week ending {now:%Y-%m-%d}", text, to_html(text)
         )
     return path
 
