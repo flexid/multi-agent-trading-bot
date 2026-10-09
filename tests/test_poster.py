@@ -45,6 +45,12 @@ def test_shadow_posts_carry_a_marker_and_live_posts_never_do() -> None:
         == "Closed $SOL at 77.6."
     )
     assert tpl.has_marker(tpl.enforce_marker("Closed $SOL at 77.6.", paper=True))
+    # The writer's own phrasing counts as the marker: nothing is appended on top.
+    own = "Short $ETH at 2489.28, 1x. Paper trade, so nobody's rent depends on it."
+    assert tpl.enforce_marker(own, paper=True) == own
+    assert tpl.has_marker("Still in shadow mode, so take it with salt.")
+    assert not tpl.has_marker("Closed $SOL at 77.6. Longer hold than I wanted.")
+    assert not tpl.has_marker("Tested the support twice.")  # "test" alone is not a marker
 
 
 def test_holding_text() -> None:

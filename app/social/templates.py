@@ -4,6 +4,7 @@ record only; every template passes the number whitelist by construction."""
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -25,10 +26,16 @@ class TradeFacts:
 
 
 SHADOW_MARKERS = ("dorking...", "just dorking", "still dorking around")
+# The writer may say it in its own words instead ("Paper trade, so nobody's rent depends
+# on it"); any of these counts as the marker, so nothing gets appended on top (owner,
+# 2026-10-09: "don't put 'just dorking' everywhere").
+NATURAL_MARKER = re.compile(
+    r"\b(paper|shadow|dork\w*|test[- ](trade|run|mode)|play money|not real money)\b", re.I
+)
 
 
 def has_marker(text: str) -> bool:
-    return any(m in text for m in SHADOW_MARKERS)
+    return any(m in text for m in SHADOW_MARKERS) or NATURAL_MARKER.search(text) is not None
 
 
 def with_marker(text: str, rng: random.Random | None = None) -> str:
