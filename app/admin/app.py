@@ -23,6 +23,7 @@ from markupsafe import Markup, escape
 from sqlalchemy import func, select
 
 from app.admin import auth, notify
+from app.agents.names import display as agent_display
 from app.agents.polymarket import coverage as pm_coverage
 from app.config import get_config, get_secrets
 from app.db.models import (
@@ -96,6 +97,7 @@ def asset_tick(value: Any) -> str:
 
 templates.env.filters["price"] = fmt_price
 templates.env.filters["tick"] = asset_tick
+templates.env.filters["agent"] = agent_display
 templates.env.filters["money"] = fmt_money
 templates.env.filters["side"] = side_words
 COOKIE = "dorkbot_admin"

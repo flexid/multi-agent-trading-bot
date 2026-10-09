@@ -132,3 +132,22 @@ Code: [`app/execution/bybit_client.py`](app/execution/bybit_client.py), [`app/da
 | M9 | Go-live checker, leverage ramp, weight tuning, live gateway, pilot | built; live self-test waits for funding |
 
 Details per milestone: [SPEC §14](docs/SPEC.md#14-milestones).
+
+## The crew
+
+Display names for the site, the admin and the docs (ids stay as they are in code, prompts and the database; [`app/agents/names.py`](app/agents/names.py)):
+
+| name | id | what it does |
+|---|---|---|
+| **Tape** | `indicators` | trend, momentum, volatility, funding, open interest; pure math |
+| **Squint** | `chart_patterns` | flags, wedges, ranges, breakouts; code first, a vision model second |
+| **Oracle** | `polymarket` | prediction-market ladders, their 24 h shift, the up/down bets |
+| **Weather** | `macro` | rates, dollar, equities, fear & greed, BTC dominance, coupling |
+| **Ears** | `x_sentiment` | who is loud, who is credible, how many are talking |
+| **Decentra** | `pm_1` (Claude) | portfolio manager: trade plan from the five readings |
+| **Dork** | `pm_2` (GPT) | the second manager; a trade needs both to agree |
+| **Dial** | leverage agent | size = risk ÷ stop distance, then the lowest cap |
+| **Bouncer** | risk engine | deterministic limits; the only one who can say no |
+| **Hands** | executor | the only process that touches the exchange |
+| **Scribe** / **Pedant** | post writer / auditor | writes the X post; checks it |
+| **Coach** | memo | the Monday review with proposals, never changes anything |

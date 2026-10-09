@@ -42,3 +42,4 @@ footer a.neon { color: var(--neon); } footer a.neon:hover { color: var(--neon); 
 button.more { margin-top: 10px; background: #141414; color: var(--fg); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; } button.more:hover { border-color: var(--accent); color: var(--accent); }
 .badge.down { border-color: var(--down); color: var(--down); }
 .toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin-right: 4px; } .toggle button { background: none; border: none; color: var(--muted); padding: 4px 12px; font-size: 12px; cursor: pointer; } .toggle button.on { background: #1a1a1a; color: var(--fg); }
+.crew { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin: 12px 0 8px; } .crew .tile .v { font-size: 18px; color: var(--accent); }

@@ -8,6 +8,7 @@ export type Snapshot = {
   leaderboard: { name: string; kind: string; ic_1d: number | null; sample: number }[];
   by_asset: { asset: string; cashtag: string; trades: number; wins: number; pct: number }[];
   history: { ts: string; scores: Record<string, number | null>; directions: Record<string, string> }[];
+  crew: { id: string; name: string; role: string; blurb: string }[];
 };
 
 export const SNAPSHOT_URL = process.env.NEXT_PUBLIC_SNAPSHOT_URL ?? "/data/snapshot.json";

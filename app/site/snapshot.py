@@ -17,6 +17,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
+from app.agents.names import CREW
 from app.config import Config, get_config
 from app.db.models import (
     AgentOutputRecord,
@@ -118,6 +119,13 @@ class AssetView(_Strict):
     macro_native: float | None
 
 
+class CrewMember(_Strict):
+    id: str
+    name: str
+    role: str
+    blurb: str
+
+
 class Performance(_Strict):
     since: datetime
     bot_pct: float
@@ -170,6 +178,7 @@ class Snapshot(_Strict):
     handle: str
     by_asset: list[AssetContribution] = Field(default_factory=list)
     history: list[CycleRow] = Field(default_factory=list)  # last week of cycles, oldest first
+    crew: list[CrewMember] = Field(default_factory=list)
 
 
 def _f(x: Decimal | float | None, places: int = 4) -> float:
@@ -509,6 +518,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         ),
         by_asset=by_asset,
         history=history,
+        crew=[CrewMember(id=m.id, name=m.name, role=m.role, blurb=m.blurb) for m in CREW],
         stats=stats,
         open_trades=open_trades,
         closed_trades=closed_trades,
