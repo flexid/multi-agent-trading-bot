@@ -81,6 +81,31 @@ class Instrument(BybitModel):
         return max(by_amount, self.lot_size_filter.min_order_qty)
 
 
+class Kline(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    open_time: datetime
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    volume: Decimal
+    turnover: Decimal
+
+    @classmethod
+    def from_row(cls, row: list[str]) -> Kline:
+        """Bybit sends [startTime(ms), open, high, low, close, volume, turnover]."""
+        return cls(
+            open_time=datetime.fromtimestamp(int(row[0]) / 1000, tz=UTC),
+            open=Decimal(row[1]),
+            high=Decimal(row[2]),
+            low=Decimal(row[3]),
+            close=Decimal(row[4]),
+            volume=Decimal(row[5]),
+            turnover=Decimal(row[6]),
+        )
+
+
 class Ticker(BybitModel):
     symbol: str
     bid1_price: Decimal

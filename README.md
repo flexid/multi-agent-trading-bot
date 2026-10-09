@@ -2,7 +2,7 @@
 
 An autonomous crypto trader on Bybit EU. Five analysis agents score BTC, ETH, SOL, BNB and SPX6900 every 4 hours; Claude and GPT independently turn those scores into trade proposals; a deterministic risk engine decides, and a separate executor places and manages the orders. Every trade is posted to X.
 
-> **Status:** M0 (connectivity) complete, including the live order self-test; see [`docs/M0_REPORT.md`](docs/M0_REPORT.md). M1 (data layer) in progress. No trading logic yet.
+> **Status:** M0 (connectivity) complete, including the live order self-test; see [`docs/M0_REPORT.md`](docs/M0_REPORT.md). M1 (data layer) complete. No trading logic yet.
 
 ## How it works
 
@@ -53,6 +53,20 @@ make test lint
 make selftest           # read-only checks + paper round-trip
 ```
 
+## M1: data layer
+
+Postgres 16 (`make up`), schema via Alembic (`make migrate`). `make fetch-once` runs every fetch job one time; `make scheduler` runs them every 15 minutes (macro hourly).
+
+| Source | Stored | Table |
+| --- | --- | --- |
+| Bybit candles | 15m / 1h / 4h / 1D, closed bars, 200 per fetch, upserted | `candles` |
+| Bybit order books | top 25 levels, mid, spread, ±2% depth | `orderbook_snapshots` |
+| Bybit account | balances, borrows, open orders | `account_snapshots` |
+| Polymarket | top 100 markets by 24h volume, prices appended | `polymarket_markets`, `polymarket_prices` |
+| FRED | 2y/10y yields, dollar index, VIX, S&P 500, Nasdaq | `macro_observations` |
+
+Every job writes a `fetch_runs` row and updates `data_sources` (last success, last error); `app.data.fetch.is_fresh()` applies the 30-minute limit the agents use. Code: [`app/db/models.py`](app/db/models.py), [`app/data/fetch.py`](app/data/fetch.py), [`app/scheduler.py`](app/scheduler.py).
+
 ## M0: connectivity self-test
 
 `make selftest` checks the exchange clock, all five pairs (listing, tick and lot size, liquidity, margin and borrow terms), the API key, account mode, balances, fee rates, a paper round-trip, Polymarket and X. It never sends an order: the Bybit client refuses order calls unless it was built for them.
@@ -72,7 +86,7 @@ Code: [`app/execution/bybit_client.py`](app/execution/bybit_client.py), [`app/da
 | # | Milestone | Status |
 | --- | --- | --- |
 | M0 | Connectivity: Bybit, Polymarket, X self-tests | done |
-| M1 | Data layer and database | – |
+| M1 | Data layer and database | done |
 | M2 | Indicators agent and backtest harness | – |
 | M3 | Macro, chart, Polymarket and X agents | – |
 | M4 | Decision layer: two PMs, consensus | – |

@@ -23,6 +23,7 @@ from app.execution.bybit_models import (
     ApiKeyInfo,
     FeeRate,
     Instrument,
+    Kline,
     MarginCoin,
     Order,
     OrderAck,
@@ -175,6 +176,14 @@ class BybitClient:
         )
         rows = result.get("list") or []
         return Instrument.model_validate(rows[0]) if rows else None
+
+    async def klines(self, symbol: str, interval: str, limit: int = 200) -> list[Kline]:
+        """Candles, newest first as Bybit returns them. ``interval``: 15, 60, 240 or D."""
+        result = await self._get(
+            "/v5/market/kline",
+            {"category": CATEGORY, "symbol": symbol, "interval": interval, "limit": limit},
+        )
+        return [Kline.from_row(row) for row in result.get("list") or []]
 
     async def ticker(self, symbol: str) -> Ticker:
         result = await self._get("/v5/market/tickers", {"category": CATEGORY, "symbol": symbol})

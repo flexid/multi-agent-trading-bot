@@ -22,7 +22,8 @@ def test_gamma_json_string_fields_are_parsed() -> None:
     assert market.outcomes == ["Yes", "No"]
     assert market.outcome_prices == [Decimal("0.62"), Decimal("0.38")]
     assert market.clob_token_ids == ["111", "222"]
-    assert not hasattr(market, "question")
+    assert market.question == "ignored"
+    assert "ignored" not in repr(market)
 
 
 async def test_polymarket_client_reads_markets_and_midpoint() -> None:

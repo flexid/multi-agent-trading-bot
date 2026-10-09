@@ -1,4 +1,4 @@
-.PHONY: up down test lint selftest selftest-live
+.PHONY: up down test lint migrate fetch-once scheduler selftest selftest-live bybit-authorize
 
 up:
 	docker compose up -d
@@ -8,6 +8,16 @@ down:
 
 test:
 	uv run pytest -q
+
+migrate:
+	uv run alembic upgrade head
+
+# Data layer: one pass of every fetch job, or the 15-minute scheduler.
+fetch-once:
+	uv run python -m app.scheduler --once
+
+scheduler:
+	uv run python -m app.scheduler
 
 lint:
 	uv run ruff check .
