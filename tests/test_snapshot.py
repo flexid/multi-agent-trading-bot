@@ -46,6 +46,7 @@ def minimal() -> snap.Snapshot:
                 price_pct=4.7,
                 margin_pct=13.6,
                 holding="9 hours",
+                opened_at=now,
                 closed_at=now,
                 x_url="https://x.com/decentradork/status/1",
                 paper=True,

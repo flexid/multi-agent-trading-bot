@@ -87,6 +87,7 @@ class ClosedTrade(_Strict):
     price_pct: float
     margin_pct: float
     holding: str
+    opened_at: datetime
     closed_at: datetime
     x_url: str | None  # link to the X thread (allowed on the site, never in posts)
     paper: bool
@@ -123,6 +124,22 @@ class Performance(_Strict):
     basket_pct: float
     drawdown_pct: float
     equity_curve: list[list[float]]  # [[unix_ms, pct], ...]
+    btc_curve: list[list[float]] = Field(default_factory=list)  # BTC buy & hold, same units
+    basket_curve: list[list[float]] = Field(default_factory=list)  # equal-weight basket
+
+
+class AssetContribution(_Strict):
+    asset: str
+    cashtag: str
+    trades: int
+    wins: int
+    pct: float  # realized contribution to equity, % of starting capital
+
+
+class CycleRow(_Strict):
+    ts: datetime
+    scores: dict[str, float | None]  # consensus score per asset
+    directions: dict[str, str]  # long | short | flat per asset
 
 
 class Stats(_Strict):
@@ -150,6 +167,8 @@ class Snapshot(_Strict):
     leaderboard: list[Leader]
     heartbeat_ok: bool
     handle: str
+    by_asset: list[AssetContribution] = Field(default_factory=list)
+    history: list[CycleRow] = Field(default_factory=list)  # last week of cycles, oldest first
 
 
 def _f(x: Decimal | float | None, places: int = 4) -> float:
@@ -174,6 +193,63 @@ def _pct_curve(cfg: Config, s: Any, since: datetime) -> tuple[list[list[float]],
         if i % max(1, len(rows) // 400) == 0 or i == len(rows) - 1:
             curve.append([r.ts.timestamp() * 1000, round(pct, 3)])
     return curve, round(curve[-1][1], 3), round(dd, 3)
+
+
+def _benchmark_curves(
+    cfg: Config, s: Any, since: datetime
+) -> tuple[list[list[float]], list[list[float]]]:
+    """BTC buy-and-hold and the equal-weight basket as % curves on the hourly candles,
+    thinned to about 400 points like the equity curve."""
+    per_asset: dict[str, dict[datetime, float]] = {}
+    for asset in cfg.trading.assets:
+        rows = s.execute(
+            select(Candle.open_time, Candle.close)
+            .where(
+                Candle.symbol == cfg.symbol(asset),
+                Candle.interval == "60",
+                Candle.open_time >= since,
+            )
+            .order_by(Candle.open_time)
+        ).all()
+        if len(rows) >= 2:
+            base = float(rows[0].close)
+            per_asset[asset] = {r.open_time: (float(r.close) / base - 1) * 100 for r in rows}
+    if not per_asset:
+        return [], []
+    times = sorted(set.intersection(*(set(d) for d in per_asset.values())))
+    step = max(1, len(times) // 400)
+    times = times[::step] + ([times[-1]] if times and (len(times) - 1) % step else [])
+    btc = per_asset.get("BTC", {})
+    btc_curve = [[ts.timestamp() * 1000, round(btc[ts], 3)] for ts in times if ts in btc]
+    basket_curve = [
+        [ts.timestamp() * 1000, round(sum(d[ts] for d in per_asset.values()) / len(per_asset), 3)]
+        for ts in times
+    ]
+    return btc_curve, basket_curve
+
+
+def _history(cfg: Config, s: Any, since: datetime) -> list[CycleRow]:
+    rows = s.execute(
+        select(
+            DecisionRecord.cycle_id,
+            DecisionRecord.ts,
+            DecisionRecord.asset,
+            DecisionRecord.consensus_score,
+            DecisionRecord.direction,
+        )
+        .where(DecisionRecord.ts >= since)
+        .order_by(DecisionRecord.cycle_id)
+    ).all()
+    by_cycle: dict[int, CycleRow] = {}
+    for r in rows:
+        row = by_cycle.get(r.cycle_id)
+        if row is None:
+            row = by_cycle[r.cycle_id] = CycleRow(
+                ts=r.ts, scores={a: None for a in cfg.trading.assets}, directions={}
+            )
+        row.scores[r.asset] = _f(r.consensus_score, 3) if r.consensus_score is not None else None
+        row.directions[r.asset] = r.direction
+    return list(by_cycle.values())[-60:]
 
 
 def _benchmarks(cfg: Config, s: Any, since: datetime) -> tuple[float, float]:
@@ -210,6 +286,8 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         since = first or since
         curve, bot_pct, dd = _pct_curve(cfg, s, since)
         btc_pct, basket_pct = _benchmarks(cfg, s, since)
+        btc_curve, basket_curve = _benchmark_curves(cfg, s, since)
+        history = _history(cfg, s, now - timedelta(days=7))
         closed = s.scalars(
             select(Position)
             .where(Position.track == "primary", Position.status == "closed")
@@ -278,6 +356,21 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
                     paper=p.mode == "paper",
                 )
             )
+        base_capital = float(acct.starting_capital) if acct and acct.starting_capital else 0.0
+        by_asset = []
+        for asset in cfg.trading.assets:
+            mine_closed = [p for p in closed if p.asset == asset]
+            by_asset.append(
+                AssetContribution(
+                    asset=asset,
+                    cashtag=tags.get(asset, f"${asset}"),
+                    trades=len(mine_closed),
+                    wins=sum(1 for p in mine_closed if p.pnl and p.pnl > 0),
+                    pct=round(sum(float(p.pnl or 0) for p in mine_closed) / base_capital * 100, 3)
+                    if base_capital
+                    else 0.0,
+                )
+            )
         closed_trades = [
             ClosedTrade(
                 asset=p.asset,
@@ -291,6 +384,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
                 holding=holding_text((p.closed_at - p.opened_at).total_seconds() / 3600)
                 if p.closed_at and p.opened_at
                 else "",
+                opened_at=p.opened_at or p.closed_at or now,
                 closed_at=p.closed_at or now,
                 x_url=(
                     f"https://x.com/{cfg.posting.handle}/status/{posted[p.id].x_id}"
@@ -393,7 +487,11 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
             basket_pct=basket_pct,
             drawdown_pct=dd,
             equity_curve=curve,
+            btc_curve=btc_curve,
+            basket_curve=basket_curve,
         ),
+        by_asset=by_asset,
+        history=history,
         stats=stats,
         open_trades=open_trades,
         closed_trades=closed_trades,
@@ -422,7 +520,16 @@ def verify_dict(data: dict[str, Any]) -> list[str]:
             for i, v in enumerate(node):
                 walk(v, f"{path}[{i}]")
         elif isinstance(node, str) and not path.endswith(
-            (".x_url", ".generated_at", ".since", ".closed_at", ".handle", ".name")
+            (
+                ".x_url",
+                ".generated_at",
+                ".since",
+                ".opened_at",
+                ".closed_at",
+                ".handle",
+                ".name",
+                ".ts",
+            )
         ):
             r = check(node, site=True)
             if not r.ok:

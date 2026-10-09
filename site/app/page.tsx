@@ -1,20 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
+import { DetailOverlay, EquityChart } from "./charts";
 import { cls, loadSnapshot, num, pct, type Snapshot } from "./snapshot";
-
-function Curve({ points }: { points: number[][] }) {
-  if (points.length < 2) return <p className="muted">Not enough history for a curve yet.</p>;
-  const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
-  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys, 0), y1 = Math.max(...ys, 0);
-  const sx = (x: number) => ((x - x0) / (x1 - x0 || 1)) * 100, sy = (y: number) => 100 - ((y - y0) / (y1 - y0 || 1)) * 100;
-  const d = points.map((p, i) => `${i ? "L" : "M"}${sx(p[0]).toFixed(2)},${sy(p[1]).toFixed(2)}`).join(" ");
-  return (
-    <svg className="curve" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="equity curve">
-      <line x1="0" x2="100" y1={sy(0)} y2={sy(0)} stroke="var(--line)" strokeWidth="0.5" />
-      <path d={d} fill="none" stroke="var(--accent)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
-}
 
 /** "long" in green, "short" in red, everywhere they appear. */
 function Side({ d }: { d: string }) {
@@ -24,6 +11,7 @@ function Side({ d }: { d: string }) {
 
 export default function Page() {
   const [s, setS] = useState<Snapshot | null | undefined>(undefined);
+  const [open, setOpen] = useState(false);
   useEffect(() => { loadSnapshot().then(setS); const t = setInterval(() => loadSnapshot().then(setS), 300000); return () => clearInterval(t); }, []);
   if (s === undefined) return <p className="muted">Loading…</p>;
   if (s === null) return <p className="muted">No data right now. The bot pushes a snapshot every five minutes; this one hasn&apos;t arrived.</p>;
@@ -39,7 +27,8 @@ export default function Page() {
         <div className="tile"><div className="k">equal-weight basket</div><div className={`v ${cls(p.basket_pct)}`}>{pct(p.basket_pct, 2)}</div></div>
         <div className="tile"><div className="k">max drawdown</div><div className="v down">{pct(p.drawdown_pct, 2)}</div></div>
       </div>
-      <Curve points={p.equity_curve} />
+      <EquityChart s={s} onExpand={() => setOpen(true)} />
+      {open && <DetailOverlay s={s} onClose={() => setOpen(false)} />}
       <h2>Stats</h2>
       <div className="row">
         <div className="tile"><div className="k">trades</div><div className="v">{st.trades}</div></div>
