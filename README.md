@@ -139,7 +139,7 @@ Display names for the site, the admin and the docs (ids stay as they are in code
 
 | name | id | what it does |
 |---|---|---|
-| **Tape** | `indicators` | trend, momentum, volatility, funding, open interest; pure math |
+| **Cassette** | `indicators` | trend, momentum, volatility, funding, open interest; pure math |
 | **Squint** | `chart_patterns` | flags, wedges, ranges, breakouts; code first, a vision model second |
 | **Orak** | `polymarket` | prediction-market ladders, their 24 h shift, the up/down bets |
 | **Weather** | `macro` | rates, dollar, equities, fear & greed, BTC dominance, coupling |

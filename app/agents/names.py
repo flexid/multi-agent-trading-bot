@@ -18,7 +18,7 @@ class Member:
 CREW: list[Member] = [
     Member(
         "indicators",
-        "Tape",
+        "Cassette",
         "reads the tape",
         "Reads the tape: trend, momentum, volatility, funding and open interest. Pure math, "
         "no opinions, summarized by a small model into plain words.",
@@ -125,6 +125,6 @@ BY_ID = {m.id: m for m in CREW}
 
 
 def display(agent_id: str) -> str:
-    """'Tape (indicators)' for known ids, the id itself otherwise."""
+    """'Cassette (indicators)' for known ids, the id itself otherwise."""
     m = BY_ID.get(agent_id)
     return f"{m.name} ({agent_id})" if m else agent_id
