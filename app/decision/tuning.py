@@ -122,8 +122,15 @@ def score_models(session: Session, cfg: Config, since: datetime) -> list[Score]:
         .where(AgentOutputRecord.computed_at >= since)
     ).all()
     closes = {a: _closes(session, cfg, a, since) for a in cfg.trading.assets}
+    # Only the models that hold a seat today: a retired one (gpt-5.6-sol, replaced by
+    # Astra on 2026-10-10) keeps its rows in the database but leaves the boards.
+    seated = {cfg.models.pm_1, cfg.models.pm_2}
+    if cfg.models.shadow_alt is not None:
+        seated |= {cfg.models.shadow_alt.pm_1, cfg.models.shadow_alt.pm_2}
     by_model: dict[str, dict[str, list[tuple[float, float]]]] = {}
     for p, at in props:
+        if p.model not in seated:
+            continue
         signed = {"long": 1.0, "short": -1.0, "flat": 0.0}[p.direction] * p.conviction
         for h, hours in HORIZONS.items():
             r = forward_return(closes.get(p.asset, pd.Series(dtype=float)), at, hours)
