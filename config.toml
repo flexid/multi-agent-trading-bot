@@ -95,7 +95,7 @@ x_reads_per_day = 600
 
 [models]                        # all nine IDs verified against both providers on 2026-10-09
 pm_1 = "claude-fable-5-1"
-pm_2 = "gpt-5.6-sol"
+pm_2 = "gpt-6-astra"            # owner 2026-10-10: the PMs are Fable vs Astra
 macro = "gpt-5.6-terra"
 chart_patterns = "claude-opus-5-5"
 indicators = "claude-haiku-5-5"
@@ -105,7 +105,7 @@ post_writer = "claude-sonnet-5-5"
 post_auditor = "gpt-5.6-terra"
 
 [models.shadow_alt]             # the other provider per task, run alongside during shadow mode
-pm_1 = "gpt-5.6-sol"
+pm_1 = "gpt-6-astra"
 pm_2 = "claude-fable-5-1"
 macro = "claude-opus-5-5"
 chart_patterns = "gpt-5.6-terra"
@@ -125,6 +125,7 @@ effort = "medium"               # Anthropic output_config.effort / OpenAI reason
 "claude-opus-5-5" = [4.0, 20.0]
 "claude-sonnet-5-5" = [2.0, 10.0]
 "claude-haiku-5-5" = [0.10, 0.50]
-"gpt-5.6-sol" = [5.0, 25.0]     # estimate; replace with the published rate
-"gpt-5.6-terra" = [2.0, 10.0]   # estimate
-"gpt-5.6-luna" = [0.5, 2.5]     # estimate
+"gpt-5.6-sol" = [5.0, 30.0]     # third-party trackers, 2026-10-10; not from openai.com
+"gpt-5.6-terra" = [2.0, 12.0]   # third-party trackers, 2026-10-10
+"gpt-5.6-luna" = [0.2, 1.2]     # third-party trackers, 2026-10-10
+"gpt-6-astra" = [10.0, 50.0]    # third-party trackers, 2026-10-10

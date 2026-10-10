@@ -200,3 +200,7 @@ Bybit spot margin lends up to 10x; the 20x admin bound only ever affected the pa
 ## 2026-10-09 · The inverse track (for fun)
 
 A fourth paper track, `inverse` (ledger 5), takes the opposite side of every primary decision with the stop and target mirrored around the entry, at the primary's size. Owner's idea, "just for fun"; it is also a clean control: if the bot has no edge, primary and inverse should look alike after costs; if it has the reverse of one, inverse wins. Never posted, never on the public site, shown on the admin's paper ledgers and in the memo.
+
+## 2026-10-10 · PMs: Fable vs Astra; price table from third-party trackers
+
+`pm_2` is `gpt-6-astra` (was GPT-5.6 Sol); the shadow-alt twin of `pm_1` is Astra too, so the leaderboard scores Fable and Astra in both seats. Astra passed a structured smoke call through `app/llm` (2.3 s). The `[llm.pricing]` rows for the GPT models come from third-party trackers (Astra $10/$50, Sol $5/$30, Terra $2/$12, Luna $0.20/$1.20 per 1M tokens), not from openai.com; the cost tiles are estimates until the owner confirms the published rates.
