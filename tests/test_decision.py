@@ -188,6 +188,9 @@ def test_charts_first_lets_x_confirm_but_never_veto_or_open() -> None:
     veto = [*up, _out("x_sentiment", -0.8)]
     assert charts_first_score(veto, None, w) == pytest.approx(0.4)
     assert formula_score(veto, None, w)[0] == pytest.approx(0.0)
+    # X neutral: kept, so the two scores are identical (no difference without opposition)
+    neutral = [*up, _out("x_sentiment", 0.0)]
+    assert charts_first_score(neutral, None, w) == pytest.approx(formula_score(neutral, None, w)[0])
     # flat charts: X alone opens nothing
     flat = [_out("indicators", 0.01), _out("chart_patterns", -0.01), _out("x_sentiment", 0.9)]
     assert charts_first_score(flat, None, w) == pytest.approx(0.0)

@@ -98,7 +98,8 @@ def charts_first_score(
         w = table.get(o.agent, 0.0)
         if o.agent == "macro":
             w *= coupling if coupling is not None else 0.0
-        if o.agent == "x_sentiment" and (side == 0 or o.score * side <= 0):
+        # a neutral X reading stays in, as in the real score: only opposition is dropped
+        if o.agent == "x_sentiment" and (side == 0 or o.score * side < 0):
             continue
         if o.agent == "catalysts" and (side == 0 or (o.score > 0 and side < 0)):
             continue
