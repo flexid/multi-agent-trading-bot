@@ -123,7 +123,7 @@ accounts = [
   "spencernoon", "santiagoroel", "BittelJulien", "EmberCN", "Morecryptoonl", "punk9059",
 ]
 search_per_asset = 20           # posts per asset per cycle from recent search
-reads_per_cycle_max = 90        # hard cap per 4h cycle; 6 cycles ≈ 540 of the 600/day budget
+reads_per_cycle_max = 130       # cap per 4h cycle; with Djaf's 30, six cycles ≈ 960 of the 1,000/day budget
 
 [site]                          # M8a public site and M8b admin (SPEC §12)
 public_domain = "dorkbot.dev"
@@ -132,7 +132,7 @@ snapshot_interval_minutes = 5   # sanitized JSON pushed to Cloudflare for the pu
 
 [budget]
 api_usd_per_month = 250         # owner 2026-10-09; above this, downgrade models; never stop
-x_reads_per_day = 600
+x_reads_per_day = 1000          # owner 2026-10-10: room for the curated search over all accounts (≈ $5/day at most)
 
 [models]                        # all nine IDs verified against both providers on 2026-10-09
 pm_1 = "claude-fable-5-1"
