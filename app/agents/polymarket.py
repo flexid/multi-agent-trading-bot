@@ -329,7 +329,12 @@ def score_ladder(points: list[LadderPoint], spot: float) -> tuple[float, float, 
         return 0.0, 0.0, 0.0, []
     weights = horizon_weights(points)
     width = max(abs(math.log(p.threshold / spot)) for p in points) or 1.0
-    level = max(-1.0, min(1.0, math.log(implied_median(points) / spot) / width))
+    # one point has no shape: its "median" is its own edge, so the level says nothing
+    level = (
+        max(-1.0, min(1.0, math.log(implied_median(points) / spot) / width))
+        if len(points) >= 2
+        else 0.0
+    )
 
     shifted = [
         (w, p.p_above - p.p_above_24h)

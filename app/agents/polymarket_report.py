@@ -23,6 +23,7 @@ from app.agents.polymarket import (
     UpDownPoint,
     _points,
     _price_at,
+    horizon_weights,
     score_ladder,
     score_updown,
 )
@@ -107,7 +108,11 @@ def report(assets: list[str] | None = None) -> str:
                 lad_groups[market_type(by_id[p.market_id], now)].append(p)
             for u in updown:
                 ud_groups[market_type(by_id[u.market_id], now)].append(u)
-            total_w = sum(max(p.volume_24h, 1.0) for p in ladder) or 1.0
+            hw = (
+                dict(zip([p.market_id for p in ladder], horizon_weights(ladder), strict=True))
+                if ladder
+                else {}
+            )
             lines.append(
                 f"  {'used type':44s} {'n':>3s} {'24h volume':>12s} {'weight':>7s}  contribution"
             )
@@ -116,10 +121,10 @@ def report(assets: list[str] | None = None) -> str:
             ):
                 vol = sum(p.volume_24h for p in pts)
                 _, lvl, sh, _ = score_ladder(pts, spot)
-                w = f"{sum(max(p.volume_24h, 1.0) for p in pts) / total_w:6.0%}"
+                w = f"{sum(hw[p.market_id] for p in pts):6.0%}"
                 contrib = (
                     f"level {lvl:+.2f}, shift {sh:+.2f} on its own; "
-                    f"{w} of the ladder's volume weight"
+                    f"{w} of the ladder's weight (horizon × volume)"
                 )
                 lines.append(f"  {typ:44s} {len(pts):3d} {vol:12,.0f} {w:>7s}  {contrib}")
             for typ, uds in sorted(
@@ -138,8 +143,10 @@ def report(assets: list[str] | None = None) -> str:
                 mp = m.mapping or {}
                 kind = mp.get("kind")
                 typ = market_type(m, now)
-                if kind in ("range", "other"):
-                    why = "not a single-threshold market"
+                if kind == "range":
+                    why = "range bucket: thin, or its date has under 3 liquid buckets"
+                elif kind == "other":
+                    why = "not a price market"
                 elif kind == "updown" and int(mp.get("window_min") or 0) < 60:
                     why = "window under an hour (noise)"
                 elif m.end_date is None:
