@@ -63,6 +63,9 @@ class CatalystsConfig(_Section):
     X accounts, Bybit announcements and a token-unlock calendar, classified by Jev."""
 
     accounts: list[str] = Field(default_factory=list)  # X handles, read every cycle (billed)
+    # handle -> asset: the project's own account; it promotes its coin, so its bullish events
+    # count half, its promotional posts need more materiality, and two events per account count
+    official: dict[str, str] = Field(default_factory=dict)
     reads_per_cycle_max: int = 30  # share of the daily X read budget
     shadow_model: str = "claude-sonnet-5-5"  # runs beside Jev while not live; "" turns it off
     unlock_slugs: dict[str, str] = Field(default_factory=dict)  # asset -> DefiLlama slug

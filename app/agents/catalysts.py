@@ -73,6 +73,13 @@ UNLOCK_TAIL_DAYS = 3  # and fades in the three days after
 UNLOCK_FULL_PCT = 2.0  # % of supply in one release that counts as fully material
 UNLOCK_MIN_PCT = 0.1  # smaller releases (daily linear drip) are not events
 DIRECTION_SIGN = {"bullish": 1.0, "bearish": -1.0, "neutral": 0.0}
+# An official project account promotes its own coin (owner 2026-10-10): its bullish events
+# count half, its promotional types need more materiality, and only its two strongest
+# events per window count, so posting more does not score more.
+OFFICIAL_BULLISH_FACTOR = 0.5
+OFFICIAL_PROMO_MIN_MATERIALITY = 0.4
+PROMO_TYPES = ("partnership", "other")
+MAX_EVENTS_PER_SOURCE = 2
 
 # Plain-language asset descriptions for the Jev asset choice (literal reader: name the
 # confusions explicitly). Only the alt sleeve's assets are catalyst targets.
@@ -354,8 +361,15 @@ async def classify_pending(
 # --- scoring (code only) ------------------------------------------------------------
 
 
-def event_weight(row: CatalystEvent, now: datetime, labels: dict[str, Any] | None = None) -> float:
-    """Signed contribution of one event at ``now``; 0 when it does not count."""
+def event_weight(
+    row: CatalystEvent,
+    now: datetime,
+    labels: dict[str, Any] | None = None,
+    *,
+    official: bool = False,
+) -> float:
+    """Signed contribution of one event at ``now``; 0 when it does not count. ``official``:
+    the event comes from the asset's own project account."""
     lab = labels if labels is not None else _primary_labels(row)
     if not lab or not lab.get("asset"):
         return 0.0
@@ -363,7 +377,11 @@ def event_weight(row: CatalystEvent, now: datetime, labels: dict[str, Any] | Non
     if materiality < MIN_MATERIALITY:
         return 0.0
     kind = str(lab.get("type") or "other")
+    if official and kind in PROMO_TYPES and materiality < OFFICIAL_PROMO_MIN_MATERIALITY:
+        return 0.0
     sign = DIRECTION_SIGN.get(str(lab.get("direction") or "neutral"), 0.0)
+    if official and sign > 0:
+        sign *= OFFICIAL_BULLISH_FACTOR
     if row.source == "unlocks":
         decay = unlock_weight(row.event_at, now)
     else:
@@ -384,19 +402,36 @@ def _primary_labels(row: CatalystEvent) -> dict[str, Any]:
 
 
 def score_events(
-    rows: list[CatalystEvent], asset: str, now: datetime, *, shadow: bool = False
+    rows: list[CatalystEvent],
+    asset: str,
+    now: datetime,
+    *,
+    shadow: bool = False,
+    official: dict[str, str] | None = None,
 ) -> tuple[float, float, list[str], list[str]]:
     """(score, confidence, evidence, risk flags) for one asset from its events. Evidence
     is built from labels only: the PMs never see event text. ``shadow`` scores the same
-    rows with the shadow labels instead."""
-    contributions: list[tuple[float, CatalystEvent, dict[str, Any]]] = []
+    rows with the shadow labels instead. ``official``: handle -> asset of the project
+    accounts; at most ``MAX_EVENTS_PER_SOURCE`` events per account (or per other source)
+    count, the strongest first."""
+    official = official or {}
+    candidates: list[tuple[float, CatalystEvent, dict[str, Any]]] = []
     for row in rows:
         lab = (row.shadow or {}) if shadow else _primary_labels(row)
         if lab.get("asset") != asset:
             continue
-        w = event_weight(row, now, lab)
+        is_official = bool(row.author) and official.get(row.author or "") == asset
+        w = event_weight(row, now, lab, official=is_official)
         if w != 0.0:
-            contributions.append((w, row, lab))
+            candidates.append((w, row, lab))
+    per_source: dict[str, int] = {}
+    contributions: list[tuple[float, CatalystEvent, dict[str, Any]]] = []
+    for w, row, lab in sorted(candidates, key=lambda c: -abs(c[0])):
+        key = f"{row.source}:{row.author or ''}"
+        if per_source.get(key, 0) >= MAX_EVENTS_PER_SOURCE:
+            continue
+        per_source[key] = per_source.get(key, 0) + 1
+        contributions.append((w, row, lab))
     total = sum(w for w, _, _ in contributions)
     score = max(-1.0, min(1.0, total))
     # Confidence grows with the material weight present, whichever direction it points.
@@ -445,7 +480,11 @@ def evaluate(
             CatalystEvent.event_at <= now + timedelta(days=UNLOCK_RAMP_DAYS),
         )
     ).all()
-    score, confidence, evidence, flags = score_events(list(rows), asset, now, shadow=shadow)
+    from app.config import get_config
+
+    score, confidence, evidence, flags = score_events(
+        list(rows), asset, now, shadow=shadow, official=get_config().catalysts.official
+    )
     return AgentOutput(
         agent=AGENT,
         asset=asset,

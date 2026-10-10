@@ -178,6 +178,36 @@ def test_shadow_labels_score_separately_and_agreement_is_counted() -> None:
     assert cat.agreement([]).events == 0
 
 
+def test_official_accounts_count_half_when_bullish_and_only_twice() -> None:
+    official = {"ethena": "ENA"}
+    rows = []
+    for i in range(5):  # five fresh partnership posts from the project account
+        e = event(i, kind="partnership", direction="bullish", materiality=0.6, source="x", age_h=0)
+        e.author = "ethena"
+        rows.append(e)
+    score, _, evidence, _ = cat.score_events(rows, "ENA", NOW, official=official)
+    # each is 0.6 × 0.6 = 0.36, halved to 0.18; only two count → 0.36, not 1.8 clamped to 1
+    assert score == pytest.approx(0.36, abs=0.01)
+    assert len(evidence) == 2
+    plain, _, _, _ = cat.score_events(rows, "ENA", NOW)  # the same account, not official
+    assert plain == pytest.approx(0.72, abs=0.01)  # two events, full weight
+    # self-reported bad news counts in full
+    bad = event(9, kind="hack", direction="bearish", materiality=0.9, source="x", age_h=0)
+    bad.author = "ethena"
+    assert cat.event_weight(bad, NOW, official=True) == pytest.approx(-0.9)
+    # promotional posts from the project need more materiality
+    promo = event(10, kind="other", direction="bullish", materiality=0.3, source="x", age_h=0)
+    assert cat.event_weight(promo, NOW, official=True) == 0.0
+    assert cat.event_weight(promo, NOW, official=False) == pytest.approx(0.09)
+    assert get_config().catalysts.official == {
+        "pepecoineth": "PEPE",
+        "hedera": "HBAR",
+        "pumpfun": "PUMP",
+        "spx6900": "SPX6900",
+        "ethena": "ENA",
+    }
+
+
 def test_alt_sleeve_posts_go_to_jev_and_the_rest_to_the_text_model() -> None:
     cfg = get_config()
     alt = XPostRecord(id="1", text="x", fetched_at=NOW, query_asset="PEPE")

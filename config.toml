@@ -97,6 +97,12 @@ accounts = ["pepecoineth", "hedera", "pumpfun", "spx6900", "ethena", "DefiLlama"
 reads_per_cycle_max = 30        # of the daily X read budget (5 posts per account minimum page)
 shadow_model = "claude-sonnet-5-5"   # labels the same events and posts beside Jev while not live
 unlock_horizon_days = 30
+[catalysts.official]            # the project's own accounts (owner 2026-10-10): bullish counts half, promo needs materiality ≥ 0.4, two events per account
+pepecoineth = "PEPE"
+hedera = "HBAR"
+pumpfun = "PUMP"
+spx6900 = "SPX6900"
+ethena = "ENA"
 [catalysts.unlock_slugs]        # DefiLlama emissions datasets; PEPE and SPX6900 have no schedule (fully circulating)
 ENA = "ethena"
 PUMP = "pump"
