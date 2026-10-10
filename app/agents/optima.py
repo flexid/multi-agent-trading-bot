@@ -137,6 +137,19 @@ def forecast_month(mtd_usd: float, daily_rate_usd: float, now: datetime) -> dict
     }
 
 
+def planned_entry(proposal: dict[str, Any] | None, track: str) -> Decimal | None:
+    """The entry the risk engine handed the executor: ``proposal["plan"]["entry"]`` (the
+    max track has its own ``plan_max``); the PMs' merged entry as a fallback."""
+    if not proposal:
+        return None
+    plan = proposal.get("plan_max" if track == "max" else "plan") or proposal.get("plan") or {}
+    raw = plan.get("entry") or proposal.get("entry")
+    try:
+        return Decimal(str(raw)) if raw is not None else None
+    except ArithmeticError:
+        return None
+
+
 def _p90(values: list[float]) -> float | None:
     if not values:
         return None
@@ -236,6 +249,9 @@ def cost_value_facts(session: Session, cfg: Config, now: datetime) -> dict[str, 
             }
         )
     return {
+        "note": "IC needs the forward return: a reading, a shadow or a PM seat younger than "
+        "one day has no sample yet; a seat's model changes with the config, so an old model "
+        "can hold samples while the new one has none",
         "agents": agents,
         "models": sorted(models.values(), key=lambda m: -m["usd_month"]),
         "pm_seats": pm_scores,
@@ -278,11 +294,7 @@ def execution_facts(session: Session, cfg: Config, now: datetime) -> dict[str, A
     by_group: dict[str, dict[str, list[float]]] = {}
     for p in positions:
         d = decisions.get(p.decision_id or -1)
-        planned = (
-            Decimal(str(d.proposal["entry"]))
-            if d and d.proposal and d.proposal.get("entry")
-            else None
-        )
+        planned = planned_entry(d.proposal if d else None, p.track)
         key = f"{p.mode}/{p.sleeve or 'none'}"
         g = by_group.setdefault(
             key, {"slip": [], "fee_bps": [], "fee_share": [], "depth_use": [], "n": []}
@@ -333,8 +345,14 @@ def execution_facts(session: Session, cfg: Config, now: datetime) -> dict[str, A
     real = [p for p in positions if p.mode in ("pilot", "live")]
     paper = [p for p in positions if p.track == "primary"]
     twins = pilot_vs_paper(real, paper)
+    by_track: dict[str, int] = {}
+    for p in positions:
+        by_track[p.track] = by_track.get(p.track, 0) + 1
     return {
         "window_days": EXECUTION_DAYS,
+        "note": "every decision opens one position per paper track (primary, max, inverse) "
+        "plus the pilot or live one; slippage is against the risk engine's planned entry",
+        "positions_by_track": by_track,
         "by_mode_and_sleeve": groups,
         "entries_opened": int(opened),
         "entries_missed": {a: int(n) for a, n in missed},  # post-only not filled, borrow failed

@@ -41,6 +41,11 @@ def test_pure_helpers() -> None:
     }
     assert optima._p90([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]) == 10.0
     assert optima._p90([]) is None and optima._mean([]) is None
+    prop = {"entry": "99", "plan": {"entry": "100"}, "plan_max": {"entry": "101"}}
+    assert optima.planned_entry(prop, "primary") == D(100)
+    assert optima.planned_entry(prop, "max") == D(101)
+    assert optima.planned_entry({"entry": "99"}, "primary") == D(99)
+    assert optima.planned_entry(None, "primary") is None
 
 
 def test_report_schema_is_strict() -> None:
