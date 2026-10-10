@@ -228,6 +228,24 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
         "leaderboard": board,
         "polymarket_coverage": pm_cov,
         "x_mentions": buzz,
+        "optima": optima_facts(session),
+    }
+
+
+def optima_facts(session: Session) -> dict[str, Any] | None:
+    """Optima's latest report (owner 2026-10-10): a separate section of the memo, never
+    merged into Coach's proposals. None when there is no run from this week."""
+    from app.agents.optima import latest
+
+    run = latest(session)
+    if run is None:
+        return None
+    return {
+        "as_of": run.ts.strftime("%Y-%m-%d %H:%M UTC"),
+        "model": run.model,
+        "report": run.report,
+        "error": run.error,
+        "budget": (run.facts or {}).get("budget"),
     }
 
 
@@ -330,6 +348,7 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
         )
     lines.append(f"- Polymarket: {f['polymarket_coverage']}")
     lines.append(f"- X mentions: {f['x_mentions'] or 'no baseline yet'}")
+    lines += optima_section(f.get("optima"))
     lines += ["", "## Proposals for review"]
     if memo is None:
         lines.append(f"(no proposals: {error})")
@@ -346,6 +365,42 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
             ]
     lines += ["", "Nothing in this memo changes the bot. Reply with the numbers you want applied."]
     return "\n".join(lines) + "\n"
+
+
+def optima_section(o: dict[str, Any] | None) -> list[str]:
+    """Optima's findings and proposals as their own section (cost, execution, budget)."""
+    if not o:
+        return ["", "## Optima (cost, execution, budget)", "(no Optima run this week)"]
+    lines = ["", f"## Optima (cost, execution, budget), as of {o['as_of']}"]
+    b = o.get("budget") or {}
+    if b:
+        lines.append(
+            f"- API spend: ${b.get('month_to_date_usd', 0):.2f} month to date, "
+            f"${b.get('daily_rate_usd', 0):.2f}/day lately, forecast "
+            f"${b.get('forecast_usd', 0):.2f} of ${b.get('budget_usd', 0):.0f}"
+        )
+    r = o.get("report")
+    if not r:
+        lines.append(f"(no findings: {o.get('error')})")
+        return lines
+    lines += [r["summary"], ""]
+    for fnd in r.get("findings", []):
+        lines.append(f"- [{fnd['severity']}] {fnd['area']}: **{fnd['title']}** {fnd['detail']}")
+        for ev in fnd.get("evidence", []):
+            lines.append(f"  - {ev}")
+    if r.get("proposals"):
+        lines.append("")
+        lines.append("Optima's proposals (advisory; nothing is applied by itself):")
+        for i, pr in enumerate(r["proposals"], 1):
+            delta = pr.get("cost_delta_usd_month")
+            money = f", {delta:+.2f} $/month" if delta is not None else ""
+            lines += [
+                f"{i}. **{pr['title']}** (needs: {pr['needs']}{money})",
+                f"   - change: {pr['change']}",
+                f"   - expected: {pr['expected_effect']}",
+                f"   - risk: {pr['risk']}",
+            ]
+    return lines
 
 
 def improvement_prompt(f: dict[str, Any], memo: Memo | None) -> str:
@@ -383,6 +438,17 @@ def improvement_prompt(f: dict[str, Any], memo: Memo | None) -> str:
         ]
     if memo and memo.keep:
         lines += ["", "## Leave alone (per the memo)", ""] + [f"- {k}" for k in memo.keep]
+    o = f.get("optima") or {}
+    r = o.get("report") or {}
+    if r.get("proposals"):
+        lines += ["", "## Optima's proposals (cost, execution, budget)", ""]
+        for i, pr in enumerate(r["proposals"], 1):
+            lines += [
+                f"- [ ] O{i}. {pr['title']} (needs: {pr['needs']})",
+                f"  - change: {pr['change']}",
+                f"  - expected: {pr['expected_effect']}",
+                f"  - risk: {pr['risk']}",
+            ]
     lines += [
         "",
         "## Owner notes",

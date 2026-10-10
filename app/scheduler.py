@@ -167,6 +167,14 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
     )
     scheduler.add_job(
         ops_job,
+        CronTrigger(day_of_week="mon", hour="5", minute="30"),  # Optima, before the memo
+        args=["optima", cfg],
+        id="optima",
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        ops_job,
         CronTrigger(day_of_week="mon", hour="6", minute="0"),  # weekly memo, emailed
         args=["memo", cfg],
         id="memo",
@@ -207,6 +215,11 @@ async def ops_job(kind: str, cfg: Config) -> None:
         elif kind == "costs":
             await asyncio.to_thread(ops.write_cost_report)
             log.info("cost report written to logs/costs.md")
+        elif kind == "optima":
+            from app.agents import optima
+
+            run = await optima.build(cfg)
+            log.info("optima run %d stored (%s, $%s)", run.id, run.model, run.cost_usd)
         elif kind == "memo":
             from app import memo
 

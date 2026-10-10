@@ -221,6 +221,22 @@ class XPostLabel(Base):
     labeled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class OptimaRun(Base):
+    """One run of Optima, the read-only cost and execution adviser (owner 2026-10-10):
+    the facts computed in code, the model's validated report, its cost. Admin and memo
+    only; nothing here reaches the public site."""
+
+    __tablename__ = "optima_runs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    model: Mapped[str] = mapped_column(String(60))
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6))
+    facts: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    report: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(Text)
+
+
 class LLMCall(Base):
     """One model call: what was asked (sizes only), what came back, what it cost."""
 

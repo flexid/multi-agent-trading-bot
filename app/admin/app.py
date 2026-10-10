@@ -411,6 +411,9 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
         beta_rows = beta_table(s, cfg, now)
         sleeve_costs = costs_by_sleeve(s, cfg, month)
         djaf = djaf_panel(s, cfg, now, month)
+        from app.agents.optima import latest as optima_latest
+
+        optima = optima_latest(s, max_age=timedelta(days=30))
         from app.risk.exposure import betas as asset_betas
         from app.risk.exposure import track_exposure
 
@@ -452,6 +455,7 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
         beta_rows=beta_rows,
         sleeve_costs=sleeve_costs,
         djaf=djaf,
+        optima=optima,
         beta=beta,
         exposures=exposures,
         real=real,

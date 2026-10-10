@@ -142,6 +142,7 @@ class TaskModels(_Section):
     post_auditor: str
     memo: str = "claude-opus-5-5"  # weekly improvement memo (owner 2026-10-09)
     catalysts: str = "jev-latest"  # the catalyst classifier (owner 2026-10-10)
+    optima: str = "claude-opus-5-5"  # weekly cost and execution adviser (owner 2026-10-10)
 
 
 class ModelsConfig(TaskModels):

@@ -59,6 +59,13 @@ CREW: list[Member] = [
         "and the unlock calendar, labelled in a blink. Code turns the labels into a score.",
     ),
     Member(
+        "optima",
+        "Optima",
+        "advisory agent",
+        "The weekly efficiency check: which readings earn their keep, how clean the fills "
+        "are, and whether the spend stays on track. Advises only; changes nothing.",
+    ),
+    Member(
         "pm_1",
         "Dyne",
         "portfolio manager (Claude)",
