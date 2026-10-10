@@ -72,7 +72,7 @@ DOGE = { x_sentiment = 0.30 }   # a memecoin: attention on X drives it (owner 20
 [x]                             # X sentiment agent (SPEC §6)
 # Curated accounts, handles without "@". Owner's list (2026-10-09), duplicates removed.
 accounts = [
-  "decentradork", "spx6900", "DrProfitCrypto", "MustStopMurad", "trader1sz", "MerlijnTrader", "Exitpump",
+  "decentradork", "DrProfitCrypto", "MustStopMurad", "trader1sz", "MerlijnTrader", "Exitpump",
   "benjamincowen", "CryptoCapo_", "Rektcapital", "Durov", "CryptoMichNL", "Duonine", "Devchart",
   "Quintenfrancois", "Murocrypto", "VitalikButerin", "saylor", "cz_binance", "brian_armstrong",
   "APompliano", "balajis", "LynAldenContact", "RaoulGMI", "CryptoHayes", "woonomic",
