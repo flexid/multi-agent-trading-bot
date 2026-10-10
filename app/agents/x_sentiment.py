@@ -12,7 +12,7 @@ Aggregation in code, per asset over the labelled posts of the last 24 hours:
   the level is pulled back by half (crowded trades reverse: contrarian caution)
 - news shock: any post flagged shock with credibility ≥ 0.6 in the last 6 hours sets a
   risk flag and lifts confidence; the triggered cycle in SPEC §7 keys off this flag
-- confidence from post count and mean credibility; SPX6900 gets a 1.5× count weight
+- confidence from post count and mean credibility; memecoins (DOGE) get a 1.5× count weight
   because sentiment is its main driver
 """
 
@@ -51,6 +51,8 @@ SEARCH_QUERY = {
     "BTC": "(bitcoin OR $BTC) lang:en -is:retweet -is:reply",
     "ETH": "(ethereum OR $ETH) lang:en -is:retweet -is:reply",
     "SOL": "(solana OR $SOL) lang:en -is:retweet -is:reply",
+    "XRP": "(xrp OR $XRP OR ripple) lang:en -is:retweet -is:reply",
+    "DOGE": "(dogecoin OR $DOGE) lang:en -is:retweet -is:reply",
     "BNB": '($BNB OR "BNB chain") lang:en -is:retweet -is:reply',
     "SPX6900": "(SPX6900 OR $SPX) lang:en -is:retweet -is:reply",
 }
@@ -60,9 +62,12 @@ MENTION_QUERY = {
     "BTC": "(bitcoin OR $BTC) -is:retweet",
     "ETH": "(ethereum OR $ETH) -is:retweet",
     "SOL": "(solana OR $SOL) -is:retweet",
+    "XRP": "($XRP OR #XRP OR xrp) -is:retweet",
+    "DOGE": "($DOGE OR #DOGE OR dogecoin) -is:retweet",
     "BNB": "($BNB OR #BNB) -is:retweet",
     "SPX6900": "($SPX OR SPX6900 OR #SPX6900) -is:retweet",
 }
+MEME_ASSETS = {"DOGE", "SPX6900"}  # attention is the main driver: count and buzz weigh more
 MENTION_SERIES = "XMENTIONS_{asset}"  # hourly counts in macro_observations
 BUZZ_BASELINE_DAYS = 6
 BUZZ_SPIKE, BUZZ_FADE = 2.0, 0.5
@@ -85,7 +90,7 @@ class PostLabel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
-    asset: str  # BTC/ETH/SOL/BNB/SPX6900/none; validated against config in code
+    asset: str  # one of the configured assets or none; validated against config in code
     stance: Stance
     kind: Kind
     credibility: float = Field(ge=0, le=1)
@@ -291,7 +296,7 @@ def aggregate(
 
     ``mentions``: (last 24 h, baseline per 24 h). Attention scales confidence, not the
     direction: twice the usual volume lifts it, half the usual volume lowers it, and
-    SPX6900 reacts twice as much because attention is its main driver (owner 2026-10-09).
+    memecoins react twice as much because attention is their main driver (owner 2026-10-09).
     A spike or a fade is also a risk flag the PMs see."""
     weights = [float(r.credibility or 0) * KIND_WEIGHT.get(r.kind or "other", 0.4) for r in rows]
     stances = [STANCE_VALUE.get(r.stance or "neutral", 0.0) for r in rows]
@@ -319,7 +324,7 @@ def aggregate(
     if shocks:
         risk_flags.append(f"news shock: {len(shocks)} credible post(s) in {SHOCK_WINDOW_H}h")
 
-    count_weight = 1.5 if asset == "SPX6900" else 1.0
+    count_weight = 1.5 if asset in MEME_ASSETS else 1.0
     mean_cred = (sum(float(r.credibility or 0) for r in rows) / n) if n else 0.0
     confidence = min(1.0, (1 - math.exp(-count_weight * n / 15)) * (0.4 + 0.6 * mean_cred))
     if shocks:
@@ -328,7 +333,7 @@ def aggregate(
     if mentions is not None and mentions[1] > 0:
         last, baseline = mentions
         buzz = min(3.0, last / baseline)
-        swing = 0.5 if asset == "SPX6900" else 0.25
+        swing = 0.5 if asset in MEME_ASSETS else 0.25
         confidence = min(1.0, confidence * (1 + swing * (min(buzz, 2.0) - 1.0)))
         buzz_line = (
             f"mentions: {last} in {WINDOW_H}h vs {baseline:.0f} per day lately ({buzz:.1f}×)"

@@ -2,12 +2,11 @@
 # Secrets do not belong here; they live in .env. See docs/SPEC.md §13.
 
 [trading]
-assets = ["BTC", "ETH", "SOL", "BNB", "SPX6900"]
+assets = ["BTC", "ETH", "SOL", "XRP", "DOGE"]   # owner 2026-10-10: BNB and SPX6900 dropped (logic v2)
 capital_max_usdt = 10000        # paper equity in shadow; live starts at live_start_fraction of it
 live_start_fraction = 0.10      # and never sizes beyond actual subaccount equity
 live_allowed = false            # owner flips once; go-live itself is automatic (SPEC §10)
 leverage_max = 10
-leverage_max_spx6900 = 3
 risk_per_trade = 0.005
 risk_per_trade_max = 0.025      # the max shadow track: the leveraged variant (owner goal 1%/day, 2026-10-09)
 capital_share_per_asset = 0.20
@@ -51,8 +50,10 @@ highlight_margin_pct = 0.10     # a close at +10% on margin or better gets the t
 BTC = "$BTC"
 ETH = "$ETH"
 SOL = "$SOL"
-BNB = "$BNB"
-SPX6900 = "$SPX"
+XRP = "$XRP"
+DOGE = "$DOGE"
+BNB = "$BNB"                    # history only (dropped 2026-10-10)
+SPX6900 = "$SPX"                # history only
 
 [risk]
 # Bybit UTA cross-margin liquidation: collateral is haircut by the coin's collateral ratio
@@ -66,7 +67,7 @@ fng_weight = 0.25               # Fear & Greed, contrarian at extremes; also a r
 dominance_weight = 0.0          # BTC dominance tilt: logged only until real dominance history exists
 
 [agents.weights_by_asset]       # overrides on the tuned weights, renormalized per asset
-SPX6900 = { x_sentiment = 0.40, polymarket = 0.0 }   # owner 2026-10-09: community sentiment and volume drive SPX6900; Polymarket has no markets on it
+DOGE = { x_sentiment = 0.30 }   # a memecoin: attention on X drives it (owner 2026-10-10)
 
 [x]                             # X sentiment agent (SPEC §6)
 # Curated accounts, handles without "@". Owner's list (2026-10-09), duplicates removed.

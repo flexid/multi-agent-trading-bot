@@ -76,7 +76,6 @@ def limits_from_config(cfg: Config) -> engine.Limits:
         risk_per_trade=t.risk_per_trade,
         capital_share=t.capital_share_per_asset,
         leverage_max=Decimal(t.leverage_max),
-        leverage_max_spx6900=Decimal(t.leverage_max_spx6900),
         gross_exposure_max=t.gross_exposure_max,
         net_beta_exposure_max=t.net_beta_exposure_max,
         depth_cap=t.depth_cap,

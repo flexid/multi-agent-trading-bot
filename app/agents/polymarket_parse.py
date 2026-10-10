@@ -24,10 +24,15 @@ ASSET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("BTC", re.compile(r"\b(bitcoin|btc)\b", re.I)),
     ("ETH", re.compile(r"\b(ethereum|eth)\b", re.I)),
     ("SOL", re.compile(r"\b(solana|sol)\b", re.I)),
-    ("BNB", re.compile(r"\bbnb\b", re.I)),
+    ("XRP", re.compile(r"\b(xrp|ripple)\b", re.I)),
+    ("DOGE", re.compile(r"\b(dogecoin|doge)\b", re.I)),
+    ("BNB", re.compile(r"\bbnb\b", re.I)),  # no longer traded; still parsed for the record
     ("SPX6900", re.compile(r"\b(spx6900|spx)\b", re.I)),
 ]
-NAME = r"(?P<asset>bitcoin|btc|ethereum|eth|solana|sol|bnb|spx6900|spx|s&p\s?500(?:\s\(spx\))?)"
+NAME = (
+    r"(?P<asset>bitcoin|btc|ethereum|eth|solana|sol|xrp|ripple|dogecoin|doge|bnb|spx6900|spx|"
+    r"s&p\s?500(?:\s\(spx\))?)"
+)
 MONEY = r"\$?\s?(?P<n>\d[\d,]*(?:\.\d+)?)\s?(?P<unit>[kKmM])?"
 MONEY2 = MONEY.replace("(?P<n>", "(?P<n2>").replace("(?P<unit>", "(?P<unit2>")
 
@@ -49,7 +54,9 @@ MIN_UPDOWN_WINDOW_MIN = 60
 
 @dataclass(frozen=True)
 class Parsed:
-    asset: str | None  # BTC, ETH, SOL, BNB, SPX6900, SP500; None = none of ours
+    asset: (
+        str | None
+    )  # BTC, ETH, SOL, XRP, DOGE (BNB, SPX6900 for the record), SP500; None = none of ours
     kind: str  # price | range | updown | other
     threshold: float | None = None
     direction: str | None = None  # above | below

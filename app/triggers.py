@@ -123,7 +123,7 @@ def x_shock_trigger(session: Session, now: datetime) -> str | None:
     return f"x_shock: credible news shock on {row.asset or 'market'}" if row else None
 
 
-ASSET_IN_REASON = re.compile(r"\b(BTC|ETH|SOL|BNB|SPX6900)\b")
+ASSET_IN_REASON = re.compile(r"\b(BTC|ETH|SOL|XRP|DOGE|BNB|SPX6900)\b")
 SUPPRESS_DEDUPE = timedelta(hours=1)  # the same condition persists; log it once an hour
 
 

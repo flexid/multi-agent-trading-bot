@@ -64,7 +64,6 @@ class Limits:
     risk_per_trade: Decimal
     capital_share: Decimal
     leverage_max: Decimal
-    leverage_max_spx6900: Decimal
     gross_exposure_max: Decimal  # × equity
     depth_cap: Decimal  # 0.05
     day_loss_stop: Decimal  # −0.02
@@ -222,8 +221,10 @@ def assess(
         risk_per_trade=lim.risk_per_trade,
         capital_share=lim.capital_share,
         leverage_max=lim.leverage_max,
-        leverage_max_spx6900=lim.leverage_max_spx6900,
         ceiling=acct.leverage_ceiling,
+        depth_quote_2pct=mkt.depth_quote_2pct,
+        depth_cap=lim.depth_cap,
+        capital=acct.equity,
         atr_extreme=mkt.atr_extreme,
         event_today=mkt.event_today,
         risk_off_coupled=mkt.risk_off_coupled,

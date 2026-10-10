@@ -201,11 +201,20 @@ class BybitClient:
         rows = result.get("list") or []
         return Instrument.model_validate(rows[0]) if rows else None
 
-    async def klines(self, symbol: str, interval: str, limit: int = 200) -> list[Kline]:
-        """Candles, newest first as Bybit returns them. ``interval``: 15, 60, 240 or D."""
+    async def klines(
+        self, symbol: str, interval: str, limit: int = 200, end: datetime | None = None
+    ) -> list[Kline]:
+        """Candles, newest first as Bybit returns them. ``interval``: 15, 60, 240 or D.
+        ``end``: the newest candle to return (paging backwards for a backfill)."""
         result = await self._get(
             "/v5/market/kline",
-            {"category": CATEGORY, "symbol": symbol, "interval": interval, "limit": limit},
+            {
+                "category": CATEGORY,
+                "symbol": symbol,
+                "interval": interval,
+                "limit": limit,
+                "end": int(end.timestamp() * 1000) if end else None,
+            },
         )
         return [Kline.from_row(row) for row in result.get("list") or []]
 

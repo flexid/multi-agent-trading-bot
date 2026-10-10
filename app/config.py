@@ -26,7 +26,6 @@ class TradingConfig(_Section):
     live_start_fraction: Decimal = Decimal("0.10")
     live_allowed: bool
     leverage_max: int
-    leverage_max_spx6900: int
     risk_per_trade: Decimal
     # The max shadow track sizes with this instead (owner goal 2026-10-09: show the
     # leveraged variant beside the go-live record).
@@ -85,7 +84,7 @@ class MacroAgentConfig(_Section):
 
 class AgentsConfig(_Section):
     macro: MacroAgentConfig = MacroAgentConfig()
-    # Per-asset overrides on the tuned agent weights, e.g. SPX6900 leans on X sentiment.
+    # Per-asset overrides on the tuned agent weights, e.g. DOGE leans on X sentiment.
     weights_by_asset: dict[str, dict[str, float]] = Field(default_factory=dict)
 
 

@@ -18,7 +18,6 @@ def inputs(**over: object) -> lev.LeverageInputs:
         "risk_per_trade": D("0.005"),
         "capital_share": D("0.20"),
         "leverage_max": D(10),
-        "leverage_max_spx6900": D(3),
         "ceiling": D(10),
         "atr_extreme": False,
         "event_today": False,
@@ -40,7 +39,13 @@ def test_base_formula_matches_spec_examples() -> None:
 
 
 def test_caps_take_the_lowest() -> None:
-    assert lev.compute(inputs(stop_distance=D("0.002"), asset="SPX6900")).leverage == D(3)
+    # depth cap: 5% of a 60k book on a 2k share (20% of 10k) allows 1.5x, floored to halves
+    assert lev.compute(
+        inputs(stop_distance=D("0.002"), depth_quote_2pct=D(60_000), capital=D(10_000))
+    ).leverage == D("1.5")
+    assert lev.compute(
+        inputs(stop_distance=D("0.002"), depth_quote_2pct=D(5_000_000), capital=D(10_000))
+    ).leverage == D(10)
     assert lev.compute(inputs(stop_distance=D("0.002"), event_today=True)).leverage == D(2)
     assert lev.compute(inputs(stop_distance=D("0.002"), risk_off_coupled=True)).leverage == D(2)
     assert lev.compute(inputs(stop_distance=D("0.002"), ceiling=D(2))).leverage == D(2)
@@ -82,7 +87,6 @@ def limits(**over: object) -> engine.Limits:
         "risk_per_trade": D("0.005"),
         "capital_share": D("0.20"),
         "leverage_max": D(10),
-        "leverage_max_spx6900": D(3),
         "gross_exposure_max": D(3),
         "depth_cap": D("0.05"),
         "day_loss_stop": D("-0.02"),
@@ -239,21 +243,14 @@ def test_pause_until_is_72_hours() -> None:
     assert engine.pause_until(NOW) == NOW + timedelta(hours=72)
 
 
-@pytest.mark.parametrize("asset,expected", [("SPX6900", D("2.5")), ("BTC", D("2.5"))])
-def test_spx_cap_only_binds_above_three(asset: str, expected: D) -> None:
-    c = cons()
-    c = Consensus(
-        c.direction,
-        c.agreement,
-        c.formula_score,
-        c.consensus_score,
-        c.conviction,
-        c.valid_agents,
-        c.reason,
-        c.proposal.model_copy(update={"asset": asset}) if c.proposal else None,
-    )
-    a = engine.assess(c, account(), market(), limits())
-    assert a.plan is not None and a.plan.leverage == expected
+def test_depth_cap_per_asset_binds_on_a_thin_book() -> None:
+    """A thin book caps leverage so the asset's share of capital stays within depth_cap of
+    the ±2% depth (owner 2026-10-10, replaces the SPX6900 cap)."""
+    deep = engine.assess(cons(), account(), market(depth_quote_2pct=D(5_000_000)), limits())
+    thin = engine.assess(cons(), account(), market(depth_quote_2pct=D(60_000)), limits())
+    assert deep.allowed and thin.allowed and deep.plan is not None and thin.plan is not None
+    assert thin.plan.leverage < deep.plan.leverage
+    assert any(h.rule == "leverage_cap:depth" for h in thin.hits)
 
 
 def test_max_track_limits_use_their_own_risk_per_trade() -> None:
@@ -267,7 +264,6 @@ def test_max_track_limits_use_their_own_risk_per_trade() -> None:
         risk_per_trade=D("0.005"),
         capital_share=D("0.2"),
         leverage_max=D(20),
-        leverage_max_spx6900=D(10),
         gross_exposure_max=D(2),
         depth_cap=D("0.05"),
         day_loss_stop=D("-0.02"),

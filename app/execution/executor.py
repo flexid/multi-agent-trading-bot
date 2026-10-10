@@ -109,7 +109,7 @@ class Executor:
         self.feed = feed  # False in tests: quotes are injected
         self.ws: QuoteFeed | None = None
         if feed and cfg.exchange.price_feed == "ws":
-            self.ws = QuoteFeed([cfg.symbol(a) for a in cfg.trading.assets])
+            self.ws = QuoteFeed([symbol for _, symbol in self._traded_symbols()])
         self.quotes: dict[str, Quote] = {}
         self.quotes_stale = False
         self.qty_steps: dict[str, Decimal] = {}
@@ -156,6 +156,26 @@ class Executor:
             )
         return self._client
 
+    def _traded_symbols(self) -> list[tuple[str, str]]:
+        """The configured assets plus any asset still open from an earlier universe
+        (BNB, SPX6900 after 2026-10-10): those positions are managed to their close."""
+        pairs = [(a, self.cfg.symbol(a)) for a in self.cfg.trading.assets]
+        known = {s for _, s in pairs}
+        try:
+            with new_session() as session:
+                rows = session.execute(
+                    select(Position.asset, Position.symbol)
+                    .where(Position.status.in_(["open", "closing"]))
+                    .distinct()
+                ).all()
+        except Exception:
+            return pairs
+        for asset, symbol in rows:
+            if symbol not in known:
+                pairs.append((asset, symbol))
+                known.add(symbol)
+        return pairs
+
     async def refresh_quotes(self) -> None:
         """Quotes from the WebSocket feed, or the REST ticker when the stream has gone
         quiet (or is not configured). On failure keep the last ones and mark them stale.
@@ -165,8 +185,7 @@ class Executor:
         client = await self.client()
         now = datetime.now(UTC)
         failures = 0
-        for asset in self.cfg.trading.assets:
-            symbol = self.cfg.symbol(asset)
+        for asset, symbol in self._traded_symbols():
             pushed = self.ws.fresh(symbol, now) if self.ws is not None else None
             if pushed is not None:
                 self.quotes[symbol] = pushed
@@ -183,7 +202,7 @@ class Executor:
                     await self._load_terms(client, asset, symbol)
                 except Exception as exc:
                     log.warning("instrument terms %s failed: %s", symbol, exc)
-        self.quotes_stale = failures == len(self.cfg.trading.assets)
+        self.quotes_stale = failures >= len(self.cfg.trading.assets)
 
     def refresh_pushed(self) -> bool:
         """Fast pass: take what the stream has. False when no quote is fresh."""
@@ -191,8 +210,7 @@ class Executor:
             return False
         now = datetime.now(UTC)
         fresh = 0
-        for asset in self.cfg.trading.assets:
-            symbol = self.cfg.symbol(asset)
+        for _asset, symbol in self._traded_symbols():
             pushed = self.ws.fresh(symbol, now)
             if pushed is not None:
                 self.quotes[symbol] = pushed

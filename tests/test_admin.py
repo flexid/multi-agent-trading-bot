@@ -56,7 +56,7 @@ def test_sessions_sign_and_expire() -> None:
 
 def test_editable_bounds_keep_leverage_at_or_below_ten() -> None:
     assert EDITABLE["trading.leverage_max"][1] == Decimal(10)
-    assert EDITABLE["trading.leverage_max_spx6900"][1] == Decimal(10)
+    assert "trading.leverage_max_spx6900" not in EDITABLE  # dropped with the asset (2026-10-10)
     for key, (lo, hi) in EDITABLE.items():
         assert lo < hi, key
 

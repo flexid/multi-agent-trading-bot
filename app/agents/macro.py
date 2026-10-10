@@ -13,7 +13,7 @@ Output has two logged parts (``components``):
 - tradfi = regime × confidence × coupling. Low coupling pushes it to zero.
 - native = Fear & Greed (contrarian only at extremes: above 80 leans against longs, below
   20 against shorts, near zero in between) + BTC dominance tilt (7-day change in
-  percentage points: rising favours BTC and weighs on alts, strongest on SPX6900;
+  percentage points: rising favours BTC and weighs on alts, strongest on memecoins;
   falling is the reverse). Not scaled by coupling.
 - score = clip(tradfi + native). Extreme Fear & Greed is also a risk flag for the
   leverage agent (SPEC §8).
@@ -45,7 +45,15 @@ CALENDAR = Path(__file__).resolve().parent.parent / "data" / "calendar_2026.toml
 SERIES = ["DGS2", "DGS10", "DTWEXBGS", "VIXCLS", "SP500", "NASDAQCOM", "XAUUSD", "STABLES_USD"]
 FNG_HIGH, FNG_LOW = 80.0, 20.0
 DOMINANCE_SCALE_PP = 3.0  # a 3-point 7-day move in BTC dominance is a full tilt
-DOMINANCE_TILT = {"BTC": 1.0, "ETH": -1.0, "SOL": -1.0, "BNB": -1.0, "SPX6900": -1.5}
+DOMINANCE_TILT = {
+    "BTC": 1.0,
+    "ETH": -1.0,
+    "SOL": -1.0,
+    "XRP": -1.0,
+    "DOGE": -1.5,
+    "BNB": -1.0,
+    "SPX6900": -1.5,
+}
 TRADFI = {"SP500": 1.0, "NASDAQCOM": 1.0, "DTWEXBGS": -1.0, "XAUUSD": 1.0}
 CHANGE_DAYS = 5
 HISTORY_DAYS = 90

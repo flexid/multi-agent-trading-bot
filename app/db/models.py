@@ -148,7 +148,7 @@ class XPostRecord(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     query_asset: Mapped[str | None] = mapped_column(String(10))  # which search found it
     text: Mapped[str] = mapped_column(Text)
-    asset: Mapped[str | None] = mapped_column(String(10))  # label: BTC/ETH/SOL/BNB/SPX6900/none
+    asset: Mapped[str | None] = mapped_column(String(10))  # label: a configured asset or none
     stance: Mapped[str | None] = mapped_column(String(10))  # bullish/bearish/neutral
     kind: Mapped[str | None] = mapped_column(String(10))  # news/analysis/shill/other
     credibility: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
@@ -198,6 +198,7 @@ class Cycle(Base):
     status: Mapped[str] = mapped_column(String(12))  # running | done | failed
     error: Mapped[str | None] = mapped_column(Text)
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=0)
+    logic_version: Mapped[int | None] = mapped_column(Integer)  # app/version.py at the time
     # Beta-weighted exposure at the time of the cycle: betas, per-track net and gross × equity
     beta_exposure: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 

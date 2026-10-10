@@ -24,7 +24,6 @@ class LeverageInputs:
     risk_per_trade: Decimal  # 0.005
     capital_share: Decimal  # 0.20
     leverage_max: Decimal  # 10
-    leverage_max_spx6900: Decimal  # 3
     ceiling: Decimal  # live ramp: 2 → 5 → 10 (§8); shadow uses leverage_max
     atr_extreme: bool  # ATR above its 30-day 90th percentile
     event_today: bool  # FOMC / CPI / jobs report today
@@ -35,6 +34,11 @@ class LeverageInputs:
     half_risk: bool  # after a drawdown pause (§8)
     fng_extreme: bool = False  # owner briefing: Fear & Greed extreme is a caution flag
     llm_cap: Decimal | None = None  # an LLM may only lower
+    # Depth-based cap per asset (owner 2026-10-10, replaces the SPX6900 cap): the leverage
+    # at which the asset's share of capital would exceed depth_cap of the ±2% book.
+    depth_quote_2pct: Decimal | None = None
+    depth_cap: Decimal = Decimal("0.05")
+    capital: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -52,13 +56,27 @@ def base_leverage(inp: LeverageInputs) -> Decimal:
     return min(inp.leverage_max, raw)
 
 
+def depth_leverage_cap(inp: LeverageInputs) -> Decimal | None:
+    """Leverage such that capital_share × capital × L stays within depth_cap of the ±2%
+    book; None without depth or capital. Rounded down to a half, never below 1."""
+    if not inp.depth_quote_2pct or not inp.capital or inp.capital <= 0:
+        return None
+    share = inp.capital_share * inp.capital
+    if share <= 0:
+        return None
+    raw = inp.depth_cap * inp.depth_quote_2pct / share
+    halves = (raw * 2).to_integral_value(rounding="ROUND_FLOOR") / 2
+    return max(ONE, min(inp.leverage_max, halves))
+
+
 def compute(inp: LeverageInputs) -> LeverageResult:
     base = base_leverage(inp)
     if inp.half_risk:
         base = base / 2
     caps: list[tuple[str, Decimal]] = [("absolute", inp.leverage_max), ("ceiling", inp.ceiling)]
-    if inp.asset == "SPX6900":
-        caps.append(("spx6900", inp.leverage_max_spx6900))
+    depth = depth_leverage_cap(inp)
+    if depth is not None:
+        caps.append(("depth", depth))
     if inp.atr_extreme:
         caps.append(("atr_extreme", base / 2))
     if inp.event_today:

@@ -6,7 +6,7 @@ Owner: Lex. Status: plan approved, ready to build.
 
 ## 1. What it is
 
-A fully autonomous trader on Bybit EU for five assets: BTC, ETH, SOL, BNB and SPX6900. Every 4 hours, five analysis agents score each asset. Two LLM portfolio managers (Claude and GPT) independently propose trades. A leverage agent sizes them between 1x and 10x. A deterministic risk engine decides, and a separate executor places and manages the orders. Every executed trade is posted to X (@decentradork) in casual, human language.
+A fully autonomous trader on Bybit for five assets: BTC, ETH, SOL, XRP and DOGE (BNB and SPX6900 were dropped on 2026-10-10, logic v2). Every 4 hours, five analysis agents score each asset. Two LLM portfolio managers (Claude and GPT) independently propose trades. A leverage agent sizes them between 1x and 10x. A deterministic risk engine decides, and a separate executor places and manages the orders. Every executed trade is posted to X (@decentradork) in casual, human language.
 
 The owner sets parameters once and never reviews or approves anything. The only human touchpoint is the emergency brake (§8).
 
@@ -120,7 +120,7 @@ A 1% stop gives 2.5x, a 0.5% stop gives 5x. Then the lowest of these applies:
 | Situation | Max leverage |
 | --- | --- |
 | Absolute cap (`leverage_max`) | 10x, Bybit's spot-margin ceiling; the admin bounds stop there |
-| SPX6900 (`leverage_max_spx6900`) | 3x by default; settable up to 10x |
+| Depth cap per asset | the leverage at which the asset's share of capital would exceed `depth_cap` (5%) of the ±2% book, rounded down to a half; replaces the SPX6900 cap (2026-10-10) |
 | ATR above its 30-day 90th percentile | half the computed value |
 | FOMC, CPI or jobs report today | 2x |
 | Risk-off regime while coupling > 0.5 | 2x |

@@ -16,7 +16,7 @@ Scoring per asset at time t, over mapped markets that pass the filters:
   10-percentage-point shift is ±1; this is the fast component and weighs 2:1 over level
 - updown: the volume-weighted P(up) of the hourly, 4-hour and daily Up/Down markets,
   centred and scaled so 65% is +1; 5- and 15-minute markets are never stored
-- confidence from market count and liquidity; BNB/SPX6900 get few or no markets, so
+- confidence from market count and liquidity; thin names get few or no markets, so
   confidence stays low there, which is how the agent "weighs less" (SPEC §6)
 
 ``coverage`` tells "no markets at all" from "markets, none usable" with the reasons, for
