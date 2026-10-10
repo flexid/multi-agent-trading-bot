@@ -51,8 +51,8 @@ def render(f: TradeFacts) -> bytes:
         d.textlength(lev, font=lev_font),
     )
     x = RIGHT_EDGE - (w_tag + 24 + w_side)
-    top = logo_mid_y - 10  # the wordmark's visual weight sits below its box centre
-    d.text((x, top), f.cashtag, font=big, fill=FG, anchor="lm", stroke_width=2, stroke_fill=FG)
+    top = logo_mid_y + 14  # the wordmark's visual weight sits below its box centre
+    d.text((x, top), f.cashtag, font=big, fill=FG, anchor="lm")
     d.text((x + w_tag + 24, top), f.direction, font=big, fill=side_col, anchor="lm")
     d.text((RIGHT_EDGE - w_lev, top + 72), lev, font=lev_font, fill=GREY, anchor="lm")
     res_col = GREEN if f.pnl_margin_pct >= 0 else RED
