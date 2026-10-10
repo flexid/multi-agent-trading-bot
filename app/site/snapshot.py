@@ -58,6 +58,12 @@ FORBIDDEN_KEYS = {
     "borrowed",
     "pnl",
     "size",
+    # Stop hunters (owner 2026-10-10): only the soft stop is ever public. The hard stop
+    # and the exchange-side backup level stay in the database.
+    "hard_stop",
+    "backup_stop_price",
+    "backup_stop_link",
+    "liquidation_price",
 }
 
 

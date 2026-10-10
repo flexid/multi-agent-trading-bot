@@ -115,3 +115,18 @@ def test_footer_and_links_are_allowed_on_the_site() -> None:
         }
     )
     assert snap.verify(s) == []
+
+
+def test_only_the_soft_stop_is_public() -> None:
+    """The hard stop and the exchange backup level never reach the site, the posts or
+    the card (owner 2026-10-10): the verifier rejects the keys, the models lack them."""
+    from app.site.snapshot import FORBIDDEN_KEYS, OpenTrade, verify_dict
+
+    assert {"hard_stop", "backup_stop_price", "backup_stop_link"} <= FORBIDDEN_KEYS
+    assert "hard_stop" not in OpenTrade.model_fields
+    assert verify_dict({"open_trades": [{"stop": 1.0, "hard_stop": 0.9}]}) == [
+        "forbidden key $.open_trades[0].hard_stop"
+    ]
+    from app.social.templates import TradeFacts
+
+    assert "hard_stop" not in TradeFacts.__dataclass_fields__
