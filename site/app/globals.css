@@ -59,4 +59,4 @@ button.more { margin-top: 10px; background: #141414; color: var(--fg); border: 1
 /* agents page: a name column, small number columns, and a notes column that takes the rest */
 table.notes { table-layout: fixed; } table.notes th.name, table.notes td.name { width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } table.notes th.num, table.notes td.num { width: 76px; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; } table.notes td.note { color: var(--muted); }
 @media (max-width: 720px) { .scroll-x > table.notes { min-width: 640px; } }
-
+.crew-intro { margin-bottom: 64px; }
