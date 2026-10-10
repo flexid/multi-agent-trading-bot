@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 
 from app.config import get_config
-from app.db.models import LLMCall, PaperAccount, Position, XPostOut, XPostRecord
+from app.db.models import LLMCall, PaperAccount, Position, SuppressedTrigger, XPostOut, XPostRecord
 from app.db.session import new_session
 from app.social.templates import holding_text
 
@@ -61,6 +61,11 @@ def main(argv: list[str] | None = None) -> int:
             .where(XPostOut.posted_at >= day, XPostOut.dry_run.is_(False))
         ).scalar_one()
         open_count = sum(1 for r in rows if r.status != "closed")
+        suppressed = s.scalars(
+            select(SuppressedTrigger)
+            .where(SuppressedTrigger.ts >= since)
+            .order_by(SuppressedTrigger.ts)
+        ).all()
 
     stamp = f"{now.astimezone(BRUSSELS):%Y-%m-%d %H:%M}"
     print(f"dorkbot · {stamp} Brussels · primary paper track · last {hours}h")
@@ -91,6 +96,15 @@ def main(argv: list[str] | None = None) -> int:
             f"({day_pct:+.2f}%) · total P&L {total_pnl:+,.2f} ({total_pct:+.2f}%) · "
             f"{open_count} open"
         )
+    if suppressed:
+        print(f"\ntriggers suppressed by the 2/day cap · last {hours}h (logging only)")
+        for st in suppressed:
+            m4 = f"{st.move_4h_pct:+.2f}%" if st.move_4h_pct is not None else "pending"
+            m1 = f"{st.move_1d_pct:+.2f}%" if st.move_1d_pct is not None else "pending"
+            print(
+                f"  {st.ts.astimezone(BRUSSELS):%m-%d %H:%M}  {st.reason:55.55s}  "
+                f"spot {fmt(st.spot):>10s}  4h {m4:>8s}  1d {m1:>8s}"
+            )
     x_cost = Decimal(reads_today) * X_READ_USD + Decimal(posts_today) * X_POST_USD
     print(
         f"cost today · LLM ${Decimal(str(llm_today)):.2f} · X ${x_cost:.2f} "
