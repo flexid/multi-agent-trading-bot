@@ -35,7 +35,7 @@ from app.agents.jev_questions import VERSION as QUESTIONS_VERSION
 from app.agents.schema import AgentOutput, Horizon
 from app.config import Config
 from app.data.x import XClient, XPost
-from app.db.models import RiskState, XPostLabel, XPostRecord
+from app.db.models import DataSource, RiskState, XPostLabel, XPostRecord
 from app.llm import LLMError, Prompt, complete, is_jev, judge
 
 log = logging.getLogger(__name__)
@@ -229,27 +229,31 @@ async def fetch_posts(session: Session, cfg: Config, client: XClient, now: datet
     # since-marker keeps the next cycle from paying for the same posts again.
     handles = curated_handles(cfg)
     canonical = {h.lower(): h for h in handles}
-    known = session.execute(
-        select(XPostRecord.id).where(
-            XPostRecord.author.in_(handles),
-            XPostRecord.fetched_at >= now - timedelta(days=6),
-        )
-    ).scalars()
-    since_id = max((int(i) for i in known if str(i).isdigit()), default=None)
-    for query in curated_queries(handles, cfg.trading.assets, cfg.x.query_max_chars):
+    for n, query in enumerate(curated_queries(handles, cfg.trading.assets, cfg.x.query_max_chars)):
         if allowance < 10:
             break
+        # Each query remembers when it last ran (data_sources), so a skipped query loses
+        # nothing and a post is billed once; the first run reaches back a day.
+        marker = session.get(DataSource, f"x.curated.q{n}") or DataSource(
+            name=f"x.curated.q{n}", consecutive_errors=0
+        )
+        since = (
+            marker.last_success_at - timedelta(minutes=2)
+            if marker.last_success_at and marker.last_success_at > now - timedelta(hours=24)
+            else now - timedelta(hours=24)
+        )
         try:
             posts = await client.search_recent(
-                query,
-                max_results=cfg.x.curated_per_query,
-                since_id=str(since_id) if since_id else None,
-                start_time=None if since_id else now - timedelta(hours=24),
-                with_authors=True,
+                query, max_results=cfg.x.curated_per_query, start_time=since, with_authors=True
             )
         except Exception as exc:  # one refused query must not stop the cycle
             log.warning("curated search failed: %s", str(exc)[:200])
+            marker.last_error_at, marker.last_error = now, str(exc)[:500]
+            marker.consecutive_errors += 1
+            session.merge(marker)
             continue
+        marker.last_success_at, marker.consecutive_errors = now, 0
+        session.merge(marker)
         allowance -= len(posts)
         by_author: dict[str, list[XPost]] = {}
         for p in posts:
