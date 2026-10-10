@@ -40,13 +40,19 @@ from app.agents.schema import AgentOutput, Horizon
 from app.db.models import PolymarketMarket, PolymarketPrice
 
 AGENT = "polymarket"
-MIN_VOLUME_24H = Decimal(1000)  # USD; thinner markets are noise
+MIN_VOLUME_24H = Decimal(200)  # USD; below this a market is noise, above it volume weights it (v3)
 MIN_HOURS_TO_RESOLUTION = 1
 MAX_DAYS_TO_RESOLUTION = 60  # year-end markets carry little 4h-to-3d information
 SHIFT_FULL_SCALE = 0.10  # 10 pp move in 24h = ±1
 UPDOWN_FULL_SCALE = 0.15  # P(up) 65% = +1, 35% = −1
 MIN_UPDOWN_REMAINING = 0.25  # of the window still ahead; later than that it is history
 WEIGHT_SHIFT, WEIGHT_LEVEL, WEIGHT_UPDOWN = 0.5, 0.25, 0.25
+# Orak v3 (owner 2026-10-10): the ladder weighs its horizons daily / weekly / monthly at
+# 0.3 / 0.4 / 0.3 (renormalized over the horizons present), so a market that resolves
+# this afternoon does not dominate a 1-3 day read; the shift blends 24h and 4h moves.
+HORIZON_WEIGHTS = {"daily": 0.3, "weekly": 0.4, "monthly": 0.3}
+SHIFT_4H_SHARE = 0.4  # of the shift component; the 24h move keeps 0.6
+SHIFT_4H_FULL_SCALE = 0.05  # 5 pp in 4h = ±1
 
 
 @dataclass(frozen=True)
@@ -57,6 +63,12 @@ class LadderPoint:
     p_above_24h: float | None
     volume_24h: float
     hours_to_resolution: float
+    p_above_4h: float | None = None  # v3: the fast shift
+
+    @property
+    def horizon(self) -> str:
+        h = self.hours_to_resolution
+        return "daily" if h <= 48 else "weekly" if h <= 240 else "monthly"
 
 
 @dataclass(frozen=True)
@@ -125,6 +137,7 @@ def _points(
     ).all()
     ladder: list[LadderPoint] = []
     updown: list[UpDownPoint] = []
+    buckets: dict[datetime, list[tuple[PolymarketMarket, float, float]]] = {}  # v3
     for m in markets:
         mapping: dict[str, Any] = m.mapping or {}
         kind = mapping.get("kind")
@@ -133,7 +146,19 @@ def _points(
             continue
         cov.open_markets += 1
         if kind == "range":
-            cov.dropped["range market"] += 1
+            # "Price on <date>" events come as $-buckets: kept per date and turned into
+            # cumulative P(≥ low edge) points below, a full distribution of the close.
+            low, high = float(mapping.get("low") or 0), float(mapping.get("high") or 0)
+            if m.end_date is None or low <= 0 or high <= low:
+                cov.dropped["bad mapping"] += 1
+                continue
+            hours = (m.end_date - now).total_seconds() / 3600
+            if hours < MIN_HOURS_TO_RESOLUTION or hours > MAX_DAYS_TO_RESOLUTION * 24:
+                cov.dropped[
+                    "resolves within the hour" if hours < 1 else "resolves beyond 60 days"
+                ] += 1
+                continue
+            buckets.setdefault(m.end_date, []).append((m, low, high))
             continue
         if kind == "other":
             cov.dropped["not a price market"] += 1
@@ -177,6 +202,7 @@ def _points(
             updown.append(UpDownPoint(m.id, p_up, window, hours, float(latest[1])))
             continue
         earlier = _price_at(session, m.id, now - timedelta(hours=24))
+        earlier4 = _price_at(session, m.id, now - timedelta(hours=4))
         yes_index = _outcome_index(m.outcomes, "yes")
         p_now = _p_above(direction, float(latest[0][yes_index]))
         p_prev = (
@@ -184,9 +210,74 @@ def _points(
             if earlier is not None and earlier[2] <= now - timedelta(hours=20)
             else None
         )
-        ladder.append(LadderPoint(m.id, threshold, p_now, p_prev, float(latest[1]), hours))
+        p_prev4 = (
+            _p_above(direction, float(earlier4[0][yes_index]))
+            if earlier4 is not None and earlier4[2] <= now - timedelta(hours=3)
+            else None
+        )
+        ladder.append(LadderPoint(m.id, threshold, p_now, p_prev, float(latest[1]), hours, p_prev4))
+    for end_date, group in buckets.items():
+        ladder.extend(range_ladder(session, group, now, end_date, cov))
     cov.ladder, cov.updown = len(ladder), len(updown)
     return ladder, updown
+
+
+def range_ladder(
+    session: Session,
+    group: list[tuple[PolymarketMarket, float, float]],
+    now: datetime,
+    end_date: datetime,
+    cov: Coverage,
+) -> list[LadderPoint]:
+    """One date's price buckets as cumulative ladder points: P(close ≥ low edge of bucket
+    k) = Σ P(bucket j) for j ≥ k, normalized by the buckets' total. Needs at least three
+    liquid buckets; each point carries its bucket's volume."""
+    hours = (end_date - now).total_seconds() / 3600
+    rows = []
+    for m, low, _high in sorted(group, key=lambda g: g[1]):
+        latest = _price_at(session, m.id, now)
+        if latest is None:
+            cov.dropped["no price yet"] += 1
+            continue
+        if latest[1] < MIN_VOLUME_24H:
+            cov.dropped[f"24h volume under ${MIN_VOLUME_24H:,.0f}"] += 1
+            continue
+        yes = _outcome_index(m.outcomes, "yes")
+        earlier = _price_at(session, m.id, now - timedelta(hours=24))
+        earlier4 = _price_at(session, m.id, now - timedelta(hours=4))
+        rows.append(
+            (
+                m,
+                low,
+                float(latest[0][yes]),
+                float(earlier[0][yes])
+                if earlier and earlier[2] <= now - timedelta(hours=20)
+                else None,
+                float(earlier4[0][yes])
+                if earlier4 and earlier4[2] <= now - timedelta(hours=3)
+                else None,
+                float(latest[1]),
+            )
+        )
+    if len(rows) < 3:
+        cov.dropped["range date with under 3 liquid buckets"] += len(rows)
+        return []
+
+    def cumulative(vals: list[float | None]) -> list[float | None]:
+        if any(v is None for v in vals):
+            return [None] * len(vals)
+        clean = [v for v in vals if v is not None]
+        total = sum(clean) or 1.0
+        return [sum(clean[k:]) / total for k in range(len(clean))]
+
+    now_c = cumulative([r[2] for r in rows])
+    prev_c = cumulative([r[3] for r in rows])
+    prev4_c = cumulative([r[4] for r in rows])
+    return [
+        LadderPoint(r[0].id, r[1], now_c[k] or 0.0, prev_c[k], r[5], hours, prev4_c[k])
+        for k, r in enumerate(rows)
+        if now_c[k] is not None
+    ]
 
 
 def ladder(session: Session, asset: str, now: datetime) -> list[LadderPoint]:
@@ -218,11 +309,25 @@ def implied_median(points: list[LadderPoint]) -> float:
     return ordered[-1].threshold if ordered[-1].p_above >= 0.5 else ordered[0].threshold
 
 
+def horizon_weights(points: list[LadderPoint]) -> list[float]:
+    """Volume weights within each horizon, horizons weighted 0.3 / 0.4 / 0.3 and
+    renormalized over the horizons present."""
+    present = {p.horizon for p in points}
+    total_h = sum(HORIZON_WEIGHTS[h] for h in present) or 1.0
+    vol_by_h: dict[str, float] = {}
+    for p in points:
+        vol_by_h[p.horizon] = vol_by_h.get(p.horizon, 0.0) + max(p.volume_24h, 1.0)
+    return [
+        HORIZON_WEIGHTS[p.horizon] / total_h * max(p.volume_24h, 1.0) / vol_by_h[p.horizon]
+        for p in points
+    ]
+
+
 def score_ladder(points: list[LadderPoint], spot: float) -> tuple[float, float, float, list[str]]:
     """Return (score, level, shift, evidence)."""
     if not points or spot <= 0:
         return 0.0, 0.0, 0.0, []
-    weights = [max(p.volume_24h, 1.0) for p in points]
+    weights = horizon_weights(points)
     width = max(abs(math.log(p.threshold / spot)) for p in points) or 1.0
     level = max(-1.0, min(1.0, math.log(implied_median(points) / spot) / width))
 
@@ -231,13 +336,39 @@ def score_ladder(points: list[LadderPoint], spot: float) -> tuple[float, float, 
         for w, p in zip(weights, points, strict=True)
         if p.p_above_24h is not None
     ]
-    if shifted:
-        shift_raw = sum(w * d for w, d in shifted) / sum(w for w, _ in shifted)
-        shift = max(-1.0, min(1.0, shift_raw / SHIFT_FULL_SCALE))
+    shifted4 = [
+        (w, p.p_above - p.p_above_4h)
+        for w, p in zip(weights, points, strict=True)
+        if p.p_above_4h is not None
+    ]
+    shift24 = (
+        max(
+            -1.0,
+            min(
+                1.0, sum(w * d for w, d in shifted) / sum(w for w, _ in shifted) / SHIFT_FULL_SCALE
+            ),
+        )
+        if shifted
+        else None
+    )
+    shift4 = (
+        max(
+            -1.0,
+            min(
+                1.0,
+                sum(w * d for w, d in shifted4) / sum(w for w, _ in shifted4) / SHIFT_4H_FULL_SCALE,
+            ),
+        )
+        if shifted4
+        else None
+    )
+    if shift24 is not None and shift4 is not None:
+        shift = (1 - SHIFT_4H_SHARE) * shift24 + SHIFT_4H_SHARE * shift4
     else:
-        shift = 0.0
-    score = WEIGHT_SHIFT * shift + WEIGHT_LEVEL * level if shifted else level
-    if shifted:
+        shift = shift24 if shift24 is not None else (shift4 if shift4 is not None else 0.0)
+    has_shift = shift24 is not None or shift4 is not None
+    score = WEIGHT_SHIFT * shift + WEIGHT_LEVEL * level if has_shift else level
+    if has_shift:
         score /= WEIGHT_SHIFT + WEIGHT_LEVEL
 
     top = sorted(points, key=lambda p: -p.volume_24h)[:3]
@@ -248,9 +379,18 @@ def score_ladder(points: list[LadderPoint], spot: float) -> tuple[float, float, 
             if p.p_above_24h is not None
             else ""
         )
+        + (f" ({(p.p_above - p.p_above_4h) * 100:+.0f} pp 4h)" if p.p_above_4h is not None else "")
         + f", resolves in {p.hours_to_resolution / 24:.1f} d, ${p.volume_24h:,.0f}/24h"
         for p in top
     ]
+    if shift24 is not None or shift4 is not None:
+        evidence.insert(
+            0,
+            "shift 24h "
+            + (f"{shift24:+.2f}" if shift24 is not None else "n/a")
+            + ", 4h "
+            + (f"{shift4:+.2f}" if shift4 is not None else "n/a"),
+        )
     return score, level, shift, evidence
 
 
@@ -301,6 +441,31 @@ def combine(*, level: float, shift: float | None, updown: float | None) -> float
     return sum(w * v for w, v in parts) / total
 
 
+def long_horizon_lines(session: Session, asset: str, now: datetime, limit: int = 2) -> list[str]:
+    """Year-end style markets (beyond the 60-day horizon): the two busiest, as evidence
+    lines only. Wrong horizon for the score, useful context for the managers."""
+    markets = session.scalars(
+        select(PolymarketMarket).where(
+            PolymarketMarket.asset == asset,
+            PolymarketMarket.closed.is_(False),
+            PolymarketMarket.end_date > now + timedelta(days=MAX_DAYS_TO_RESOLUTION),
+        )
+    ).all()
+    rows = []
+    for m in markets:
+        mp = m.mapping or {}
+        if mp.get("kind") != "price" or not mp.get("threshold"):
+            continue
+        latest = _price_at(session, m.id, now)
+        if latest is None or latest[1] < MIN_VOLUME_24H * 5:
+            continue
+        p = _p_above(str(mp.get("direction")), float(latest[0][_outcome_index(m.outcomes, "yes")]))
+        assert m.end_date is not None
+        rows.append((float(latest[1]), float(mp["threshold"]), p, m.end_date))
+    rows.sort(reverse=True)
+    return [f"long horizon: P(≥{thr:g}) {p:.0%} by {end:%b %Y}" for _, thr, p, end in rows[:limit]]
+
+
 def evaluate(
     session: Session, asset: str, spot: float, data_age_min: int, now: datetime | None = None
 ) -> AgentOutput:
@@ -308,7 +473,7 @@ def evaluate(
     cov = Coverage(asset)
     points, ud_points = _points(session, asset, now, cov)
     _, level, shift, evidence = score_ladder(points, spot)
-    has_shift = any(p.p_above_24h is not None for p in points)
+    has_shift = any(p.p_above_24h is not None or p.p_above_4h is not None for p in points)
     ud_score, ud_evidence = score_updown(ud_points)
     score = combine(
         level=level if points else 0.0,
@@ -333,9 +498,10 @@ def evaluate(
     else:
         evidence = [
             f"{len(points)} ladder points, {len(ud_points)} up/down, level {level:+.2f}, "
-            f"24h shift {shift:+.2f}, up/down {ud_score:+.2f}",
+            f"shift {shift:+.2f}, up/down {ud_score:+.2f}",
             *evidence,
             *ud_evidence,
+            *long_horizon_lines(session, asset, now),  # a prior for the PMs, not in the score
         ]
     return AgentOutput(
         agent=AGENT,

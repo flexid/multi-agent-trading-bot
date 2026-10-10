@@ -260,7 +260,7 @@ def test_coverage_tells_no_markets_from_none_usable(db_clean: None) -> None:
                     market_id="u1", ts=now, prices=["0.6", "0.4"], volume_24h=30000, liquidity=None
                 ),
                 PolymarketPrice(
-                    market_id="thin", ts=now, prices=["0.5", "0.5"], volume_24h=200, liquidity=None
+                    market_id="thin", ts=now, prices=["0.5", "0.5"], volume_24h=100, liquidity=None
                 ),
                 PolymarketPrice(
                     market_id="far", ts=now, prices=["0.5", "0.5"], volume_24h=9000, liquidity=None
@@ -281,3 +281,70 @@ def test_coverage_tells_no_markets_from_none_usable(db_clean: None) -> None:
     assert (
         out_sol.risk_flags == ["polymarket: none usable"] and "none usable" in out_sol.evidence[0]
     )
+
+
+def test_horizon_weights_share_the_ladder_by_horizon_not_by_volume() -> None:
+    from app.agents.polymarket import horizon_weights
+
+    daily = LadderPoint("d", 100, 0.5, None, 1_000_000, hours_to_resolution=10)
+    weekly = LadderPoint("w", 100, 0.5, None, 1_000, hours_to_resolution=100)
+    w = horizon_weights([daily, weekly])
+    assert w[0] == pytest.approx(0.3 / 0.7) and w[1] == pytest.approx(0.4 / 0.7)
+    assert sum(horizon_weights([daily])) == pytest.approx(1.0)
+
+
+def test_four_hour_shift_blends_with_the_daily_one() -> None:
+    fast = [LadderPoint("a", 110, 0.60, 0.60, 10_000, 48, p_above_4h=0.55)]
+    score, _, shift, evidence = score_ladder(fast, 100.0)
+    assert shift == pytest.approx(0.4 * 1.0)  # 5 pp in 4h saturates the 4h part, 24h flat
+    assert evidence and evidence[0].startswith("shift 24h +0.00, 4h +1.00")
+
+
+@needs_db
+def test_range_buckets_become_a_cumulative_ladder(db_clean: None) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.agents.polymarket import coverage, ladder
+    from app.db.models import PolymarketMarket, PolymarketPrice
+    from app.db.session import new_session
+
+    now = datetime(2026, 10, 10, 12, tzinfo=UTC)
+    end = now + timedelta(hours=10)
+    with new_session() as s:
+        for i, (lo, hi, p) in enumerate(
+            [(80000, 82000, "0.1"), (82000, 84000, "0.5"), (84000, 86000, "0.4")]
+        ):
+            mid = f"r{i}"
+            s.add(
+                PolymarketMarket(
+                    id=mid,
+                    condition_id="c" + mid,
+                    slug=mid,
+                    question="q",
+                    outcomes=["Yes", "No"],
+                    token_ids=["a", "b"],
+                    end_date=end,
+                    active=True,
+                    closed=False,
+                    asset="BTC",
+                    mapping={"kind": "range", "low": lo, "high": hi},
+                    mapped_at=now,
+                    first_seen_at=now,
+                    updated_at=now,
+                )
+            )
+            s.add(
+                PolymarketPrice(
+                    market_id=mid,
+                    ts=now,
+                    prices=[p, str(1 - float(p))],
+                    volume_24h=5000,
+                    liquidity=None,
+                )
+            )
+        s.commit()
+        pts = sorted(ladder(s, "BTC", now), key=lambda x: x.threshold)
+        cov = coverage(s, "BTC", now)
+    assert [x.threshold for x in pts] == [80000, 82000, 84000]
+    assert [round(x.p_above, 2) for x in pts] == [1.0, 0.9, 0.4]  # cumulative from the top
+    assert cov.ladder == 3 and cov.dropped.get("range market") is None
