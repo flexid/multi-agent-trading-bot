@@ -124,6 +124,13 @@ class XConfig(_Section):
     curated_per_query: int = 20  # posts asked per filtered query over the curated accounts
 
 
+class ServerConfig(_Section):
+    """The droplet the bot runs on; its metrics are read from DigitalOcean monitoring."""
+
+    droplet_id: int | None = None
+    keep_days: int = 14  # how long the 2-minute samples are kept
+
+
 class SiteConfig(_Section):
     public_domain: str = "dorkbot.dev"
     admin_domain: str = "admin.dorkbot.dev"
@@ -173,6 +180,7 @@ class Config(_Section):
     x: XConfig = XConfig()
     catalysts: CatalystsConfig = CatalystsConfig()
     site: SiteConfig = SiteConfig()
+    server: ServerConfig = ServerConfig()
     budget: BudgetConfig
     models: ModelsConfig
     sleeves: dict[str, SleeveConfig] = Field(default_factory=dict)
@@ -219,6 +227,7 @@ class Secrets(BaseSettings):
     x_bearer_token: SecretStr = SecretStr("")
 
     jev_api_key: SecretStr = SecretStr("")  # TypeSafe Jev; scheduler only, never the admin
+    do_access_token: SecretStr = SecretStr("")  # DigitalOcean; scheduler only, never the admin
     fred_api_key: SecretStr = SecretStr("")
     coingecko_api_key: SecretStr = SecretStr("")
 

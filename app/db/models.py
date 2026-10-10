@@ -221,6 +221,26 @@ class XPostLabel(Base):
     labeled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class ServerMetric(Base):
+    """The droplet's usage from DigitalOcean monitoring, one row per sample (about every
+    two minutes), written by the scheduler and read by the admin's System page."""
+
+    __tablename__ = "server_metrics"
+
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    cpu_pct: Mapped[float | None]
+    mem_used_pct: Mapped[float | None]
+    mem_total: Mapped[int | None] = mapped_column(BigInteger)
+    disk_used_pct: Mapped[float | None]
+    disk_total: Mapped[int | None] = mapped_column(BigInteger)
+    load_1: Mapped[float | None]
+    load_5: Mapped[float | None]
+    load_15: Mapped[float | None]
+    net_in_mbps: Mapped[float | None]
+    net_out_mbps: Mapped[float | None]
+    info: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # droplet facts, newest row
+
+
 class OptimaRun(Base):
     """One run of Optima, the read-only cost and execution adviser (owner 2026-10-10):
     the facts computed in code, the model's validated report, its cost. Admin and memo

@@ -34,6 +34,7 @@ def jobs(cfg: Config, secrets: Secrets) -> dict[str, fetch.Fetcher]:
         "crypto_native": fetch.make_fetch_crypto_native(secrets),  # every 15 min: dominance
         "catalysts.bybit": fetch.make_fetch_announcements(cfg, secrets),  # alt sleeve
         "catalysts.unlocks": fetch.make_fetch_unlocks(cfg),  # hourly
+        "server": fetch.make_fetch_server(cfg, secrets),  # droplet usage, admin System page
     }
 
 

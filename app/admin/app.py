@@ -703,6 +703,73 @@ def _p_macro_inputs(
     return {"macro_inputs": rows, "candles_15m": candles}
 
 
+def sparkline(values: list[float | None], top: float = 100.0, w: int = 240, h: int = 36) -> str:
+    """SVG polyline points for a small chart: x across ``w``, y scaled so ``top`` is the
+    ceiling. Gaps are skipped."""
+    pts = [(i, v) for i, v in enumerate(values) if v is not None]
+    if len(pts) < 2 or top <= 0:
+        return ""
+    n = len(values) - 1
+    return " ".join(f"{i / n * w:.1f},{h - min(1.0, max(0.0, v / top)) * h:.1f}" for i, v in pts)
+
+
+def _p_server(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    """The droplet's usage from DigitalOcean monitoring (stored by the scheduler): the
+    latest sample, the last hour's average, the 24-hour peak and a chart per measure."""
+    from app.db.models import ServerMetric
+
+    rows = s.scalars(
+        select(ServerMetric)
+        .where(ServerMetric.ts >= now - timedelta(hours=24))
+        .order_by(ServerMetric.ts)
+    ).all()
+    if not rows:
+        return {"server": None}
+    last = rows[-1]
+    info = next((r.info for r in reversed(rows) if r.info), None) or {}
+    hour = [r for r in rows if r.ts >= now - timedelta(hours=1)]
+
+    def stat(name: str) -> dict[str, Any]:
+        day = [getattr(r, name) for r in rows if getattr(r, name) is not None]
+        recent = [getattr(r, name) for r in hour if getattr(r, name) is not None]
+        step = max(1, len(rows) // 160)
+        series = [getattr(r, name) for r in rows[::step]]
+        return {
+            "now": getattr(last, name),
+            "avg_1h": sum(recent) / len(recent) if recent else None,
+            "peak_24h": max(day) if day else None,
+            "series": series,
+        }
+
+    cpu, mem, disk = stat("cpu_pct"), stat("mem_used_pct"), stat("disk_used_pct")
+    load = stat("load_1")
+    vcpus = float(info.get("vcpus") or 1)
+    gb = 1024**3
+    return {
+        "server": {
+            "last": last,
+            "age_min": int((now - last.ts).total_seconds() // 60),
+            "info": info,
+            "cpu": {**cpu, "spark": sparkline(cpu["series"])},
+            "mem": {
+                **mem,
+                "spark": sparkline(mem["series"]),
+                "total_gb": (last.mem_total or 0) / gb,
+                "used_gb": (last.mem_total or 0) / gb * (last.mem_used_pct or 0) / 100,
+            },
+            "disk": {
+                **disk,
+                "spark": sparkline(disk["series"]),
+                "total_gb": (last.disk_total or 0) / gb,
+                "free_gb": (last.disk_total or 0) / gb * (1 - (last.disk_used_pct or 0) / 100),
+            },
+            "load": {**load, "spark": sparkline(load["series"], top=max(vcpus * 2, 1.0))},
+            "vcpus": vcpus,
+            "samples": len(rows),
+        }
+    }
+
+
 def _p_exposure(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
     from app.risk.exposure import betas, track_exposure
 
@@ -756,6 +823,7 @@ PANELS: dict[str, Any] = {
     "xposts": _p_xposts,
     "pmarkets": _p_pmarkets,
     "macro_inputs": _p_macro_inputs,
+    "server": _p_server,
 }
 # The pages of the dashboard and the panels each one shows (the templates include the same).
 PAGES: dict[str, tuple[str, ...]] = {
@@ -765,7 +833,7 @@ PAGES: dict[str, tuple[str, ...]] = {
     "readings": ("matrix", "sentiment"),
     "sources": ("xposts", "djaf", "pmarkets", "polymarket", "macro_inputs"),
     "costs": ("costs", "optima"),
-    "system": ("freshness", "controls"),
+    "system": ("server", "freshness", "controls"),
 }
 
 
