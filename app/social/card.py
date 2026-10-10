@@ -11,7 +11,7 @@ from app.social.templates import TradeFacts, fmt, pct
 
 BRAND = Path(__file__).resolve().parents[2] / "site" / "public" / "brand"
 ORANGE, GREEN, RED, GREY, FG, BG = "#fe7e1c", "#b6ff00", "#ff5c5c", "#8f958f", "#ececec", "#0a0a0a"
-RIGHT_EDGE = 1140  # the avatar's right edge; the top-right line aligns to it
+RIGHT_EDGE = 1116  # a little inside the avatar's right edge (1140), by eye
 
 
 def render(f: TradeFacts) -> bytes:
