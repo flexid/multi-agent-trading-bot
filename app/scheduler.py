@@ -116,11 +116,12 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
     for name, fetcher in jobs(cfg, secrets).items():
         # Macro data and the unlock calendar move daily; the rest every 15 minutes, 20 s
         # after the candle close.
-        trigger = (
-            CronTrigger(hour="*", minute="5", second="0")
-            if name.startswith("macro.") or name == "catalysts.unlocks"
-            else CronTrigger(minute="0,15,30,45", second="20")
-        )
+        if name == "server":  # droplet usage: every 5 minutes (owner 2026-10-10)
+            trigger = CronTrigger(minute="*/5", second="50")
+        elif name.startswith("macro.") or name == "catalysts.unlocks":
+            trigger = CronTrigger(hour="*", minute="5", second="0")
+        else:
+            trigger = CronTrigger(minute="0,15,30,45", second="20")
         scheduler.add_job(
             fetch.run_job,
             trigger,
