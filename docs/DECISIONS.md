@@ -252,3 +252,7 @@ Every Monday at 05:30 UTC, before Coach's memo, Optima computes in code: cost ve
 
 The first catalyst rows were mostly the project accounts promoting their own coin. In the scoring (code only): an event from the asset's official account (`[catalysts.official]`, handle → asset) counts half when bullish and in full when bearish or neutral (self-reported bad news is the best source); its "partnership" and "other" posts need materiality ≥ 0.4 instead of 0.2; and only the two strongest events per account (or per other source) count in a window, so posting more does not score more. Owner: "go", with the review date unchanged.
 
+## 2026-10-10 · A cut-off PM answer no longer fails the cycle; PM output room doubled
+
+Cycle 14 failed: Fable in the alt seat hit the 4,000-token output limit, its JSON ended mid-string, and the SDK raised pydantic's ValidationError, which is not the LLM layer's error and escaped the per-seat fail-closed path. Now both providers turn parse failures and a `max_tokens` / incomplete stop into `LLMError` (one retry, then no proposals from that seat, logged as a failed call), `ask_pm` also catches validation errors as a second net, and `llm.max_output_tokens` goes from 4,000 to 8,000 (ten assets of proposals with reasons; the main Fable seat used 3,792). A single seat failing means no trade from that PM, never a failed cycle.
+

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import openai
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, SecretStr, ValidationError
 
 from app.llm.base import Image, LLMError, Usage
 
@@ -44,6 +44,11 @@ class OpenAIProvider:
             )
         except openai.APIError as exc:
             raise LLMError(f"openai {model}: {type(exc).__name__}: {exc}") from exc
+        except (ValidationError, ValueError) as exc:  # output cut off or not the schema
+            raise LLMError(f"openai {model}: unparsable output: {str(exc)[:200]}") from exc
+        if response.status == "incomplete":
+            reason = getattr(response.incomplete_details, "reason", None)
+            raise LLMError(f"openai {model}: incomplete output ({reason})")
         parsed = response.output_parsed
         if parsed is None:
             raise LLMError(f"openai {model}: no parsed output (status {response.status})")

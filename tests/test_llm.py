@@ -75,3 +75,31 @@ async def test_complete_retries_once_then_fails_closed(monkeypatch: pytest.Monke
 def test_image_is_plain_data() -> None:
     img = Image(media_type="image/png", data_b64="AAAA")
     assert img.media_type == "image/png"
+
+
+async def test_unparsable_output_fails_closed_like_any_other_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cut-off answer raises pydantic's ValidationError inside the provider; the LLM
+    layer turns it into LLMError so the retry and fail-closed path applies (cycle 14,
+    2026-10-10, failed on it)."""
+    from pydantic import ValidationError
+
+    class Cut:
+        name = "cut"
+        calls = 0
+
+        async def complete(self, **kwargs: object) -> tuple[Out, Usage]:
+            self.calls += 1
+            try:
+                Out.model_validate_json('{"value": "oops')
+            except ValidationError as exc:
+                raise LLMError(f"unparsable output: {str(exc)[:50]}") from exc
+            raise AssertionError("unreachable")
+
+    monkeypatch.setattr(llm, "_log_call", lambda *a, **k: None)
+    cut = Cut()
+    monkeypatch.setattr(llm, "provider_for", lambda model: cut)
+    with pytest.raises(LLMError, match="unparsable"):
+        await llm.complete("indicators", Out, prompt=Prompt("t", 1, "s"), user_text="q", model="x")
+    assert cut.calls == 2

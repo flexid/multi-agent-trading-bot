@@ -159,7 +159,7 @@ post_auditor = "claude-sonnet-5-5"
 
 [llm]
 timeout_s = 120
-max_output_tokens = 4000
+max_output_tokens = 8000        # ten assets of proposals: Fable used 3,792 of 4,000 and the alt seat got cut off (2026-10-10)
 effort = "medium"               # Anthropic output_config.effort / OpenAI reasoning effort
 
 [llm.pricing]                   # USD per 1M tokens: [input, output]. Anthropic from the API docs 2026-10-06.

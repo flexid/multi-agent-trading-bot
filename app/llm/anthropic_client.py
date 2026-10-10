@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import anthropic
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, SecretStr, ValidationError
 
 from app.llm.base import Image, LLMError, Usage
 
@@ -47,8 +47,12 @@ class AnthropicProvider:
             )
         except anthropic.APIError as exc:
             raise LLMError(f"anthropic {model}: {type(exc).__name__}: {exc}") from exc
+        except (ValidationError, ValueError) as exc:  # output cut off or not the schema
+            raise LLMError(f"anthropic {model}: unparsable output: {str(exc)[:200]}") from exc
         if response.stop_reason == "refusal":
             raise LLMError(f"anthropic {model}: refusal")
+        if response.stop_reason == "max_tokens":
+            raise LLMError(f"anthropic {model}: output cut at max_tokens={max_output_tokens}")
         parsed = response.parsed_output
         if parsed is None:
             raise LLMError(f"anthropic {model}: no parsed output (stop {response.stop_reason})")

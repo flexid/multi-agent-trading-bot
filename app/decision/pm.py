@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from app.decision.evidence import EvidencePack
 from app.llm import Completion, LLMError, Prompt, complete
@@ -106,8 +106,8 @@ async def ask_pm(
             model=model,
             cycle_id=cycle_id,
         )
-    except LLMError as exc:
-        return {}, None, str(exc)[:500]
+    except (LLMError, ValidationError, ValueError) as exc:  # one seat down: no proposals
+        return {}, None, f"{type(exc).__name__}: {exc}"[:500]
     return _check_against_pack(result.parsed, pack), result, None
 
 
