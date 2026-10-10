@@ -27,11 +27,12 @@ def render(f: TradeFacts) -> bytes:
         except OSError:
             return ImageFont.load_default(size)
 
-    huge, big, mid, small = (
+    huge, big, mid, small, lev_font = (
         font("DejaVuSans-Bold.ttf", 120),
         font("DejaVuSans-Bold.ttf", 56),
         font("DejaVuSans.ttf", 34),
         font("DejaVuSans.ttf", 26),
+        font("DejaVuSans-Bold.ttf", 68),
     )
     logo_mid_y = 48 + 60  # fallback centre line when the wordmark cannot be loaded
     try:
@@ -47,12 +48,12 @@ def render(f: TradeFacts) -> bytes:
     w_tag, w_side, w_lev = (
         d.textlength(f.cashtag, font=big),
         d.textlength(f.direction, font=big),
-        d.textlength(lev, font=mid),
+        d.textlength(lev, font=lev_font),
     )
     x = RIGHT_EDGE - (w_tag + 24 + w_side)
-    d.text((x, logo_mid_y - 18), f.cashtag, font=big, fill=FG, anchor="lm")
-    d.text((x + w_tag + 24, logo_mid_y - 18), f.direction, font=big, fill=side_col, anchor="lm")
-    d.text((RIGHT_EDGE - w_lev, logo_mid_y + 36), lev, font=mid, fill=GREY, anchor="lm")
+    d.text((x, logo_mid_y - 34), f.cashtag, font=big, fill=FG, anchor="lm")
+    d.text((x + w_tag + 24, logo_mid_y - 34), f.direction, font=big, fill=side_col, anchor="lm")
+    d.text((RIGHT_EDGE - w_lev, logo_mid_y + 38), lev, font=lev_font, fill=GREY, anchor="lm")
     res_col = GREEN if f.pnl_margin_pct >= 0 else RED
     d.text((60, 250), pct(f.pnl_margin_pct), font=huge, fill=res_col)
     d.text((60, 390), "on margin", font=mid, fill=GREY)
