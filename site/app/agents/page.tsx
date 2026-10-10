@@ -6,14 +6,14 @@ const name = (s: Snapshot, id: string) => { const m = (s.crew ?? []).find((c) =>
 // Model rows read "<model> (<seat>/<variant>)". The crew name follows the model, not the
 // seat: Dyne is the Claude manager wherever it sits; "alt" means it answered from the other
 // seat as the shadow comparison.
-const lname = (s: Snapshot, l: { name: string; kind: string }) => {
-  if (l.kind === "agent") return name(s, l.name);
+const lname = (s: Snapshot, l: { name: string; kind: string }): { label: string; note: string } => {
+  if (l.kind === "agent") { const m = (s.crew ?? []).find((c) => c.id === l.name); return { label: m ? m.name : l.name, note: l.name }; }
   const mm = l.name.match(/^(.*?) \((pm_[12])\/(main|alt)\)$/);
-  if (!mm) return l.name;
+  if (!mm) return { label: l.name, note: "" };
   const [, model, , variant] = mm;
   const id = model.startsWith("claude") ? "pm_1" : model.startsWith("gpt") ? "pm_2" : null;
   const m = id ? (s.crew ?? []).find((c) => c.id === id) : null;
-  return <><b>{m ? m.name : model}</b> <span className="muted small">{model} · {variant === "main" ? "its own seat" : "shadow, the other seat"}</span></>;
+  return { label: m ? m.name : model, note: `${model} · ${variant === "main" ? "its own seat" : "shadow, the other seat"}` };
 };
 const sc = (x: number | null | undefined) => (x == null ? "–" : `${x > 0 ? "+" : ""}${x.toFixed(2)}`);
 
@@ -36,16 +36,16 @@ export default function Agents() {
           <h2>{tick(a.cashtag)} · {a.consensus} <span className="badge">Dyne {a.pm_claude ?? "–"}</span><span className="badge">Dork {a.pm_gpt ?? "–"}</span></h2>
           <p className="muted">{a.reason}. Formula {sc(a.formula_score)}, consensus {sc(a.consensus_score)}.
             {a.macro_regime && <> Macro regime {a.macro_regime}, tradfi coupling {a.coupling?.toFixed(2)}; macro parts tradfi {sc(a.macro_tradfi)} / crypto-native {sc(a.macro_native)}.</>}</p>
-          <div className="scroll-x"><table className="wide"><thead><tr><th>agent</th><th>score</th><th>confidence</th><th>notes</th></tr></thead><tbody>
-            {a.agents.map((g) => <tr key={g.agent}><td>{name(s, g.agent)}{!g.valid && <span className="badge">stale</span>}</td><td className={cls(g.score)}>{sc(g.score)}</td><td>{pct(g.confidence * 100, 0)}</td><td className="muted">{g.reasons.join(" · ")}</td></tr>)}
+          <div className="scroll-x"><table className="notes"><thead><tr><th className="name">reading</th><th className="num">score</th><th className="num">confidence</th><th>notes</th></tr></thead><tbody>
+            {a.agents.map((g) => <tr key={g.agent}><td className="name">{name(s, g.agent)}{!g.valid && <span className="badge">stale</span>}</td><td className={`num ${cls(g.score)}`}>{sc(g.score)}</td><td className="num">{pct(g.confidence * 100, 0)}</td><td className="note">{g.reasons.join(" · ")}</td></tr>)}
           </tbody></table></div>
         </section>
       ))}
       <section className="panel">
       <h2>Leaderboard <span className="muted small">how well each reading predicted the next day</span></h2>
       {s.leaderboard.length === 0 ? <p className="muted">Measured once enough trades have closed.</p> : (
-        <div className="scroll-x"><table><thead><tr><th>name</th><th>what</th><th>IC 1d</th><th>sample</th></tr></thead><tbody>
-          {s.leaderboard.map((l) => <tr key={l.name}><td>{lname(s, l)}</td><td>{l.kind === "agent" ? "reading" : "manager"}</td><td className={cls(l.ic_1d)}>{sc(l.ic_1d)}</td><td>{l.sample}</td></tr>)}
+        <div className="scroll-x"><table className="notes"><thead><tr><th className="name">name</th><th className="num">IC 1d</th><th className="num">sample</th><th>notes</th></tr></thead><tbody>
+          {s.leaderboard.map((l) => <tr key={l.name}><td className="name"><b>{lname(s, l).label}</b></td><td className={`num ${cls(l.ic_1d)}`}>{sc(l.ic_1d)}</td><td className="num">{l.sample}</td><td className="note">{l.kind === "agent" ? "reading" : "manager"}{lname(s, l).note ? ` · ${lname(s, l).note}` : ""}</td></tr>)}
         </tbody></table></div>
       )}
       </section>
