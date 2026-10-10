@@ -72,6 +72,20 @@ export default function Page() {
       </div>
       <EquityChart s={s} onExpand={() => setOpen(true)} />
       {open && <DetailOverlay s={s} onClose={() => setOpen(false)} />}
+      {(s.sleeves ?? []).length > 0 && (
+        <>
+          <h2>Sleeves</h2>
+          <div className="row">
+            {s.sleeves.map((sl) => (
+              <div key={sl.name} className="tile">
+                <div className="k">{sl.name} · {Math.round(sl.capital_fraction * 100)}% of capital</div>
+                <div className={`v ${cls(sl.pct)}`}>{pct(sl.pct, 2)}</div>
+                <div className="muted small">{sl.cashtags.map(tick).join(" · ")} · {sl.trades} trades, {sl.wins} won</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       <h2>Stats</h2>
       <div className="row">
         <div className="tile"><div className="k">trades</div><div className="v">{st.trades}</div></div>

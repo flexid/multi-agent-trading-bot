@@ -32,6 +32,7 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.schema import AgentOutput, Horizon
+from app.config import get_config
 from app.llm import Image, LLMError, Prompt, complete
 
 AGENT = "chart_patterns"
@@ -206,6 +207,7 @@ async def vision_track(
     out: dict[str, VisionRead] = {}
     for tf, image in images.items():
         try:
+            sleeve = get_config().sleeve_cfg(asset)
             result = await complete(
                 TASK,
                 VisionRead,
@@ -214,6 +216,7 @@ async def vision_track(
                 images=[image],
                 cycle_id=cycle_id,
                 asset=asset,
+                model=sleeve.models.get(TASK) if sleeve else None,  # cheaper vision for alts
             )
         except LLMError:
             continue

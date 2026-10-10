@@ -6,7 +6,7 @@ Owner: Lex. Status: plan approved, ready to build.
 
 ## 1. What it is
 
-A fully autonomous trader on Bybit for five assets: BTC, ETH, SOL, XRP and DOGE (BNB and SPX6900 were dropped on 2026-10-10, logic v2). Every 4 hours, five analysis agents score each asset. Two LLM portfolio managers (Claude and GPT) independently propose trades. A leverage agent sizes them between 1x and 10x. A deterministic risk engine decides, and a separate executor places and manages the orders. Every executed trade is posted to X (@decentradork) in casual, human language.
+A fully autonomous trader on Bybit in two sleeves (logic v4, 2026-10-10): bluechips BTC, ETH, SOL, XRP, DOGE (70% of capital, 1% risk, leverage ramp to 10x) and alts PEPE, HBAR, PUMP, SPX6900, ENA (30%, 0.5% risk, 3x, depth caps, attention-weighted agents). Each sleeve has its own risk budget, exposure cap, day-loss stop and go-live evaluation; a beta-weighted cap also applies across both. Every 4 hours, five analysis agents score each asset. Two LLM portfolio managers (Claude and GPT) independently propose trades. A leverage agent sizes them between 1x and 10x. A deterministic risk engine decides, and a separate executor places and manages the orders. Every executed trade is posted to X (@decentradork) in casual, human language.
 
 The owner sets parameters once and never reviews or approves anything. The only human touchpoint is the emergency brake (§8).
 

@@ -2,12 +2,12 @@
 # Secrets do not belong here; they live in .env. See docs/SPEC.md §13.
 
 [trading]
-assets = ["BTC", "ETH", "SOL", "XRP", "DOGE"]   # owner 2026-10-10: BNB and SPX6900 dropped (logic v2)
+assets = ["BTC", "ETH", "SOL", "XRP", "DOGE", "PEPE", "HBAR", "PUMP", "SPX6900", "ENA"]  # derived from [sleeves] at load; listed for readers
 capital_max_usdt = 10000        # paper equity in shadow; live starts at live_start_fraction of it
 live_start_fraction = 0.10      # and never sizes beyond actual subaccount equity
 live_allowed = false            # owner flips once; go-live itself is automatic (SPEC §10)
 leverage_max = 10
-risk_per_trade = 0.005
+risk_per_trade = 0.01           # owner 2026-10-09; the sleeves override per asset
 risk_per_trade_max = 0.025      # the max shadow track: the leveraged variant (owner goal 1%/day, 2026-10-09)
 capital_share_per_asset = 0.20
 gross_exposure_max = 3.0
@@ -21,8 +21,26 @@ emergency_brake = -0.25
 depth_cap = 0.05
 cycle_hours = 4
 
+[sleeves.bluechips]             # owner 2026-10-10 (logic v4): two sleeves, each its own budget and limits
+assets = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
+capital_fraction = 0.70
+risk_per_trade = 0.01
+leverage_max = 10
+net_beta_exposure_max = 1.5
+day_loss_stop = -0.02
+
+[sleeves.alts]
+assets = ["PEPE", "HBAR", "PUMP", "SPX6900", "ENA"]
+capital_fraction = 0.30
+risk_per_trade = 0.005
+leverage_max = 3
+net_beta_exposure_max = 1.5
+day_loss_stop = -0.02
+weights = { polymarket = 0.0, x_sentiment = 0.30, chart_patterns = 0.30 }   # thin, attention-driven names
+models = { chart_patterns = "claude-sonnet-5-5" }                         # cheaper vision
+
 [pilot]                         # execution pilot after M9 (owner): real orders, 1x, small
-enabled = false                 # owner flips once the subaccount holds capital_usdt
+enabled = true                  # owner enabled the pilot 2026-10-09
 capital_usdt = 185              # what the subaccount holds (owner, 2026-10-09)
 
 [exchange]
@@ -52,6 +70,10 @@ ETH = "$ETH"
 SOL = "$SOL"
 XRP = "$XRP"
 DOGE = "$DOGE"
+PEPE = "$PEPE"
+HBAR = "$HBAR"
+PUMP = "$PUMP"
+ENA = "$ENA"
 BNB = "$BNB"                    # history only (dropped 2026-10-10)
 SPX6900 = "$SPX"                # history only
 

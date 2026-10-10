@@ -53,6 +53,10 @@ SEARCH_QUERY = {
     "SOL": "(solana OR $SOL) lang:en -is:retweet -is:reply",
     "XRP": "(xrp OR $XRP OR ripple) lang:en -is:retweet -is:reply",
     "DOGE": "(dogecoin OR $DOGE) lang:en -is:retweet -is:reply",
+    "PEPE": "($PEPE OR pepecoin) lang:en -is:retweet -is:reply",
+    "HBAR": "($HBAR OR hedera) lang:en -is:retweet -is:reply",
+    "PUMP": '($PUMP OR "pump fun" OR pumpfun) lang:en -is:retweet -is:reply',
+    "ENA": "($ENA OR ethena) lang:en -is:retweet -is:reply",
     "BNB": '($BNB OR "BNB chain") lang:en -is:retweet -is:reply',
     "SPX6900": "(SPX6900 OR $SPX) lang:en -is:retweet -is:reply",
 }
@@ -64,10 +68,19 @@ MENTION_QUERY = {
     "SOL": "(solana OR $SOL) -is:retweet",
     "XRP": "($XRP OR #XRP OR xrp) -is:retweet",
     "DOGE": "($DOGE OR #DOGE OR dogecoin) -is:retweet",
+    "PEPE": "($PEPE OR #PEPE OR pepecoin) -is:retweet",
+    "HBAR": "($HBAR OR #HBAR OR hedera) -is:retweet",
+    "PUMP": '($PUMP OR #PUMP OR "pump fun" OR pumpfun) -is:retweet',
+    "ENA": "($ENA OR #ENA OR ethena) -is:retweet",
     "BNB": "($BNB OR #BNB) -is:retweet",
     "SPX6900": "($SPX OR SPX6900 OR #SPX6900) -is:retweet",
 }
-MEME_ASSETS = {"DOGE", "SPX6900"}  # attention is the main driver: count and buzz weigh more
+MEME_ASSETS = {
+    "DOGE",
+    "SPX6900",
+    "PEPE",
+    "PUMP",
+}  # attention is the main driver: count and buzz weigh more
 MENTION_SERIES = "XMENTIONS_{asset}"  # hourly counts in macro_observations
 BUZZ_BASELINE_DAYS = 6
 BUZZ_SPIKE, BUZZ_FADE = 2.0, 0.5

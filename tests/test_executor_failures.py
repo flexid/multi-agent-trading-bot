@@ -114,6 +114,7 @@ def seed_decision(
 
 def make(gateway: ScriptedGateway, q: Quote | None) -> Executor:
     ex = Executor(get_config(), get_secrets(), gateway, feed=False)
+    ex.mode = "paper"  # the config may have the pilot on; these tests script the paper book
     ex.posting_live = lambda: False  # type: ignore[method-assign]  # never post from tests
     symbol = get_config().symbol(ASSET)
     if q is not None:

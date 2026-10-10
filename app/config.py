@@ -6,7 +6,7 @@ import tomllib
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -42,6 +42,20 @@ class TradingConfig(_Section):
     emergency_brake: Decimal
     depth_cap: Decimal
     cycle_hours: int
+
+
+class SleeveConfig(_Section):
+    """One sleeve of the book (owner 2026-10-10): its assets, share of capital and its own
+    risk budget, caps and day-loss stop; optional agent-weight and model overrides."""
+
+    assets: list[str]
+    capital_fraction: Decimal
+    risk_per_trade: Decimal
+    leverage_max: int
+    net_beta_exposure_max: Decimal = Decimal("1.5")
+    day_loss_stop: Decimal = Decimal("-0.02")
+    weights: dict[str, float] = Field(default_factory=dict)  # agent weight overrides
+    models: dict[str, str] = Field(default_factory=dict)  # task -> model overrides
 
 
 class PilotConfig(_Section):
@@ -141,6 +155,23 @@ class Config(_Section):
     site: SiteConfig = SiteConfig()
     budget: BudgetConfig
     models: ModelsConfig
+    sleeves: dict[str, SleeveConfig] = Field(default_factory=dict)
+
+    def model_post_init(self, __context: Any) -> None:
+        # With sleeves, the traded universe is their union, in sleeve order.
+        if self.sleeves:
+            assets = [a for s in self.sleeves.values() for a in s.assets]
+            object.__setattr__(self.trading, "assets", assets)
+
+    def sleeve_of(self, asset: str) -> str | None:
+        for name, s in self.sleeves.items():
+            if asset in s.assets:
+                return name
+        return None
+
+    def sleeve_cfg(self, asset: str) -> SleeveConfig | None:
+        name = self.sleeve_of(asset)
+        return self.sleeves[name] if name else None
 
     def base_coin(self, asset: str) -> str:
         return self.exchange.base_coin.get(asset, asset)

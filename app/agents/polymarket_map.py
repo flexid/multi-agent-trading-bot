@@ -30,7 +30,21 @@ log = logging.getLogger(__name__)
 
 TASK = "polymarket"
 BATCH = 40
-ASSETS = {"BTC", "ETH", "SOL", "XRP", "DOGE", "BNB", "SPX6900", "SP500", "OTHER"}
+ASSETS = {
+    "BTC",
+    "ETH",
+    "SOL",
+    "XRP",
+    "DOGE",
+    "PEPE",
+    "HBAR",
+    "PUMP",
+    "ENA",
+    "BNB",
+    "SPX6900",
+    "SP500",
+    "OTHER",
+}
 
 
 class Asset(StrEnum):
@@ -39,6 +53,10 @@ class Asset(StrEnum):
     SOL = "SOL"
     XRP = "XRP"
     DOGE = "DOGE"
+    PEPE = "PEPE"
+    HBAR = "HBAR"
+    PUMP = "PUMP"
+    ENA = "ENA"
     BNB = "BNB"
     SPX6900 = "SPX6900"
     SP500 = "SP500"

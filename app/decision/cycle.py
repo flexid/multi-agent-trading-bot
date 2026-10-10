@@ -193,6 +193,12 @@ def abort_stale_cycles(session: Session, now: datetime | None = None) -> int:
     return len(rows)
 
 
+def asset_overrides(cfg: Config, asset: str) -> dict[str, float]:
+    """Agent-weight overrides for an asset: its sleeve's first, then the per-asset ones."""
+    sleeve = cfg.sleeve_cfg(asset)
+    return {**(sleeve.weights if sleeve else {}), **cfg.agents.weights_by_asset.get(asset, {})}
+
+
 async def run_cycle(
     cfg: Config,
     *,
@@ -249,7 +255,7 @@ async def run_cycle(
                 couplings.get(asset),
                 pm1.get(asset),
                 pm2.get(asset),
-                weights_for(weights, cfg.agents.weights_by_asset.get(asset)),
+                weights_for(weights, asset_overrides(cfg, asset)),
             )
             for asset in cfg.trading.assets
         }

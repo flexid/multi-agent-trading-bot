@@ -223,11 +223,52 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
         },
         "failed_fetches": {s: n for s, n in failed_fetches},
         "suppressed_triggers": suppressed_facts,
+        "sleeves": sleeves_facts(session, cfg, now, since),
         "agent_weights": current_weights(session),
         "leaderboard": board,
         "polymarket_coverage": pm_cov,
         "x_mentions": buzz,
     }
+
+
+def sleeves_facts(session: Session, cfg: Config, now: datetime, since: datetime) -> dict[str, Any]:
+    """Per sleeve: its account view, its closed trades this week and its costs."""
+    if not cfg.sleeves:
+        return {}
+    from app.costs_sleeves import costs_by_sleeve
+    from app.risk.exposure import betas
+    from app.risk.sleeves import sleeve_account
+
+    b = betas(session, cfg, now)
+    costs = {c.sleeve: c for c in costs_by_sleeve(session, cfg, since)}
+    closed = session.scalars(
+        select(Position).where(
+            Position.status == "closed", Position.closed_at >= since, Position.track == "primary"
+        )
+    ).all()
+    out: dict[str, Any] = {}
+    for name, s in cfg.sleeves.items():
+        sa = sleeve_account(session, cfg, name, "primary", now, b, 1)
+        mine = [p for p in closed if p.asset in s.assets]
+        c = costs.get(name)
+        out[name] = {
+            "assets": s.assets,
+            "capital_fraction": float(s.capital_fraction),
+            "risk_per_trade": float(s.risk_per_trade),
+            "leverage_max": s.leverage_max,
+            "equity": float(sa.equity),
+            "pnl_since_start": float(sa.equity - sa.capital),
+            "net_beta_x_equity": float(sa.net_beta_exposure / sa.equity) if sa.equity else None,
+            "closed_this_week": _track_stats(mine).__dict__,
+            "llm_usd_month": float(c.llm_usd) if c else 0.0,
+            "x_usd_month": float(c.x_usd) if c else 0.0,
+        }
+    shared = costs.get("shared")
+    out["shared_costs"] = {
+        "llm_usd_month": float(shared.llm_usd) if shared else 0.0,
+        "x_usd_month": float(shared.x_usd) if shared else 0.0,
+    }
+    return out
 
 
 def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> str:
@@ -252,6 +293,16 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
         else:
             lines.append(f"- {track}: no closed trades")
     lines.append(f"- equity now: {f['ledgers_equity']}")
+    for name, sv in (f.get("sleeves") or {}).items():
+        if name == "shared_costs":
+            continue
+        cw = sv["closed_this_week"]
+        lines.append(
+            f"- sleeve {name} ({', '.join(sv['assets'])}): equity {sv['equity']:,.2f}, "
+            f"P&L since start {sv['pnl_since_start']:+,.2f}, this week {cw['closed']} closed / "
+            f"{cw['wins']} won, cost this month LLM ${sv['llm_usd_month']:.2f} "
+            f"+ X ${sv['x_usd_month']:.2f}"
+        )
     if f["pilot_vs_paper"]:
         lines += ["", "## Pilot vs paper (same decisions, real fills vs simulator)"]
         for r in f["pilot_vs_paper"]:

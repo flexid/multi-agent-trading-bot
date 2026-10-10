@@ -195,7 +195,7 @@ def test_coverage_tells_no_markets_from_none_usable(db_clean: None) -> None:
     now = datetime(2026, 10, 9, 12, tzinfo=UTC)
 
     def market(
-        id_: str, asset: str, mapping: dict, end_in_hours: float, outcomes: list[str]
+        id_: str, asset: str, mapping: dict[str, object], end_in_hours: float, outcomes: list[str]
     ) -> PolymarketMarket:
         return PolymarketMarket(
             id=id_,

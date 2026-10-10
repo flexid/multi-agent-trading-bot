@@ -9,6 +9,7 @@ export type Snapshot = {
   by_asset: { asset: string; cashtag: string; trades: number; wins: number; pct: number }[];
   history: { ts: string; scores: Record<string, number | null>; directions: Record<string, string> }[];
   crew: { id: string; name: string; role: string; blurb: string }[];
+  sleeves: { name: string; assets: string[]; cashtags: string[]; capital_fraction: number; pct: number; trades: number; wins: number }[];
 };
 
 export const SNAPSHOT_URL = process.env.NEXT_PUBLIC_SNAPSHOT_URL ?? "/data/snapshot.json";
@@ -24,7 +25,14 @@ export async function loadSnapshot(): Promise<Snapshot | null> {
 
 export const pct = (x: number | null | undefined, d = 1) => (x == null ? "–" : `${x > 0 ? "+" : ""}${x.toFixed(d)}%`);
 export const cls = (x: number | null | undefined) => (x == null ? "" : x >= 0 ? "up" : "down");
-export const num = (x: number) => x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Two decimals, except below $1 where at least four significant digits are kept (PEPE at
+// 0.000008123 must not print as 0.00).
+export const num = (x: number) => {
+  if (Math.abs(x) >= 1) return x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (x === 0) return "0.00";
+  const digits = Math.max(2, 3 - Math.floor(Math.log10(Math.abs(x))));  // 4 significant digits
+  return x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: Math.min(digits, 12) });
+};
 
 export async function shareUrl(): Promise<string> {
   // WhatsApp and X cache link previews per URL, so the share link carries the current

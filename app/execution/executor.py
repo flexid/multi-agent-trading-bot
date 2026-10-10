@@ -118,6 +118,7 @@ class Executor:
         self.frozen = False  # after a kill switch: no new positions until resumed
         self.kill_real_only = False  # a self-test kill leaves the paper tracks alone
         self._candle_ref: dict[str, tuple[int, Decimal]] = {}  # 15-minute bucket, last mid
+        self._locked_cache: set[str] = set()  # sleeves under their day-loss lock, per pass
         self.style = style.load()
         self._alerted: set[str] = set()  # risk states already emailed this episode
 
@@ -380,6 +381,7 @@ class Executor:
             select(Position).where(Position.status.in_(["open", "closing"]))
         ).all()
         closes = self._closes_15m(now)
+        self._locked_cache = self._locked_sleeves(session, now)
         for row in rows:
             quote = self.quotes.get(row.symbol)
             if quote is None:
@@ -397,7 +399,7 @@ class Executor:
                 kill=kill and not (self.kill_real_only and row.mode == "paper"),
                 close_15m=closes.get(row.symbol),
             )
-            if reason is None and close_all:
+            if reason is None and (close_all or self._sleeve_locked(row, now)):
                 reason = ExitReason.RISK
             if reason is None and row.status == "closing":
                 reason = ExitReason(row.close_reason or "risk")  # retry a pending exit
@@ -532,6 +534,30 @@ class Executor:
 
     # --- exchange-side backup stop ---------------------------------------------------
 
+    @staticmethod
+    def _locked_sleeves(session: Session, now: datetime) -> set[str]:
+        from app.risk.sleeves import day_locked
+
+        state = session.get(RiskState, 1)
+        locks = (state.day_locked_sleeves or {}) if state else {}
+        return {name for name in locks if day_locked(locks, name, now)}
+
+    def _sleeve_locked(self, row: Position, now: datetime) -> bool:
+        """A sleeve under its day-loss lock closes its positions (checked on the full pass
+        through the cached set the open loop refreshes)."""
+        sleeve = row.sleeve or self.cfg.sleeve_of(row.asset)
+        return sleeve is not None and sleeve in self._locked_cache
+
+    def _live_sleeves(self, session: Session) -> set[str]:
+        """Sleeves allowed to open for real. Each sleeve passes its own go-live evaluation;
+        without any recorded verdict (the mode was flipped by hand) the process mode rules
+        every sleeve."""
+        state = session.get(RiskState, 1)
+        modes = (state.sleeve_modes or {}) if state else {}
+        if not modes:
+            return set(self.cfg.sleeves)
+        return {name for name, m in modes.items() if m == "live"}
+
     def _closes_15m(self, now: datetime) -> dict[str, Decimal]:
         """The close of the 15-minute candle that just ended, per symbol, on the first pass
         after a boundary; empty otherwise. The last mid seen before the boundary is the
@@ -652,10 +678,17 @@ class Executor:
             .order_by(DecisionRecord.ts.desc())
         ).all()
         seen: set[str] = set()
+        locked = self._locked_sleeves(session, now)
+        live_sleeves = self._live_sleeves(session)
         for d in rows:
             if d.asset in seen or d.asset in open_assets:
                 continue
             seen.add(d.asset)
+            sleeve = self.cfg.sleeve_of(d.asset)
+            if sleeve in locked:
+                continue  # the sleeve's day-loss stop: nothing new until 00:00 UTC
+            if track_mode == "live" and sleeve is not None and sleeve not in live_sleeves:
+                continue  # this sleeve has not passed its own go-live evaluation yet
             if session.scalar(
                 select(func.count())
                 .select_from(Position)
@@ -777,6 +810,7 @@ class Executor:
                 asset=d.asset,
                 symbol=symbol,
                 direction=side.value,
+                sleeve=self.cfg.sleeve_of(d.asset),
                 status="open",
                 qty=pos.qty,
                 entry_price=pos.entry,

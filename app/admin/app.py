@@ -54,14 +54,18 @@ templates = Jinja2Templates(directory=str(Path(__file__).with_name("templates"))
 
 
 def fmt_price(value: Any) -> str:
-    """Prices with two decimals and thousands separators (owner, 2026-10-09)."""
+    """Prices with two decimals and thousands separators (owner, 2026-10-09); below $1 at
+    least four significant digits (owner, 2026-10-10: PEPE is 0.000008)."""
     if value is None or value == "":
         return "-"
     try:
-        q = Decimal(str(value)).quantize(Decimal("0.01"))
+        d = Decimal(str(value))
     except Exception:
         return str(value)
-    return f"{q:,.2f}"
+    if abs(d) >= 1 or d == 0:
+        return f"{d.quantize(Decimal('0.01')):,.2f}"
+    places = max(2, 3 - d.adjusted())  # adjusted() = exponent of the leading digit
+    return f"{d:.{min(places, 12)}f}"
 
 
 SIDE_WORD = re.compile(r"\b(long|short)\b", re.IGNORECASE)
@@ -313,6 +317,30 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
         from app.risk.wickouts import stats as wick_stats
 
         wicks = wick_stats(s, cfg.trading.assets)
+        from app.costs_sleeves import costs_by_sleeve
+        from app.risk.exposure import beta_table
+        from app.risk.sleeves import day_locked, sleeve_account
+
+        sleeve_rows = []
+        if cfg.sleeves:
+            from app.risk.exposure import betas as _betas
+
+            b30 = _betas(s, cfg, now)
+            locks = (risk.day_locked_sleeves or {}) if risk else {}
+            modes = (risk.sleeve_modes or {}) if risk else {}
+            for name in cfg.sleeves:
+                sa = sleeve_account(s, cfg, name, "primary", now, b30, 1)
+                sleeve_rows.append(
+                    {
+                        "name": name,
+                        "cfg": cfg.sleeves[name],
+                        "acct": sa,
+                        "locked": day_locked(locks, name, now),
+                        "mode": modes.get(name, "shadow"),
+                    }
+                )
+        beta_rows = beta_table(s, cfg, now)
+        sleeve_costs = costs_by_sleeve(s, cfg, month)
         from app.risk.exposure import betas as asset_betas
         from app.risk.exposure import track_exposure
 
@@ -350,6 +378,9 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
         sources=sources,
         pm_cov=pm_cov,
         wicks=wicks,
+        sleeve_rows=sleeve_rows,
+        beta_rows=beta_rows,
+        sleeve_costs=sleeve_costs,
         beta=beta,
         exposures=exposures,
         real=real,

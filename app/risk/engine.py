@@ -36,7 +36,10 @@ class AccountState:
     emergency_brake: bool
     half_risk: bool
     leverage_ceiling: Decimal
-    net_beta_exposure: Decimal = Decimal(0)  # signed Σ notional × beta, in quote, this track
+    net_beta_exposure: Decimal = Decimal(0)  # signed Σ notional × beta, in quote, this sleeve
+    sleeve: str | None = None  # which sleeve this state describes (None = whole book)
+    total_equity: Decimal | None = None  # the whole book, for the cross-sleeve cap
+    total_net_beta_exposure: Decimal = Decimal(0)  # Σ over every sleeve, same track
 
 
 @dataclass(frozen=True)
@@ -68,6 +71,7 @@ class Limits:
     depth_cap: Decimal  # 0.05
     day_loss_stop: Decimal  # −0.02
     net_beta_exposure_max: Decimal = Decimal("1.5")  # × equity, beta-weighted same-direction
+    net_beta_total_max: Decimal = Decimal("1.5")  # × the whole book, across sleeves together
     day_lock_profit: Decimal = Decimal("0.015")  # from +1.5% …
     day_lock_floor: Decimal = Decimal("0.0075")  # … protect +0.75%
     drawdown_pause: Decimal = Decimal("-0.10")
@@ -309,6 +313,20 @@ def assess(
                 )
             )
             notional = max(ZERO, room_beta / beta)
+    # ... and across both sleeves together (owner 2026-10-10)
+    if acct.total_equity and sign * acct.total_net_beta_exposure >= 0:
+        beta = mkt.beta if mkt.beta > 0 else ONE
+        room_total = lim.net_beta_total_max * acct.total_equity - abs(acct.total_net_beta_exposure)
+        if notional * beta > room_total:
+            hits.append(
+                RuleHit(
+                    "correlated_exposure_total",
+                    f"{notional:.0f} × beta {beta:.2f} > room {room_total:.0f} across sleeves "
+                    f"(net {acct.total_net_beta_exposure:+.0f}, cap {lim.net_beta_total_max}×)",
+                    "cap",
+                )
+            )
+            notional = max(ZERO, room_total / beta)
     if notional <= 0:
         hits.append(RuleHit("no_room", "no exposure room left", "block"))
         return Assessment(asset, False, None, hits)

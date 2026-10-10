@@ -125,6 +125,16 @@ class AssetView(_Strict):
     macro_native: float | None
 
 
+class SleeveView(_Strict):
+    name: str
+    assets: list[str]
+    cashtags: list[str]
+    capital_fraction: float
+    pct: float  # realized + unrealized P&L since start, % of the sleeve's capital
+    trades: int
+    wins: int
+
+
 class CrewMember(_Strict):
     id: str
     name: str
@@ -186,6 +196,7 @@ class Snapshot(_Strict):
     by_asset: list[AssetContribution] = Field(default_factory=list)
     history: list[CycleRow] = Field(default_factory=list)  # last week of cycles, oldest first
     crew: list[CrewMember] = Field(default_factory=list)
+    sleeves: list[SleeveView] = Field(default_factory=list)
 
 
 def _f(x: Decimal | float | None, places: int = 4) -> float:
@@ -401,6 +412,30 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
                 )
             )
         base_capital = float(acct.starting_capital) if acct and acct.starting_capital else 0.0
+        sleeve_views = []
+        if cfg.sleeves:
+            from app.risk.exposure import betas as _betas
+            from app.risk.sleeves import sleeve_account
+
+            b30 = _betas(s, cfg, now)
+            for name, sc in cfg.sleeves.items():
+                sa = sleeve_account(
+                    s, cfg, name, _record_track(s), now, b30, 4 if _is_live(s) else 1
+                )
+                sleeve_closed = [p for p in closed if p.asset in sc.assets]
+                sleeve_views.append(
+                    SleeveView(
+                        name=name,
+                        assets=list(sc.assets),
+                        cashtags=[tags.get(a, f"${a}") for a in sc.assets],
+                        capital_fraction=float(sc.capital_fraction),
+                        pct=round(float((sa.equity - sa.capital) / sa.capital * 100), 2)
+                        if sa.capital
+                        else 0.0,
+                        trades=len(sleeve_closed),
+                        wins=sum(1 for p in sleeve_closed if p.pnl and p.pnl > 0),
+                    )
+                )
         by_asset = []
         for asset in cfg.trading.assets:
             mine_closed = [p for p in closed if p.asset == asset]
@@ -538,6 +573,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         by_asset=by_asset,
         history=history,
         crew=[CrewMember(id=m.id, name=m.name, role=m.role, blurb=m.blurb) for m in CREW],
+        sleeves=sleeve_views,
         stats=stats,
         open_trades=open_trades,
         closed_trades=closed_trades,

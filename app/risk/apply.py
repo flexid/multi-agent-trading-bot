@@ -36,6 +36,7 @@ from app.decision.evidence import spot_and_atr
 from app.decision.pm import Direction, Proposal
 from app.risk import engine
 from app.risk.exposure import betas, track_exposure
+from app.risk.sleeves import day_locked, lock_until_midnight, sleeve_account
 
 
 def levels_for(session: Session, symbol: str, spot: Decimal) -> tuple[Decimal, ...]:
@@ -65,8 +66,9 @@ def limits_with_state(lim: engine.Limits, state: RiskState) -> engine.Limits:
 
 
 def limits_for_max(lim: engine.Limits, cfg: Config) -> engine.Limits:
-    """The max track's limits: the same rules, sized with ``risk_per_trade_max``."""
-    return replace(lim, risk_per_trade=cfg.trading.risk_per_trade_max)
+    """The max track's limits: the same rules, sized with ``risk_per_trade_max`` (never
+    below the sleeve's own risk per trade)."""
+    return replace(lim, risk_per_trade=max(lim.risk_per_trade, cfg.trading.risk_per_trade_max))
 
 
 def limits_from_config(cfg: Config) -> engine.Limits:
@@ -315,6 +317,50 @@ def apply_risk(
         }
     account_hits = engine.account_rules(acct, lim, now)
     state = risk_state(session)
+    # Sleeves (owner 2026-10-10): each has its own account view, limits and day-loss lock.
+    ledger_id = 4 if mode == "live" else 1
+    sleeve_accts = {
+        name: sleeve_account(
+            session, cfg, name, "primary" if mode != "live" else "live", now, beta, ledger_id
+        )
+        for name in cfg.sleeves
+    }
+    sleeve_accts_max = {
+        name: sleeve_account(session, cfg, name, "max", now, beta, 2) for name in cfg.sleeves
+    }
+    locks: dict[str, str] = dict(state.day_locked_sleeves or {})
+    for name, sa in sleeve_accts.items():
+        s_cfg = cfg.sleeves[name]
+        if sa.day_pnl_pct <= s_cfg.day_loss_stop and not day_locked(locks, name, now):
+            locks[name] = lock_until_midnight(now)
+            session.add(
+                RiskRuleHit(
+                    cycle_id=cycle_id,
+                    ts=now,
+                    asset=None,
+                    rule=f"day_loss_stop:{name}",
+                    detail=f"{sa.day_pnl_pct:.2%} today in {name}: closed until 00:00 UTC",
+                    effect="close_sleeve",
+                )
+            )
+    if locks != dict(state.day_locked_sleeves or {}):
+        state.day_locked_sleeves = locks
+    if cycle is not None:
+        cycle.beta_exposure = {
+            **(cycle.beta_exposure or {}),
+            "sleeves": {
+                name: {
+                    "net_beta_x_equity": str(round(sa.net_beta_exposure / sa.equity, 3))
+                    if sa.equity
+                    else None,
+                    "gross_x_equity": str(round(sa.gross_exposure / sa.equity, 3))
+                    if sa.equity
+                    else None,
+                    "day_pnl_pct": str(round(sa.day_pnl_pct, 4)),
+                }
+                for name, sa in sleeve_accts.items()
+            },
+        }
     for h in account_hits:
         session.add(
             RiskRuleHit(
@@ -342,13 +388,66 @@ def apply_risk(
             market_state(session, cfg, d.asset, cycle_id, now, c.direction),
             beta=beta.get(d.asset, Decimal(1)),
         )
-        a = engine.assess(c, acct, mkt, lim, account_hits=account_hits)
+        sleeve_name = cfg.sleeve_of(d.asset)
+        if sleeve_name is not None:
+            s_cfg = cfg.sleeves[sleeve_name]
+            sa = sleeve_accts[sleeve_name]
+            lim_s = replace(
+                lim,
+                risk_per_trade=s_cfg.risk_per_trade,
+                leverage_max=Decimal(s_cfg.leverage_max),
+                net_beta_exposure_max=s_cfg.net_beta_exposure_max,
+                day_loss_stop=s_cfg.day_loss_stop,
+            )
+            acct_s = engine.AccountState(
+                **{
+                    **acct.__dict__,
+                    "equity": sa.equity,
+                    "day_pnl_pct": sa.day_pnl_pct,
+                    "gross_exposure": sa.gross_exposure,
+                    "net_beta_exposure": sa.net_beta_exposure,
+                    "sleeve": sleeve_name,
+                    "total_equity": acct.equity,
+                    "total_net_beta_exposure": sum(
+                        (x.net_beta_exposure for x in sleeve_accts.values()), Decimal(0)
+                    ),
+                    "leverage_ceiling": min(acct.leverage_ceiling, Decimal(s_cfg.leverage_max)),
+                }
+            )
+            hits_s = list(account_hits)
+            if day_locked(locks, sleeve_name, now):
+                hits_s.append(
+                    engine.RuleHit(
+                        f"day_loss_stop:{sleeve_name}", "sleeve closed until 00:00 UTC", "close_all"
+                    )
+                )
+            sm = sleeve_accts_max[sleeve_name]
+            acct_s_max = engine.AccountState(
+                **{
+                    **acct_s.__dict__,
+                    "leverage_ceiling": Decimal(s_cfg.leverage_max),
+                    "equity": sm.equity,
+                    "gross_exposure": sm.gross_exposure,
+                    "net_beta_exposure": sm.net_beta_exposure,
+                    "total_net_beta_exposure": sum(
+                        (x.net_beta_exposure for x in sleeve_accts_max.values()), Decimal(0)
+                    ),
+                }
+            )
+            a = engine.assess(c, acct_s, mkt, lim_s, account_hits=hits_s)
+            a_max = (
+                engine.assess(c, acct_s_max, mkt, limits_for_max(lim_s, cfg), account_hits=hits_s)
+                if mode != "live"
+                else None
+            )
+        else:
+            a = engine.assess(c, acct, mkt, lim, account_hits=account_hits)
+            a_max = (
+                engine.assess(c, acct_max, mkt, limits_for_max(lim, cfg), account_hits=account_hits)
+                if mode != "live"
+                else None
+            )
         out[d.asset] = a
-        a_max = (
-            engine.assess(c, acct_max, mkt, limits_for_max(lim, cfg), account_hits=account_hits)
-            if mode != "live"
-            else None
-        )
         hits: list[dict[str, Any]] = [
             {"rule": h.rule, "detail": h.detail, "effect": h.effect} for h in a.hits
         ]

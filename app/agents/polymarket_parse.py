@@ -26,11 +26,15 @@ ASSET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("SOL", re.compile(r"\b(solana|sol)\b", re.I)),
     ("XRP", re.compile(r"\b(xrp|ripple)\b", re.I)),
     ("DOGE", re.compile(r"\b(dogecoin|doge)\b", re.I)),
+    ("PEPE", re.compile(r"\bpepe\b", re.I)),
+    ("HBAR", re.compile(r"\b(hbar|hedera)\b", re.I)),
+    ("ENA", re.compile(r"\b(ena|ethena)\b", re.I)),
+    ("PUMP", re.compile(r"\bpump\.?fun\b|\bpump token\b|\$pump\b", re.I)),
     ("BNB", re.compile(r"\bbnb\b", re.I)),  # no longer traded; still parsed for the record
     ("SPX6900", re.compile(r"\b(spx6900|spx)\b", re.I)),
 ]
 NAME = (
-    r"(?P<asset>bitcoin|btc|ethereum|eth|solana|sol|xrp|ripple|dogecoin|doge|bnb|spx6900|spx|"
+    r"(?P<asset>bitcoin|btc|ethereum|eth|solana|sol|xrp|ripple|dogecoin|doge|pepe|hbar|hedera|ena|ethena|bnb|spx6900|spx|"
     r"s&p\s?500(?:\s\(spx\))?)"
 )
 MONEY = r"\$?\s?(?P<n>\d[\d,]*(?:\.\d+)?)\s?(?P<unit>[kKmM])?"

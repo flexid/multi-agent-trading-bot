@@ -289,6 +289,7 @@ class Position(Base):
     asset: Mapped[str] = mapped_column(String(10))
     symbol: Mapped[str] = mapped_column(String(20))
     direction: Mapped[str] = mapped_column(String(6))  # long | short
+    sleeve: Mapped[str | None] = mapped_column(String(16))  # at open; None for the old universe
     status: Mapped[str] = mapped_column(String(10))  # pending | open | closing | closed
     qty: Mapped[Decimal]
     entry_price: Mapped[Decimal | None]
@@ -508,8 +509,11 @@ class RiskState(Base):
     capital_step_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     live_selftest_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_golive_check: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    golive_report: Mapped[list[Any] | None] = mapped_column(JSONB)
+    golive_report: Mapped[Any | None] = mapped_column(JSONB)  # list (book) or {book, sleeves}
     stop_buffer_atr: Mapped[Decimal | None] = mapped_column(Numeric(3, 2))  # wick-out tuning
+    # Sleeves (owner 2026-10-10): {sleeve: "shadow"|"live"} and {sleeve: iso-until} day locks
+    sleeve_modes: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    day_locked_sleeves: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     hard_stop_atr: Mapped[Decimal | None] = mapped_column(Numeric(3, 2))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

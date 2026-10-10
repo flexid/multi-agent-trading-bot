@@ -51,8 +51,12 @@ DOMINANCE_TILT = {
     "SOL": -1.0,
     "XRP": -1.0,
     "DOGE": -1.5,
-    "BNB": -1.0,
+    "PEPE": -1.5,
+    "HBAR": -1.0,
+    "PUMP": -1.5,
     "SPX6900": -1.5,
+    "ENA": -1.0,
+    "BNB": -1.0,
 }
 TRADFI = {"SP500": 1.0, "NASDAQCOM": 1.0, "DTWEXBGS": -1.0, "XAUUSD": 1.0}
 CHANGE_DAYS = 5

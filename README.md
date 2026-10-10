@@ -1,6 +1,6 @@
 # multi-agent-trading-bot
 
-An autonomous crypto trader on Bybit EU. Five analysis agents score BTC, ETH, SOL, XRP and DOGE every 4 hours; Claude and GPT independently turn those scores into trade proposals; a deterministic risk engine decides, and a separate executor places and manages the orders. Every trade is posted to X.
+An autonomous crypto trader on Bybit EU. Five analysis agents score ten assets in two sleeves (bluechips BTC, ETH, SOL, XRP, DOGE; alts PEPE, HBAR, PUMP, SPX6900, ENA) every 4 hours; Claude and GPT independently turn those scores into trade proposals; a deterministic risk engine decides, and a separate executor places and manages the orders. Every trade is posted to X.
 
 > **Status:** M0 (connectivity) complete, including the live order self-test; see [`docs/M0_REPORT.md`](docs/M0_REPORT.md). All milestones built. Shadow mode runs on the server; the bot flips itself to live when SPEC §10 holds (at least 4 weeks and 100 closed paper trades).
 

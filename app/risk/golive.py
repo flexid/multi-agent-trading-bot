@@ -17,6 +17,7 @@ import math
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -56,16 +57,17 @@ class Verdict:
     checked_at: datetime
 
 
-def _closed(session: Session, mode: str = "paper") -> list[Position]:
-    return list(
-        session.scalars(
-            select(Position).where(
-                Position.track.in_(["primary", "live"]),
-                Position.status == "closed",
-                Position.mode == mode,
-            )
-        ).all()
+def _closed(
+    session: Session, mode: str = "paper", assets: list[str] | None = None
+) -> list[Position]:
+    stmt = select(Position).where(
+        Position.track.in_(["primary", "live"]),
+        Position.status == "closed",
+        Position.mode == mode,
     )
+    if assets is not None:
+        stmt = stmt.where(Position.asset.in_(assets))
+    return list(session.scalars(stmt).all())
 
 
 def _equity_series(session: Session, mode: str = "paper:primary") -> list[tuple[datetime, Decimal]]:
@@ -116,18 +118,48 @@ def _fmt(x: float | None) -> str:
     return "n/a" if x is None else f"{x:.2f}"
 
 
-def evaluate(session: Session, cfg: Config, now: datetime | None = None) -> Verdict:
+def _sleeve_series(
+    session: Session, cfg: Config, sleeve: str, since: datetime
+) -> list[tuple[datetime, Decimal]]:
+    """A sleeve's equity curve from its realized P&L: its share of starting capital plus
+    the cumulative P&L of its closed trades, one point per close."""
+    s = cfg.sleeves[sleeve]
+    acct = session.get(PaperAccount, 1)
+    start = (acct.starting_capital if acct else cfg.trading.capital_max_usdt) * s.capital_fraction
+    rows = sorted(
+        (p for p in _closed(session, assets=s.assets) if p.closed_at),
+        key=lambda p: p.closed_at or since,
+    )
+    out, eq = [(since, start)], start
+    for p in rows:
+        eq += p.pnl or Decimal(0)
+        out.append((p.closed_at or since, eq))
+    return out
+
+
+def evaluate(
+    session: Session, cfg: Config, now: datetime | None = None, sleeve: str | None = None
+) -> Verdict:
+    """The go-live criteria on the primary paper record; with ``sleeve``, on that sleeve's
+    trades and its own equity curve (owner 2026-10-10: each sleeve is evaluated alone)."""
     now = now or datetime.now(UTC)
-    series = _equity_series(session)
-    start = series[0][0] if series else now
+    book = _equity_series(session)
+    start = book[0][0] if book else now
+    series = _sleeve_series(session, cfg, sleeve, start) if sleeve else book
     days = (now - start).total_seconds() / 86400
-    closed = _closed(session)
+    closed = _closed(session, assets=cfg.sleeves[sleeve].assets if sleeve else None)
     wins = sum(float(p.pnl) for p in closed if p.pnl and p.pnl > 0)
     losses = -sum(float(p.pnl) for p in closed if p.pnl and p.pnl < 0)
     pf = Decimal(str(wins / losses)) if losses > 0 else (Decimal(99) if wins > 0 else Decimal(0))
     acct = session.get(PaperAccount, 1)
     trading_net = (acct.equity - acct.starting_capital) if acct else Decimal(0)
     costs = running_costs(session, start, now)
+    if sleeve:
+        trading_net = sum((p.pnl or Decimal(0) for p in closed), Decimal(0))
+        share = cfg.sleeves[sleeve].capital_fraction
+        costs = type(costs)(
+            **{**costs.__dict__, "total": costs.total * share}
+        )  # its share of costs
     net = trading_net - costs.total
     peak, dd = Decimal(0), Decimal(0)
     for _, eq in series:
@@ -186,15 +218,30 @@ def evaluate(session: Session, cfg: Config, now: datetime | None = None) -> Verd
 
 
 def decide(session: Session, cfg: Config, now: datetime | None = None) -> Verdict:
-    """Flip to live when every criterion holds; record the verdict either way."""
+    """Flip to live when every criterion holds; record the verdict either way. With
+    sleeves, each sleeve is judged on its own record and flips on its own; the process
+    goes live when the first sleeve does (the others keep trading on paper)."""
     now = now or datetime.now(UTC)
     verdict = evaluate(session, cfg, now)
     state = session.get(RiskState, 1)
     if state is None:
         return verdict
     state.last_golive_check = now
-    state.golive_report = [c.__dict__ for c in verdict.criteria]
-    if verdict.ready and state.mode != "live":
+    report: dict[str, Any] = {"book": [c.__dict__ for c in verdict.criteria]}
+    any_ready = verdict.ready and not cfg.sleeves
+    if cfg.sleeves:
+        modes = dict(state.sleeve_modes or {})
+        for name in cfg.sleeves:
+            v = evaluate(session, cfg, now, sleeve=name)
+            report[name] = [c.__dict__ for c in v.criteria]
+            if v.ready and modes.get(name) != "live":
+                modes[name] = "live"
+                any_ready = True
+            modes.setdefault(name, "shadow")
+        state.sleeve_modes = modes
+        any_ready = any_ready or any(m == "live" for m in modes.values())
+    state.golive_report = report
+    if any_ready and state.mode != "live":
         state.mode, state.live_since = "live", now
         state.leverage_ceiling = Decimal(2)
         state.capital_fraction = cfg.trading.live_start_fraction
