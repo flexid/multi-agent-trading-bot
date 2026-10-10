@@ -32,6 +32,7 @@ from app.db.models import (
     AccountSnapshot,
     AdminUser,
     AuditLog,
+    Candle,
     ControlRequest,
     Cycle,
     DataSource,
@@ -104,6 +105,15 @@ def asset_tick(value: Any) -> str:
 templates.env.filters["price"] = fmt_price
 templates.env.filters["tick"] = asset_tick
 templates.env.filters["agent"] = agent_display
+STANCE_CLASS = {"bullish": "up", "bearish": "down"}
+
+
+def stance_words(value: str) -> Markup:
+    """bullish in green, bearish in red; the value itself is escaped."""
+    return Markup(f'<span class="{STANCE_CLASS.get(value, "muted")}">{escape(value)}</span>')
+
+
+templates.env.filters["side_stance"] = stance_words
 templates.env.filters["crew"] = lambda agent_id: (
     BY_ID[agent_id].name if agent_id in BY_ID else agent_id
 )
@@ -592,6 +602,107 @@ def _p_sentiment(s: Session, cfg: Config, now: datetime, risk: RiskState | None)
     }
 
 
+MACRO_SOURCES: dict[str, tuple[str, str]] = {
+    "DGS2": ("2y treasury yield", "FRED"),
+    "DGS10": ("10y treasury yield", "FRED"),
+    "DTWEXBGS": ("broad dollar index", "FRED"),
+    "VIXCLS": ("VIX", "FRED"),
+    "SP500": ("S&P 500", "FRED"),
+    "NASDAQCOM": ("Nasdaq composite", "FRED"),
+    "XAUUSD": ("gold", "Bybit"),
+    "STABLES_USD": ("stablecoin supply", "DefiLlama"),
+    "FNG": ("Fear & Greed index", "alternative.me"),
+    "BTC_DOMINANCE": ("BTC dominance", "CoinGecko"),
+}
+
+
+def _p_xposts(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    """The labelled posts behind Ears, all assets, last 24 hours: the most credible first.
+    The text is untrusted and shown escaped, for the owner only."""
+    from app.agents.x_sentiment import WINDOW_H
+
+    rows = s.scalars(
+        select(XPostRecord)
+        .where(
+            XPostRecord.labeled_at.is_not(None),
+            XPostRecord.asset.is_not(None),
+            XPostRecord.created_at >= now - timedelta(hours=WINDOW_H),
+        )
+        .order_by(XPostRecord.credibility.desc().nulls_last(), XPostRecord.created_at.desc())
+        .limit(400)
+    ).all()
+    per_asset: dict[str, list[XPostRecord]] = {}
+    for r in rows:
+        bucket = per_asset.setdefault(r.asset or "", [])
+        if len(bucket) < 8:  # the eight most credible per asset
+            bucket.append(r)
+    ordered = [(a, per_asset[a]) for a in cfg.trading.assets if a in per_asset]
+    return {"xposts": ordered, "xposts_window_h": WINDOW_H, "xposts_total": len(rows)}
+
+
+def _p_pmarkets(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    """The prediction markets behind Orak: per asset the busiest markets that passed every
+    filter, with what they say and a link."""
+    from app.agents.polymarket import Coverage, _points
+    from app.db.models import PolymarketMarket
+
+    out = []
+    for asset in cfg.trading.assets:
+        ladder, updown = _points(s, asset, now, Coverage(asset))
+        if not ladder and not updown:
+            continue
+        ids = {p.market_id for p in ladder} | {u.market_id for u in updown}
+        by_id = {
+            m.id: m
+            for m in s.scalars(select(PolymarketMarket).where(PolymarketMarket.id.in_(ids))).all()
+        }
+        rows: list[dict[str, Any]] = []
+        for p in ladder:
+            rows.append(
+                {
+                    "m": by_id.get(p.market_id),
+                    "kind": f"{p.horizon} level",
+                    "says": f"P(≥ {p.threshold:,.6g}) = {p.p_above:.0%}",
+                    "volume": p.volume_24h,
+                    "hours": p.hours_to_resolution,
+                }
+            )
+        for u in updown:
+            rows.append(
+                {
+                    "m": by_id.get(u.market_id),
+                    "kind": f"up/down {u.window_min} min",
+                    "says": f"P(up) = {u.p_up:.0%}",
+                    "volume": u.volume_24h,
+                    "hours": u.hours_to_resolution,
+                }
+            )
+        rows.sort(key=lambda r: -float(r["volume"]))
+        out.append({"asset": asset, "used": len(rows), "rows": rows[:6]})
+    return {"pmarkets": out}
+
+
+def _p_macro_inputs(
+    s: Session, cfg: Config, now: datetime, risk: RiskState | None
+) -> dict[str, Any]:
+    """The series behind Storm: latest value, its date and where it comes from."""
+    from app.db.models import MacroObservation
+
+    rows = []
+    for series, (label, source) in MACRO_SOURCES.items():
+        last = s.execute(
+            select(MacroObservation.date, MacroObservation.value, MacroObservation.fetched_at)
+            .where(MacroObservation.series == series)
+            .order_by(MacroObservation.date.desc())
+            .limit(1)
+        ).first()
+        rows.append({"series": series, "label": label, "source": source, "last": last})
+    candles = s.execute(
+        select(func.count(), func.max(Candle.open_time)).where(Candle.interval == "15")
+    ).one()
+    return {"macro_inputs": rows, "candles_15m": candles}
+
+
 def _p_exposure(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
     from app.risk.exposure import betas, track_exposure
 
@@ -642,13 +753,17 @@ PANELS: dict[str, Any] = {
     "controls": _p_controls,
     "matrix": _p_matrix,
     "sentiment": _p_sentiment,
+    "xposts": _p_xposts,
+    "pmarkets": _p_pmarkets,
+    "macro_inputs": _p_macro_inputs,
 }
 # The pages of the dashboard and the panels each one shows (the templates include the same).
 PAGES: dict[str, tuple[str, ...]] = {
     "overview": ("money", "sleeves", "ledgers", "open", "controls"),
     "trades": ("open", "closed", "stops"),
     "risk": ("sleeves", "exposure", "betas", "stops"),
-    "readings": ("matrix", "sentiment", "djaf", "polymarket"),
+    "readings": ("matrix", "sentiment"),
+    "sources": ("xposts", "djaf", "pmarkets", "polymarket", "macro_inputs"),
     "costs": ("costs", "optima"),
     "system": ("freshness", "controls"),
 }
@@ -701,6 +816,11 @@ def risk_page(request: Request, user: str = Depends(current_user)) -> HTMLRespon
 @app.get("/readings", response_class=HTMLResponse)
 def readings_page(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
     return dashboard(request, user, "readings")
+
+
+@app.get("/sources", response_class=HTMLResponse)
+def sources_page(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
+    return dashboard(request, user, "sources")
 
 
 @app.get("/costs", response_class=HTMLResponse)
