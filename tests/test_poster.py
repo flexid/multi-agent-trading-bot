@@ -102,3 +102,49 @@ def test_every_template_passes_the_whitelist_with_and_without_a_reason() -> None
             )
         ).ok
     assert check("Short $BTC at 82,524.9, 2.0x. Stop 84,000, target 78,957.63.").ok
+
+
+def test_trade_card_renders_a_png_with_the_result() -> None:
+    from decimal import Decimal
+
+    from app.social.card import render
+
+    f = tpl.TradeFacts(
+        **{
+            **FACTS.__dict__,
+            "exit": Decimal("77.6"),
+            "pnl_price_pct": Decimal("0.047"),
+            "pnl_margin_pct": Decimal("0.136"),
+            "holding": "9 hours",
+            "paper": True,
+        }
+    )
+    png = render(f)
+    assert png[:8] == b"\x89PNG\r\n\x1a\n" and len(png) > 10_000
+
+
+async def test_highlight_close_gets_a_card_and_ordinary_closes_do_not() -> None:
+    from decimal import Decimal
+
+    from app.config import get_config
+    from app.social import poster
+
+    cfg = get_config()
+    good = tpl.TradeFacts(
+        **{
+            **FACTS.__dict__,
+            "exit": Decimal("80"),
+            "pnl_price_pct": Decimal("0.08"),
+            "pnl_margin_pct": Decimal("0.24"),
+        }
+    )
+    meh = tpl.TradeFacts(
+        **{
+            **FACTS.__dict__,
+            "exit": Decimal("75"),
+            "pnl_price_pct": Decimal("0.01"),
+            "pnl_margin_pct": Decimal("0.03"),
+        }
+    )
+    assert poster.is_highlight("close", good, cfg) and not poster.is_highlight("close", meh, cfg)
+    assert not poster.is_highlight("open", good, cfg)

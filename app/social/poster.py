@@ -69,8 +69,21 @@ def facts_for(pos: Position, cfg: Config, reason: str | None, paper: bool) -> tp
     )
 
 
+def is_highlight(kind: str, facts: tpl.TradeFacts, cfg: Config) -> bool:
+    return (
+        kind == "close"
+        and facts.pnl_margin_pct is not None
+        and facts.pnl_margin_pct >= cfg.posting.highlight_margin_pct
+    )
+
+
 async def compose(
-    kind: str, facts: tpl.TradeFacts, style: str, *, use_models: bool = True
+    kind: str,
+    facts: tpl.TradeFacts,
+    style: str,
+    *,
+    use_models: bool = True,
+    highlight: bool = False,
 ) -> tuple[str, str, bool, str | None]:
     """Returns (text, source, audit_ok, notes). Falls back to a template on any failure.
     Dry-run posts (nobody sees them) are templates only: no model spend."""
@@ -81,7 +94,7 @@ async def compose(
     try:
         notes = ""
         for attempt in (1, 2):  # one rewrite with the auditor's objections, then a template
-            request = {"kind": kind, "record": record, "style": style}
+            request = {"kind": kind, "record": record, "style": style, "highlight": highlight}
             if notes:
                 request["previous_draft_rejected_because"] = notes
             draft = await complete(
@@ -119,8 +132,9 @@ async def enqueue(
         raise ValueError("only primary/live-track trades are posted; pilot trades never are")
     now = now or datetime.now(UTC)
     paper = pos.mode == "paper"
+    facts = facts_for(pos, cfg, reason, paper)
     text, source, audit_ok, notes = await compose(
-        kind, facts_for(pos, cfg, reason, paper), style, use_models=not dry_run
+        kind, facts, style, use_models=not dry_run, highlight=is_highlight(kind, facts, cfg)
     )
     text = tpl.enforce_marker(text, paper)
     repeated = repeats_archive(session, cfg, text) if source == "writer" else None
@@ -242,11 +256,29 @@ def _oauth_header(secrets: Secrets, method: str, url: str) -> str:
     )
 
 
-async def send(secrets: Secrets, text: str, reply_to: str | None) -> str:
+async def upload_media(secrets: Secrets, png: bytes) -> str:
+    """X media upload (v1.1, OAuth 1.0a, multipart): the media id for a tweet."""
+    url = "https://upload.twitter.com/1.1/media/upload.json"
+    async with httpx.AsyncClient(timeout=30) as http:
+        r = await http.post(
+            url,
+            files={"media": ("card.png", png, "image/png")},
+            headers={"Authorization": _oauth_header(secrets, "POST", url)},
+        )
+    if r.status_code not in (200, 201):
+        raise RuntimeError(f"X media upload failed: HTTP {r.status_code} {r.text[:200]}")
+    return str(r.json()["media_id_string"])
+
+
+async def send(
+    secrets: Secrets, text: str, reply_to: str | None, media_id: str | None = None
+) -> str:
     url = "https://api.x.com/2/tweets"
     body: dict[str, object] = {"text": text}
     if reply_to:
         body["reply"] = {"in_reply_to_tweet_id": reply_to}
+    if media_id:
+        body["media"] = {"media_ids": [media_id]}
     async with httpx.AsyncClient(timeout=20) as http:
         r = await http.post(
             url, json=body, headers={"Authorization": _oauth_header(secrets, "POST", url)}
@@ -262,6 +294,26 @@ async def delete(secrets: Secrets, x_id: str) -> None:
         r = await http.delete(url, headers={"Authorization": _oauth_header(secrets, "DELETE", url)})
     if r.status_code != 200:
         raise RuntimeError(f"X delete failed: HTTP {r.status_code} {r.text[:200]}")
+
+
+async def _card_for(session: Session, cfg: Config, secrets: Secrets, row: XPostOut) -> str | None:
+    """The trade card's media id for a highlight close; None otherwise or when the upload
+    fails (the post still goes out as text)."""
+    if row.kind != "close" or row.position_id is None:
+        return None
+    pos = session.get(Position, row.position_id)
+    if pos is None:
+        return None
+    facts = facts_for(pos, cfg, None, pos.mode == "paper")
+    if not is_highlight("close", facts, cfg):
+        return None
+    try:
+        from app.social.card import render
+
+        return await upload_media(secrets, render(facts))
+    except Exception as exc:  # the card is a bonus; the text is the post
+        log.warning("trade card skipped for post %d: %s", row.id, exc)
+        return None
 
 
 async def flush(
@@ -287,7 +339,8 @@ async def flush(
             row.scheduled_at = now.replace(hour=23, minute=55, second=0, microsecond=0)
             continue
         try:
-            row.x_id = await send(secrets, row.text, row.reply_to_x_id)
+            media_id = await _card_for(session, cfg, secrets, row)
+            row.x_id = await send(secrets, row.text, row.reply_to_x_id, media_id)
             row.posted_at = now
             sent += 1
         except Exception as exc:

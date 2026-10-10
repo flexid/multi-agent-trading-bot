@@ -67,6 +67,9 @@ class PostingConfig(_Section):
     max_posts_per_day: int
     post_in_shadow: bool
     cashtags: dict[str, str]
+    # A close with at least this margin result gets the trade card and an openly pleased
+    # post (owner, 2026-10-09).
+    highlight_margin_pct: Decimal = Decimal("0.10")
 
 
 class RiskConfig(_Section):

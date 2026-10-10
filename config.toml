@@ -44,6 +44,7 @@ style = "plain"                 # normal capitalization, direct; dry humour allo
 delay_minutes = [1, 10]
 max_posts_per_day = 20
 post_in_shadow = true           # owner: shadow trades are posted, written and audited like live, with a marker
+highlight_margin_pct = 0.10     # a close at +10% on margin or better gets the trade card and a pleased post
 
 [posting.cashtags]
 BTC = "$BTC"
