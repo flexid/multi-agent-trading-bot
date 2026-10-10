@@ -65,6 +65,48 @@ def formula_score(
     return (weighted / total if total > 0 else 0.0), len(valid)
 
 
+CHART_READINGS = ("indicators", "chart_patterns")
+X_READINGS = ("x_sentiment", "catalysts")
+CHARTS_FLAT = 0.05  # below this the charts say nothing
+
+
+def charts_first_score(
+    outputs: list[AgentOutput], coupling: float | None, weights: dict[str, float] | None = None
+) -> float | None:
+    """A shadow of the formula score in which price leads and X only confirms (owner
+    2026-10-10, logged beside the real score and compared at the review; it decides
+    nothing).
+
+    The charts' direction is the weighted mean of the tape and the chart-pattern readings.
+    - X sentiment counts only when it points the same way as the charts; against them, or
+      with flat charts, its weight is zero (X never vetoes a setup, never opens a trade).
+    - Catalysts: a bullish reading counts only with bullish charts; a bearish one (a hack,
+      a delisting, an unlock) counts whenever the charts have a direction, so hard news
+      can still brake a long.
+    Everything else is weighted as in ``formula_score``."""
+    valid = [o for o in outputs if o.valid]
+    if len(valid) < MIN_VALID_AGENTS:
+        return None
+    table = weights or WEIGHTS
+    charts = [o for o in valid if o.agent in CHART_READINGS]
+    cw = sum(table.get(o.agent, 0.0) for o in charts)
+    chart = sum(table.get(o.agent, 0.0) * o.score for o in charts) / cw if cw > 0 else 0.0
+    side = 0 if abs(chart) < CHARTS_FLAT else (1 if chart > 0 else -1)
+    total = 0.0
+    weighted = 0.0
+    for o in valid:
+        w = table.get(o.agent, 0.0)
+        if o.agent == "macro":
+            w *= coupling if coupling is not None else 0.0
+        if o.agent == "x_sentiment" and (side == 0 or o.score * side <= 0):
+            continue
+        if o.agent == "catalysts" and (side == 0 or (o.score > 0 and side < 0)):
+            continue
+        weighted += w * o.score
+        total += w
+    return weighted / total if total > 0 else 0.0
+
+
 def _merge(a: Proposal, b: Proposal) -> Proposal:
     """Conviction-weighted merge of two same-direction proposals' geometry."""
     wa, wb = max(a.conviction, 1e-6), max(b.conviction, 1e-6)

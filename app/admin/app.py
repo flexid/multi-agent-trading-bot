@@ -770,6 +770,14 @@ def _p_server(s: Session, cfg: Config, now: datetime, risk: RiskState | None) ->
     }
 
 
+def _p_charts_first(
+    s: Session, cfg: Config, now: datetime, risk: RiskState | None
+) -> dict[str, Any]:
+    from app.decision.charts_first import CALL, compare
+
+    return {"charts_first": compare(s, cfg, now - timedelta(days=90)), "charts_first_call": CALL}
+
+
 def _p_exposure(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
     from app.risk.exposure import betas, track_exposure
 
@@ -824,13 +832,14 @@ PANELS: dict[str, Any] = {
     "pmarkets": _p_pmarkets,
     "macro_inputs": _p_macro_inputs,
     "server": _p_server,
+    "charts_first": _p_charts_first,
 }
 # The pages of the dashboard and the panels each one shows (the templates include the same).
 PAGES: dict[str, tuple[str, ...]] = {
     "overview": ("money", "sleeves", "ledgers", "open", "controls"),
     "trades": ("open", "closed", "stops"),
     "risk": ("sleeves", "exposure", "betas", "stops"),
-    "readings": ("matrix", "sentiment"),
+    "readings": ("matrix", "sentiment", "charts_first"),
     "sources": ("xposts", "djaf", "pmarkets", "polymarket", "macro_inputs"),
     "costs": ("costs", "optima"),
     "system": ("server", "freshness", "controls"),

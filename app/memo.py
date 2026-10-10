@@ -229,7 +229,15 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
         "polymarket_coverage": pm_cov,
         "x_mentions": buzz,
         "optima": optima_facts(session),
+        "charts_first": charts_first_facts(session, cfg, now),
     }
+
+
+def charts_first_facts(session: Session, cfg: Config, now: datetime) -> list[dict[str, Any]]:
+    """The logged charts-first score against the real one (owner 2026-10-10)."""
+    from app.decision.charts_first import compare
+
+    return compare(session, cfg, now - timedelta(days=90))
 
 
 def optima_facts(session: Session) -> dict[str, Any] | None:
@@ -336,6 +344,19 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
         ic = "n/a" if r["ic_1d"] is None else f"{r['ic_1d']:+.2f}"
         lines.append(f"- {r['kind']} {r['name']}: IC {ic} on {r['sample']} samples")
     lines.append(f"- weights: {f['agent_weights']}")
+    cf = f.get("charts_first") or []
+    if cf:
+        lines += ["", "## Charts first vs the real score (logged only, for the review)"]
+        for r in cf:
+            share = r["calls_differ_share"]
+            ic_r = "n/a" if r["ic_formula"] is None else f"{r['ic_formula']:+.2f}"
+            ic_c = "n/a" if r["ic_charts_first"] is None else f"{r['ic_charts_first']:+.2f}"
+            lines.append(
+                f"- {r['sleeve']}: {r['decisions']} decisions, X changed the call in "
+                f"{r['calls_differ']}"
+                + (f" ({share:.0%})" if share is not None else "")
+                + f"; IC 1d real {ic_r} vs charts first {ic_c}"
+            )
     lines += ["", "## Plumbing"]
     lines.append(f"- risk rule hits: {f['risk_rule_hits'] or 'none'}")
     lines.append(f"- posts: {f['posts']}")

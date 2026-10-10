@@ -27,7 +27,7 @@ from app.agents.schema import AgentOutput
 from app.config import Config, get_config
 from app.db.models import AgentOutputRecord, Cycle, DecisionRecord, LLMCall, PMProposalRecord
 from app.db.session import new_session
-from app.decision.consensus import Consensus, consensus, weights_for
+from app.decision.consensus import Consensus, charts_first_score, consensus, weights_for
 from app.decision.evidence import build_pack
 from app.decision.pm import Proposal, ask_both
 from app.decision.tuning import current_weights
@@ -179,6 +179,7 @@ def store_decisions(
     spots: dict[str, float],
     pm1: dict[str, Proposal],
     pm2: dict[str, Proposal],
+    charts_first: dict[str, float | None] | None = None,
 ) -> None:
     with new_session() as session:
         for asset, c in results.items():
@@ -193,6 +194,7 @@ def store_decisions(
                     spot=_dec(spots.get(asset)) if spots.get(asset) else None,
                     valid_agents=c.valid_agents,
                     formula_score=c.formula_score,
+                    charts_first_score=(charts_first or {}).get(asset),
                     pm1_direction=pm1[asset].direction.value if asset in pm1 else None,
                     pm2_direction=pm2[asset].direction.value if asset in pm2 else None,
                     agreement=c.agreement.value,
@@ -307,7 +309,16 @@ async def run_cycle(
             )
             for asset in cfg.trading.assets
         }
-        store_decisions(cycle_id, now, results, spots, pm1, pm2)
+        # Logged only: the same formula with price leading and X confirming (review input).
+        shadow_scores = {
+            asset: charts_first_score(
+                by_asset[asset],
+                couplings.get(asset),
+                weights_for(weights, asset_overrides(cfg, asset)),
+            )
+            for asset in cfg.trading.assets
+        }
+        store_decisions(cycle_id, now, results, spots, pm1, pm2, shadow_scores)
         with new_session() as session:
             assessments = apply_risk(session, cfg, cycle_id, mode, now)
         for asset, a in assessments.items():

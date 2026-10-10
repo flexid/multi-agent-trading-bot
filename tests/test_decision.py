@@ -160,3 +160,62 @@ def test_per_asset_weight_overrides_lean_spx6900_on_x_sentiment() -> None:
     leaning, _ = formula_score(outs, None, spx)
     assert plain is not None and leaning is not None and leaning > plain
     assert weights_for(base, None) == base  # no override: the tuned weights as they are
+
+
+def _out(agent: str, score: float, valid: bool = True) -> AgentOutput:
+    from app.agents.schema import Horizon
+
+    return AgentOutput(
+        agent=agent,
+        asset="ENA",
+        score=score,
+        confidence=0.6,
+        horizon=Horizon.D1,
+        evidence=["e"],
+        data_age_min=0 if valid else 99,
+    )
+
+
+def test_charts_first_lets_x_confirm_but_never_veto_or_open() -> None:
+    from app.decision.consensus import charts_first_score, formula_score
+
+    w = {"indicators": 0.25, "chart_patterns": 0.25, "x_sentiment": 0.25, "catalysts": 0.25}
+    up = [_out("indicators", 0.4), _out("chart_patterns", 0.4)]
+    # X agrees: counted, identical to the real formula
+    agree = [*up, _out("x_sentiment", 0.8)]
+    assert charts_first_score(agree, None, w) == pytest.approx(formula_score(agree, None, w)[0])
+    # X disagrees: dropped, so the chart setup stands where the real score is dragged down
+    veto = [*up, _out("x_sentiment", -0.8)]
+    assert charts_first_score(veto, None, w) == pytest.approx(0.4)
+    assert formula_score(veto, None, w)[0] == pytest.approx(0.0)
+    # flat charts: X alone opens nothing
+    flat = [_out("indicators", 0.01), _out("chart_patterns", -0.01), _out("x_sentiment", 0.9)]
+    assert charts_first_score(flat, None, w) == pytest.approx(0.0)
+    assert formula_score(flat, None, w)[0] == pytest.approx(0.3)
+    # hard news brakes a long; a bullish catalyst does not rescue a short
+    brake = [*up, _out("catalysts", -0.6)]
+    assert charts_first_score(brake, None, w) == pytest.approx((0.4 * 0.5 - 0.6 * 0.25) / 0.75)
+    down = [_out("indicators", -0.4), _out("chart_patterns", -0.4), _out("catalysts", 0.6)]
+    assert charts_first_score(down, None, w) == pytest.approx(-0.4)
+    # too few valid readings: no score, like the formula
+    assert charts_first_score([_out("indicators", 0.4), _out("x_sentiment", 0.4)], None, w) is None
+
+
+def test_charts_first_comparison_counts_changed_calls_and_called_returns() -> None:
+    from app.decision.charts_first import call, summarize
+
+    assert (call(0.2), call(-0.2), call(0.05)) == (1, -1, 0)
+    rows = [
+        (0.30, 0.30, 0.02),  # same call, right
+        (0.00, 0.40, 0.03),  # X held the real score flat; charts first called it, right
+        (-0.20, 0.20, -0.01),  # opposite calls; the real one was right
+        (0.15, 0.15, None),  # no return yet
+    ]
+    s = summarize(rows)
+    assert (s["decisions"], s["calls_differ"], s["with_return"]) == (4, 2, 3)
+    assert s["calls_differ_share"] == 0.5
+    assert s["formula_calls"] == 2 and s["formula_called_return"] == pytest.approx(0.015)
+    assert s["charts_first_calls"] == 3
+    assert s["charts_first_called_return"] == pytest.approx((0.02 + 0.03 - 0.01) / 3)
+    assert s["ic_formula"] is None and s["ic_charts_first"] is None  # fewer than thirty
+    assert summarize([])["calls_differ_share"] is None

@@ -401,6 +401,12 @@ def budget_facts(session: Session, cfg: Config, now: datetime) -> dict[str, Any]
     return out
 
 
+def _charts_first(session: Session, cfg: Config, now: datetime) -> list[dict[str, Any]]:
+    from app.decision.charts_first import compare
+
+    return compare(session, cfg, now - timedelta(days=IC_DAYS))
+
+
 def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     return {
@@ -408,6 +414,7 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
         "cost_value": cost_value_facts(session, cfg, now),
         "execution": execution_facts(session, cfg, now),
         "budget": budget_facts(session, cfg, now),
+        "charts_first": _charts_first(session, cfg, now),
     }
 
 

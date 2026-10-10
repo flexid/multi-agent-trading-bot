@@ -362,6 +362,7 @@ class DecisionRecord(Base):
     spot: Mapped[Decimal | None]
     valid_agents: Mapped[int] = mapped_column(Integer)
     formula_score: Mapped[float | None]
+    charts_first_score: Mapped[float | None]  # shadow: price leads, X confirms (logged only)
     pm1_direction: Mapped[str | None] = mapped_column(String(6))
     pm2_direction: Mapped[str | None] = mapped_column(String(6))
     agreement: Mapped[str] = mapped_column(String(10))  # agree | partial | opposite | failed
