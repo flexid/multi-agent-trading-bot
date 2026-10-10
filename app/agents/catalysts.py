@@ -156,6 +156,63 @@ def mentioned_asset(text: str, assets: list[str]) -> str | None:
     return None
 
 
+def third_party_handles(cfg: Config) -> list[str]:
+    """Accounts whose posts can be catalysts without being the project itself: the owner's
+    curated list and the catalyst agent's news accounts."""
+    from app.agents.x_sentiment import curated_handles
+
+    return curated_handles(cfg)
+
+
+def events_from_posts(session: Session, cfg: Config, now: datetime, hours: int = 48) -> int:
+    """Posts already fetched from the third-party accounts that name a sleeve asset become
+    pending catalyst events (owner 2026-10-10). No extra X reads: the sentiment fetch
+    stored them. Returns how many were added."""
+    from app.db.models import XPostRecord
+
+    assets = sleeve_assets(cfg)
+    handles = third_party_handles(cfg)
+    if not assets or not handles:
+        return 0
+    rows = session.scalars(
+        select(XPostRecord).where(
+            XPostRecord.author.in_(handles),
+            XPostRecord.fetched_at >= now - timedelta(hours=hours),
+        )
+    ).all()
+    have = set(
+        session.execute(
+            select(CatalystEvent.source_id).where(
+                CatalystEvent.source == "x",
+                CatalystEvent.fetched_at >= now - timedelta(hours=hours + 24),
+            )
+        ).scalars()
+    )
+    added = 0
+    for r in rows:
+        if r.id in have:
+            continue
+        hint = mentioned_asset(r.text, assets)
+        if hint is None:
+            continue
+        session.add(
+            CatalystEvent(
+                source="x",
+                source_id=r.id,
+                author=r.author,
+                url=f"https://x.com/{r.author}/status/{r.id}",
+                text=r.text[:2000],
+                event_at=r.created_at or now,
+                fetched_at=now,
+                hint_asset=hint,
+            )
+        )
+        have.add(r.id)
+        added += 1
+    session.commit()
+    return added
+
+
 # --- unlocks (structured: labelled by code) -----------------------------------------
 
 
@@ -379,6 +436,8 @@ def event_weight(
     kind = str(lab.get("type") or "other")
     if official and kind in PROMO_TYPES and materiality < OFFICIAL_PROMO_MIN_MATERIALITY:
         return 0.0
+    if row.source == "x" and not official and kind == "other":
+        return 0.0  # a third party's opinion is sentiment (Ears), not a catalyst
     sign = DIRECTION_SIGN.get(str(lab.get("direction") or "neutral"), 0.0)
     if official and sign > 0:
         sign *= OFFICIAL_BULLISH_FACTOR

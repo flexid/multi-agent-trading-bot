@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import logging
 import sys
 from datetime import UTC, datetime, timedelta
@@ -61,13 +62,27 @@ async def run_agents(
                 couplings[o.asset] = 0.0
         return outs
 
+    x_done = asyncio.Event()
+
+    async def ears() -> list[AgentOutput]:
+        try:
+            return await run_x.run(cfg, fetch=x_fetch, cycle_id=cycle_id)
+        finally:
+            x_done.set()
+
+    async def djaf() -> list[AgentOutput]:
+        # after Ears: the catalyst agent reads the curated posts the X fetch just stored
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(x_done.wait(), timeout=180)
+        return await run_catalysts.run(cfg, fetch=x_fetch, cycle_id=cycle_id)
+
     tasks = {
         "indicators": indicators(),
         "polymarket": asyncio.to_thread(run_polymarket.run, cfg),
         "macro": macro(),
-        "x_sentiment": run_x.run(cfg, fetch=x_fetch, cycle_id=cycle_id),
+        "x_sentiment": ears(),
         "chart_patterns": run_chart.run(cfg, vision=vision, cycle_id=cycle_id),
-        "catalysts": run_catalysts.run(cfg, fetch=x_fetch, cycle_id=cycle_id),  # alts only
+        "catalysts": djaf(),  # alts only
     }
     results = await asyncio.gather(*tasks.values(), return_exceptions=True)
     for name, result in zip(tasks, results, strict=True):

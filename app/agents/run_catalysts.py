@@ -43,7 +43,10 @@ async def fetch_accounts(session: Session, cfg: Config, client: XClient, now: da
     budget_left = cfg.budget.x_reads_per_day - reads_today(session, now)
     allowance = min(cfg.catalysts.reads_per_cycle_max, budget_left)
     stored = 0
-    for handle in cfg.catalysts.accounts:
+    # Timelines only for the projects' own accounts; the news accounts and the owner's
+    # list arrive through the ticker-filtered search (events_from_posts).
+    own = [h for h in cfg.catalysts.accounts if h in cfg.catalysts.official]
+    for handle in own or cfg.catalysts.accounts:
         if allowance < POSTS_PER_ACCOUNT:
             break
         try:
@@ -104,6 +107,7 @@ async def run(cfg: Config, *, fetch: bool = True, cycle_id: int | None = None) -
         if fetch:
             async with XClient(get_secrets().x_bearer_token) as client:
                 await fetch_accounts(session, cfg, client, now)
+        cat.events_from_posts(session, cfg, now)
         await cat.classify_pending(session, cfg, shadow=in_shadow(session), cycle_id=cycle_id)
         return [cat.evaluate(session, a, _age_min(session, now), now) for a in assets]
 

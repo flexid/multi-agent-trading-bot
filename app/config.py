@@ -120,6 +120,8 @@ class XConfig(_Section):
     accounts: list[str] = Field(default_factory=list)
     search_per_asset: int = 20
     reads_per_cycle_max: int = 90
+    query_max_chars: int = 512  # X recent-search query length limit on this tier
+    curated_per_query: int = 20  # posts asked per filtered query over the curated accounts
 
 
 class SiteConfig(_Section):

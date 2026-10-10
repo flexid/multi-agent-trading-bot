@@ -135,3 +135,28 @@ def test_search_order_rotates_per_cycle_slot() -> None:
     assert first == set(assets)  # every asset leads once over four cycles
     assert sorted(xs.search_order(assets, NOW, 4)) == sorted(assets)
     assert xs.search_order([], NOW, 4) == []
+
+
+def test_curated_queries_fit_the_limit_and_cover_every_handle() -> None:
+    handles = [f"account_number_{i}" for i in range(40)]
+    assets = ["BTC", "ETH", "PUMP", "SPX6900", "ENA"]
+    queries = xs.curated_queries(handles, assets, 512)
+    assert len(queries) > 1 and all(len(q) <= 512 for q in queries)
+    assert sum(q.count("from:") for q in queries) == 40
+    q = queries[0]
+    assert q.startswith("(from:account_number_0 OR ") and q.endswith(" -is:retweet")
+    assert "$PUMP" in q and " PUMP " not in q and " SPX " not in q  # no bare ambiguous words
+    assert "$BTC" in q and "bitcoin" in q
+    assert xs.curated_queries([], assets, 512) == [] and xs.curated_queries(handles, [], 512) == []
+
+
+def test_curated_handles_leave_out_the_projects_own_accounts() -> None:
+    from app.config import get_config
+
+    cfg = get_config()
+    handles = xs.curated_handles(cfg)
+    assert "ethena" not in handles and "Bybit_Official" in handles and "saylor" in handles
+    assert all(
+        len(q) <= cfg.x.query_max_chars
+        for q in xs.curated_queries(handles, cfg.trading.assets, cfg.x.query_max_chars)
+    )

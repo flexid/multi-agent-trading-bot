@@ -198,6 +198,8 @@ def test_official_accounts_count_half_when_bullish_and_only_twice() -> None:
     # promotional posts from the project need more materiality
     promo = event(10, kind="other", direction="bullish", materiality=0.3, source="x", age_h=0)
     assert cat.event_weight(promo, NOW, official=True) == 0.0
+    assert cat.event_weight(promo, NOW, official=False) == 0.0  # a third party's opinion
+    promo.source = "bybit"
     assert cat.event_weight(promo, NOW, official=False) == pytest.approx(0.09)
     assert get_config().catalysts.official == {
         "pepecoineth": "PEPE",
@@ -302,3 +304,23 @@ async def test_judge_retries_once_logs_cost_and_fails_closed(
 
     assert cost_usd(get_config().llm.pricing, "jev-1.13.0", Usage(1_000_000, 500)) == D("0.042")
     assert Prompt("catalysts", 1, "").version == 1
+
+
+def test_third_party_accounts_are_the_owners_list_plus_the_news_accounts() -> None:
+    cfg = get_config()
+    handles = cat.third_party_handles(cfg)
+    assert "WuBlockchain" in handles and "DefiLlama" in handles
+    assert not set(h.lower() for h in handles) & {h.lower() for h in cfg.catalysts.official}
+    assert len(handles) == len({h.lower() for h in handles})  # no duplicates
+
+
+def test_a_third_party_opinion_is_not_a_catalyst_but_its_news_is() -> None:
+    opinion = event(1, kind="other", direction="bearish", materiality=0.6, source="x", age_h=0)
+    opinion.author = "WuBlockchain"
+    news = event(2, kind="hack", direction="bearish", materiality=0.6, source="x", age_h=0)
+    news.author = "WuBlockchain"
+    score, _, evidence, _ = cat.score_events(
+        [opinion, news], "ENA", NOW, official={"ethena": "ENA"}
+    )
+    assert score == pytest.approx(-0.6)  # the hack in full, the opinion nothing
+    assert len(evidence) == 1 and "hack bearish via @WuBlockchain" in evidence[0]

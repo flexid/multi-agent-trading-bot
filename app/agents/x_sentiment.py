@@ -91,6 +91,59 @@ ASSET_TEXT = {
     "SPX6900": "the SPX6900 memecoin (ticker SPX; not the S&P 500 index)",
     "ENA": "Ethena, the synthetic dollar protocol token (ticker ENA)",
 }
+# How a curated account names each asset: the filter of the search over the owner's
+# accounts (owner 2026-10-10). Bare PUMP, SPX and ENA are left out: "pump" is a word, SPX
+# an index, so only the cashtag or the project's name counts there.
+TICKER_TERMS = {
+    "BTC": ("BTC", "$BTC", "bitcoin"),
+    "ETH": ("ETH", "$ETH", "ethereum"),
+    "SOL": ("SOL", "$SOL", "solana"),
+    "XRP": ("XRP", "$XRP"),
+    "DOGE": ("DOGE", "$DOGE", "dogecoin"),
+    "PEPE": ("PEPE", "$PEPE"),
+    "HBAR": ("HBAR", "$HBAR", "hedera"),
+    "PUMP": ("$PUMP", "pumpfun"),
+    "SPX6900": ("$SPX", "SPX6900"),
+    "ENA": ("$ENA", "ethena"),
+}
+CURATED_SUFFIX = " -is:retweet"
+
+
+def curated_queries(handles: list[str], assets: list[str], max_chars: int) -> list[str]:
+    """Search queries that return only posts from ``handles`` naming one of ``assets``:
+    ``(from:a OR from:b ...) (BTC OR $BTC ...) -is:retweet``, as many handles per query
+    as fit in ``max_chars``. X does the filtering, so only matching posts are billed."""
+    terms = " OR ".join(t for a in assets for t in TICKER_TERMS.get(a, ()))
+    if not terms or not handles:
+        return []
+    tail = f" ({terms}){CURATED_SUFFIX}"
+    room = max_chars - len(tail) - 2  # the brackets around the from-list
+    queries: list[str] = []
+    batch: list[str] = []
+    for h in handles:
+        piece = f"from:{h}"
+        if batch and len(" OR ".join([*batch, piece])) > room:
+            queries.append(f"({' OR '.join(batch)}){tail}")
+            batch = []
+        batch.append(piece)
+    if batch:
+        queries.append(f"({' OR '.join(batch)}){tail}")
+    return [q for q in queries if len(q) <= max_chars]
+
+
+def curated_handles(cfg: Config) -> list[str]:
+    """The owner's accounts plus the catalyst agent's third-party ones. The projects' own
+    accounts are read as timelines by the catalyst agent, not here."""
+    official = {h.lower() for h in cfg.catalysts.official}
+    seen: set[str] = set()
+    out: list[str] = []
+    for h in [*cfg.x.accounts, *cfg.catalysts.accounts]:
+        if h and h.lower() not in official and h.lower() not in seen:
+            seen.add(h.lower())
+            out.append(h)
+    return out
+
+
 MEME_ASSETS = {
     "DOGE",
     "SPX6900",
@@ -171,23 +224,40 @@ async def fetch_posts(session: Session, cfg: Config, client: XClient, now: datet
             new += 1
         return new
 
-    # A third of the allowance to the curated accounts (quality), the rest to search
-    # (breadth); the asset order rotates per cycle so every asset gets its turn when the
-    # allowance does not cover all ten (2026-10-10: the alts never got searched).
-    accounts = [a for a in cfg.x.accounts if a]
-    account_share = allowance // 3 if accounts else 0
-    per_account = max(5, account_share // max(len(accounts), 1)) if accounts else 0
-    for handle in accounts:
-        if account_share < 5:
+    # The curated accounts first, through a search X filters by ticker (owner 2026-10-10:
+    # the timelines covered 8 of 63 accounts). Only matching posts come back, and a
+    # since-marker keeps the next cycle from paying for the same posts again.
+    handles = curated_handles(cfg)
+    canonical = {h.lower(): h for h in handles}
+    known = session.execute(
+        select(XPostRecord.id).where(
+            XPostRecord.author.in_(handles),
+            XPostRecord.fetched_at >= now - timedelta(days=6),
+        )
+    ).scalars()
+    since_id = max((int(i) for i in known if str(i).isdigit()), default=None)
+    for query in curated_queries(handles, cfg.trading.assets, cfg.x.query_max_chars):
+        if allowance < 10:
             break
         try:
-            user = await client.user_by_username(handle)
-            posts = await client.user_timeline(user.id, per_account)
-        except Exception:  # one bad handle must not stop the cycle
+            posts = await client.search_recent(
+                query,
+                max_results=cfg.x.curated_per_query,
+                since_id=str(since_id) if since_id else None,
+                start_time=None if since_id else now - timedelta(hours=24),
+                with_authors=True,
+            )
+        except Exception as exc:  # one refused query must not stop the cycle
+            log.warning("curated search failed: %s", str(exc)[:200])
             continue
-        account_share -= max(len(posts), 5)
-        allowance -= max(len(posts), 5)
-        stored += store(posts, None, handle)
+        allowance -= len(posts)
+        by_author: dict[str, list[XPost]] = {}
+        for p in posts:
+            handle = canonical.get((p.username or "").lower())
+            if handle:
+                by_author.setdefault(handle, []).append(p)
+        for handle, mine in by_author.items():
+            stored += store(mine, None, handle)
 
     per_asset = max(10, min(cfg.x.search_per_asset, allowance // len(cfg.trading.assets)))
     for asset in search_order(cfg.trading.assets, now, cfg.trading.cycle_hours):
