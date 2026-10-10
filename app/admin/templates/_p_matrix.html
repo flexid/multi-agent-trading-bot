@@ -1,4 +1,4 @@
-<article><header>Latest readings · all ten assets</header>
+<article><header>Latest readings, all ten assets · <b>the crew</b></header>
 {% if not matrix %}<p class="muted">No finished cycle yet.</p>{% else %}
 <p class="muted small" style="margin-bottom:.6rem">Cycle <a href="/decisions?cycle={{ matrix.cycle.id }}">#{{ matrix.cycle.id }}</a> ({{ matrix.cycle.kind }}, {{ matrix.cycle.started_at.strftime('%m-%d %H:%M') }} UTC). Each cell is the score from −1 (bearish) to +1 (bullish) with the confidence below it; a struck-through cell was stale and did not count.</p>
 {% for g in matrix.groups %}<h6 style="margin:.9rem 0 .3rem">{{ g.name }} <span class="muted small">average formula score <span class="{{ 'up' if g.mean_formula and g.mean_formula > 0 else 'down' if g.mean_formula and g.mean_formula < 0 else '' }}">{{ '–' if g.mean_formula is none else '%+.2f'|format(g.mean_formula) }}</span></span></h6>

@@ -1,4 +1,4 @@
-<article><header>Optima · cost, execution, budget (advisory)</header>
+<article><header>Cost, execution, budget · <b>Optima</b></header>
 {% if optima is none %}<p class="muted">No Optima run yet. It runs every Monday at 05:30 UTC, before the memo.</p>{% else %}
 {% set b = (optima.facts or {}).get('budget') or {} %}
 <div class="row"><div class="tile"><div class="k">API spend forecast</div><div class="v {{ 'down' if b.get('forecast_usd', 0) > b.get('budget_usd', 0) else '' }}">${{ '%.0f'|format(b.get('forecast_usd', 0)) }}</div><div class="muted">of ${{ '%.0f'|format(b.get('budget_usd', 0)) }} · ${{ '%.2f'|format(b.get('month_to_date_usd', 0)) }} so far · ${{ '%.2f'|format(b.get('daily_rate_usd', 0)) }}/day</div></div><div class="tile"><div class="k">run</div><div class="v">{{ optima.ts.strftime('%m-%d %H:%M') }}</div><div class="muted">{{ optima.model }} · ${{ '%.3f'|format(optima.cost_usd) }}</div></div>{% if optima.report %}<div class="tile"><div class="k">budget</div><div class="v {{ 'up' if optima.report.budget_on_track else 'down' }}">{{ 'on track' if optima.report.budget_on_track else 'over' }}</div></div>{% endif %}</div>

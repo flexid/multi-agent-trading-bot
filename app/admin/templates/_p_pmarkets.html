@@ -1,4 +1,4 @@
-<article><header>Prediction markets behind Orak</header>
+<article><header>Prediction markets · <b>Orak</b></header>
 {% if not pmarkets %}<p class="muted">No usable markets right now.</p>{% else %}
 <p class="muted small" style="margin-bottom:.6rem">Per asset, the six busiest markets that passed every filter (volume, time to resolution, a price). Orak counts for the bluechips; for the alts it is shown for reference only.</p>
 {% for g in pmarkets %}<details {{ 'open' if loop.first else '' }}><summary><b>{{ g.asset|tick }}</b> <span class="muted small">{{ g.used }} markets used</span></summary>

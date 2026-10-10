@@ -1,4 +1,4 @@
-<article><header>Market and macro inputs behind Storm, Cassette and Squint</header>
+<article><header>Macro and market inputs · <b>Storm</b>, <b>Cassette</b>, <b>Squint</b></header>
 <div class="overflow"><table><tr><th>input</th><th>series</th><th class="num">latest</th><th>as of</th><th>source</th><th>fetched</th></tr>{% for r in macro_inputs %}<tr><td>{{ r.label }}</td><td class="muted">{{ r.series }}</td><td class="num">{{ '–' if not r.last else '{:,.2f}'.format(r.last[1]) }}</td><td class="muted">{{ r.last[0].strftime('%Y-%m-%d') if r.last else '–' }}</td><td>{{ r.source }}</td><td class="muted">{{ r.last[2].strftime('%m-%d %H:%M') if r.last else 'never' }}</td></tr>{% endfor %}</table></div>
 <p class="muted small" style="margin:.6rem 0 0">Cassette (indicators) and Squint (chart patterns) read Bybit spot candles and order books only: {{ '{:,}'.format(candles_15m[0]) }} fifteen-minute candles stored, the newest from {{ candles_15m[1].strftime('%m-%d %H:%M') if candles_15m[1] else '–' }} UTC. Funding and open interest come from Bybit's public perpetual data. Freshness per feed is on the System page.</p>
 </article>
