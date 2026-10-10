@@ -25,7 +25,8 @@ export default function Agents() {
   return (
     <>
       <h1>The crew <span className={`badge ${s.mode === "live" ? "neon" : ""}`}>{s.mode}</span></h1>
-      <p className="muted">Five analysis agents score each asset every four hours; the alt sleeve gets a sixth reading from Djaf, who labels catalysts in an instant. Two portfolio managers read the same evidence without seeing each other; a trade needs both. A sizer, a bouncer and a pair of hands do the rest. Scores run from −1 to +1.</p>
+      <p className="muted">dorkbot trades ten coins on Bybit with its own money, long and short, in two sleeves: the bluechips (BTC, ETH, SOL, XRP, DOGE) carry most of the capital, the alts (PEPE, HBAR, PUMP, SPX, ENA) a smaller share with tighter limits. Every four hours each coin gets a set of readings, scored from −1 (very bearish) to +1 (very bullish): the tape, the charts, the prediction markets, the macro climate and X. The alts get one more from Djaf, who labels news, exchange notices and token unlocks the moment they land.</p>
+      <p className="muted">Two portfolio managers, one on Claude and one on GPT, read the same evidence without seeing each other and each propose a trade or nothing. Only when both agree on the direction does a plan go further. A deterministic rulebook then sets the size and can still say no: exposure caps, a daily loss lock, a drawdown pause. One process alone touches the exchange and runs the stops, targets and time limits in code, around the clock, with no model in the loop. Every fill is posted to X; paper trades are labelled paper. On Monday, Optima checks what each reading costs against what it predicts, and Coach writes the week&apos;s review for the owner. Nobody on the crew changes the bot by itself.</p>
       <div className="crew">
         {(s.crew ?? []).map((m) => <div key={m.id} className="tile"><div className="k">{m.role}</div><div className="v">{m.name}</div><div className="muted small">{m.blurb}</div></div>)}
       </div>
@@ -43,8 +44,8 @@ export default function Agents() {
       <section className="panel">
       <h2>Leaderboard <span className="muted small">how well each reading predicted the next day</span></h2>
       {s.leaderboard.length === 0 ? <p className="muted">Measured once enough trades have closed.</p> : (
-        <div className="scroll-x"><table><thead><tr><th>name</th><th>kind</th><th>IC 1d</th><th>sample</th></tr></thead><tbody>
-          {s.leaderboard.map((l) => <tr key={l.name}><td>{lname(s, l)}</td><td>{l.kind}</td><td className={cls(l.ic_1d)}>{sc(l.ic_1d)}</td><td>{l.sample}</td></tr>)}
+        <div className="scroll-x"><table><thead><tr><th>name</th><th>what</th><th>IC 1d</th><th>sample</th></tr></thead><tbody>
+          {s.leaderboard.map((l) => <tr key={l.name}><td>{lname(s, l)}</td><td>{l.kind === "agent" ? "reading" : "manager"}</td><td className={cls(l.ic_1d)}>{sc(l.ic_1d)}</td><td>{l.sample}</td></tr>)}
         </tbody></table></div>
       )}
       </section>
