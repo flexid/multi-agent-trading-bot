@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -14,7 +15,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Config
-from app.db.models import Candle, Cycle, PolymarketMarket, PolymarketPrice, XPostRecord
+from app.db.models import (
+    Candle,
+    Cycle,
+    PolymarketMarket,
+    PolymarketPrice,
+    SuppressedTrigger,
+    XPostRecord,
+)
 
 MAX_TRIGGERED_PER_DAY = 2
 ATR_MULT = Decimal(2)
@@ -115,16 +123,86 @@ def x_shock_trigger(session: Session, now: datetime) -> str | None:
     return f"x_shock: credible news shock on {row.asset or 'market'}" if row else None
 
 
+ASSET_IN_REASON = re.compile(r"\b(BTC|ETH|SOL|BNB|SPX6900)\b")
+SUPPRESS_DEDUPE = timedelta(hours=1)  # the same condition persists; log it once an hour
+
+
+def asset_of(reason: str) -> str | None:
+    m = ASSET_IN_REASON.search(reason)
+    return m.group(1) if m else None
+
+
+def _spot(session: Session, cfg: Config, asset: str, at: datetime) -> Decimal | None:
+    row = session.execute(
+        select(Candle.close)
+        .where(
+            Candle.symbol == cfg.symbol(asset),
+            Candle.interval == "15",
+            Candle.open_time <= at,
+        )
+        .order_by(Candle.open_time.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    return Decimal(str(row)) if row is not None else None
+
+
+def log_suppressed(session: Session, cfg: Config, now: datetime, reason: str) -> bool:
+    """Record a trigger the daily cap blocked (owner 2026-10-10). Logging only."""
+    recent = session.execute(
+        select(SuppressedTrigger.id).where(
+            SuppressedTrigger.reason == reason, SuppressedTrigger.ts >= now - SUPPRESS_DEDUPE
+        )
+    ).first()
+    if recent:
+        return False
+    asset = asset_of(reason) or "BTC"  # a market-wide shock is measured on BTC
+    session.add(
+        SuppressedTrigger(
+            ts=now, reason=reason, asset=asset_of(reason), spot=_spot(session, cfg, asset, now)
+        )
+    )
+    session.commit()
+    return True
+
+
+def fill_moves(session: Session, cfg: Config, now: datetime | None = None) -> int:
+    """Fill the 4-hour and 1-day price moves of logged suppressed triggers once that much
+    time has passed. Returns rows touched."""
+    now = now or datetime.now(UTC)
+    rows = session.scalars(
+        select(SuppressedTrigger).where(
+            SuppressedTrigger.spot.is_not(None), SuppressedTrigger.move_1d_pct.is_(None)
+        )
+    ).all()
+    touched = 0
+    for r in rows:
+        asset = r.asset or "BTC"
+        if r.move_4h_pct is None and now >= r.ts + timedelta(hours=4):
+            later = _spot(session, cfg, asset, r.ts + timedelta(hours=4))
+            if later is not None and r.spot:
+                r.move_4h_pct = round(float((later / r.spot - 1) * 100), 3)
+                touched += 1
+        if now >= r.ts + timedelta(days=1):
+            later = _spot(session, cfg, asset, r.ts + timedelta(days=1))
+            if later is not None and r.spot:
+                r.move_1d_pct = round(float((later / r.spot - 1) * 100), 3)
+                touched += 1
+    session.commit()
+    return touched
+
+
 def check(session: Session, cfg: Config, now: datetime | None = None) -> str | None:
     """The reason to trigger a cycle now, or None."""
     now = now or datetime.now(UTC)
-    if triggered_today(session, now) >= MAX_TRIGGERED_PER_DAY:
-        return None
     last = session.execute(select(func.max(Cycle.started_at))).scalar_one()
     if last and now - last < timedelta(hours=1):
         return None  # a cycle just ran; its decisions stand
-    return (
+    reason = (
         price_trigger(session, cfg, now)
         or polymarket_trigger(session, now)
         or x_shock_trigger(session, now)
     )
+    if reason and triggered_today(session, now) >= MAX_TRIGGERED_PER_DAY:
+        log_suppressed(session, cfg, now, reason)  # the cap stands; only the log changes
+        return None
+    return reason

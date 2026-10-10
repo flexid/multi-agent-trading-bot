@@ -524,6 +524,22 @@ class RiskRuleHit(Base):
     effect: Mapped[str] = mapped_column(String(20))  # cap | block | close_all | pause | brake
 
 
+class SuppressedTrigger(Base):
+    """A trigger that would have fired but hit the daily cap (owner 2026-10-10): logged
+    with the price move that followed, to judge after shadow whether more triggered
+    cycles are worth paying for. Logging only; decision logic unchanged."""
+
+    __tablename__ = "suppressed_triggers"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    asset: Mapped[str | None] = mapped_column(String(10))
+    spot: Mapped[Decimal | None]  # the asset's price at the time (BTC for market-wide)
+    move_4h_pct: Mapped[float | None]
+    move_1d_pct: Mapped[float | None]
+
+
 class DataSource(Base):
     """Freshness per source; the agents refuse inputs older than 30 minutes (SPEC §6)."""
 

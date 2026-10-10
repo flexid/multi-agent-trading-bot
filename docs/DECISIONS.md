@@ -214,3 +214,7 @@ A fourth paper track, `inverse` (ledger 5), takes the opposite side of every pri
 ## 2026-10-10 · Hard stop at 0.75 ATR; hard-stop statistic
 
 Senior-trader review of the stop-hunt changes: keep them; the hard stop goes from 1.0 to 0.75 ATR beyond the soft stop (less size penalty, most of the protection), set in `risk_state.hard_stop_atr`. The Stops panel also counts hard-stop exits per asset and how far past the soft stop they filled, so the gap can be judged in a fortnight. Owner: "don't be too careful".
+
+## 2026-10-10 · Suppressed triggers are logged with the move that followed
+
+When the 2/day cap blocks a trigger, the reason is logged (`suppressed_triggers`, once per hour per reason) with the asset's spot; an hourly job fills the price move 4 h and 1 d later. Shown on the decision log and summarized in the memo. Logging only: `check()` still returns None under the cap, the cap and the trigger thresholds are unchanged, and nothing reads the log for decisions. Owner: evaluate after the shadow period whether more triggered cycles are worth their cost.

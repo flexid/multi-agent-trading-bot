@@ -55,6 +55,16 @@ async def map_job() -> None:
     log.info("polymarket mapper stored %d markets", n)
 
 
+async def suppressed_moves_job(cfg: Config) -> None:
+    from app import triggers
+    from app.db.session import new_session
+
+    with new_session() as session:
+        n = triggers.fill_moves(session, cfg)
+    if n:
+        log.info("suppressed triggers: %d move(s) filled", n)
+
+
 async def trigger_job(cfg: Config) -> None:
     from app import triggers
     from app.db.session import new_session
@@ -117,6 +127,13 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
             misfire_grace_time=120,
         )
     scheduler.add_job(heartbeat_job, CronTrigger(second="30"), id="heartbeat", max_instances=1)
+    scheduler.add_job(
+        suppressed_moves_job,
+        CronTrigger(minute="7"),  # hourly: the price move after each suppressed trigger
+        args=[cfg],
+        id="suppressed_moves",
+        max_instances=1,
+    )
     scheduler.add_job(
         ops_job,
         CronTrigger(hour="0", minute="40"),

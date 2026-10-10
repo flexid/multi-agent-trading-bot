@@ -22,6 +22,7 @@ Exits never wait for a cycle. The exchange-side backup stop (bot stop ± 0.5 ATR
 | :01 / :16 / :31 / :46, and at startup | Polymarket mapping | parser first, model for the leftovers |
 | :03 / :18 / :33 / :48 | trigger check | price move > 2× ATR within an hour, Polymarket shift > 10 pp within an hour, or a credible X news shock → a **triggered cycle**, at most 2 per day |
 | :05 every hour | macro | FRED series |
+| :07 every hour | suppressed triggers | fills the 4h and 1d price move after each trigger the 2/day cap blocked (logging only) |
 | every 5 min (+40 s) | public site | sanitized snapshot to R2, OG image when it changed |
 | every minute (:30 s) | heartbeat | the admin shows staleness after 5 min |
 | **00:02, 04:02, 08:02, 12:02, 16:02, 20:02** | **the cycle** (`cycle_hours = 4`) | five agents score each asset (X search per ticker + curated accounts + mention counts, labelling), both PMs propose, consensus, risk engine, decisions stored; the executor acts on them within 10 s. Measured: ~140 s, ~$0.60 per cycle |

@@ -30,6 +30,7 @@ from app.db.models import (
     PaperAccount,
     Position,
     RiskRuleHit,
+    SuppressedTrigger,
     XPostOut,
 )
 from app.db.session import new_session
@@ -151,6 +152,24 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
         .group_by(FetchRun.source)
     ).all()
     ledgers = {a.track: float(a.equity) for a in session.scalars(select(PaperAccount))}
+    suppressed = session.scalars(
+        select(SuppressedTrigger).where(SuppressedTrigger.ts >= since)
+    ).all()
+    with_1d = [s for s in suppressed if s.move_1d_pct is not None]
+    with_4h = [s for s in suppressed if s.move_4h_pct is not None]
+    suppressed_facts = {
+        "count": len(suppressed),
+        "avg_abs_move_4h_pct": round(
+            sum(abs(s.move_4h_pct or 0) for s in with_4h) / len(with_4h), 2
+        )
+        if with_4h
+        else None,
+        "avg_abs_move_1d_pct": round(
+            sum(abs(s.move_1d_pct or 0) for s in with_1d) / len(with_1d), 2
+        )
+        if with_1d
+        else None,
+    }
 
     from app.agents.polymarket import coverage
     from app.agents.x_sentiment import mention_volume
@@ -203,6 +222,7 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
             "template_fallbacks": sum(1 for p in posts if p.source == "template" and not p.dry_run),
         },
         "failed_fetches": {s: n for s, n in failed_fetches},
+        "suppressed_triggers": suppressed_facts,
         "agent_weights": current_weights(session),
         "leaderboard": board,
         "polymarket_coverage": pm_cov,
@@ -251,6 +271,12 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
     lines.append(f"- risk rule hits: {f['risk_rule_hits'] or 'none'}")
     lines.append(f"- posts: {f['posts']}")
     lines.append(f"- failed fetches: {f['failed_fetches'] or 'none'}")
+    st = f.get("suppressed_triggers") or {}
+    if st.get("count"):
+        lines.append(
+            f"- triggers suppressed by the 2/day cap: {st['count']}, avg |move| after 4h "
+            f"{st.get('avg_abs_move_4h_pct')}%, after 1d {st.get('avg_abs_move_1d_pct')}%"
+        )
     lines.append(f"- Polymarket: {f['polymarket_coverage']}")
     lines.append(f"- X mentions: {f['x_mentions'] or 'no baseline yet'}")
     lines += ["", "## Proposals for review"]

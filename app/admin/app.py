@@ -42,6 +42,7 @@ from app.db.models import (
     Position,
     RiskRuleHit,
     RiskState,
+    SuppressedTrigger,
     XPostOut,
     XPostRecord,
 )
@@ -365,6 +366,9 @@ def decisions(
             target = s.get(DecisionRecord, decision)
             cycle = target.cycle_id if target else None
         chosen = s.get(Cycle, cycle) if cycle else (cycles[0] if cycles else None)
+        suppressed = s.scalars(
+            select(SuppressedTrigger).order_by(SuppressedTrigger.id.desc()).limit(30)
+        ).all()
         decs = (
             s.scalars(select(DecisionRecord).where(DecisionRecord.cycle_id == chosen.id)).all()
             if chosen
@@ -394,6 +398,7 @@ def decisions(
         request,
         "decisions.html",
         focus=decision,
+        suppressed=suppressed,
         user=user,
         cycles=cycles,
         chosen=chosen,
