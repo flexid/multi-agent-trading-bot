@@ -40,7 +40,7 @@ CREW: list[Member] = [
     ),
     Member(
         "macro",
-        "Weather",
+        "Storm",
         "reads the climate",
         "The climate outside crypto: rates, the dollar, equities, plus the crypto-native "
         "mood (fear and greed, bitcoin dominance) and how coupled crypto is to it right now.",
