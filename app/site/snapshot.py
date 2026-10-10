@@ -35,6 +35,9 @@ from app.db.session import new_session
 from app.social.templates import holding_text
 from app.social.whitelist import check
 
+# the readings table on the site, in crew order (Djaf last for the alts)
+READING_ORDER = ["indicators", "chart_patterns", "polymarket", "macro", "x_sentiment", "catalysts"]
+
 OUT = Path(__file__).resolve().parents[2] / "site" / "public" / "data" / "snapshot.json"
 FORBIDDEN_KEYS = {
     "notional",
@@ -493,7 +496,10 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
             }
             for asset in cfg.trading.assets:
                 d = decs.get(asset)
-                mine = [o for o in outs if o.asset == asset]
+                mine = sorted(
+                    (o for o in outs if o.asset == asset),
+                    key=lambda o: READING_ORDER.index(o.agent) if o.agent in READING_ORDER else 99,
+                )
                 macro = next((o for o in mine if o.agent == "macro"), None)
                 comp = (macro.components or {}) if macro else {}
                 regime = macro.evidence[0].split(" ")[1] if macro and macro.evidence else None
