@@ -51,7 +51,7 @@ def render(f: TradeFacts) -> bytes:
     res_col = GREEN if f.pnl_margin_pct >= 0 else RED
     d.text((60, 280), pct(f.pnl_margin_pct), font=huge, fill=res_col)
     d.text((60, 420), "on margin", font=mid, fill=GREY)
-    line = f"{fmt(f.entry)} → {fmt(f.exit)}   ·   {pct(f.pnl_price_pct)} on price"
+    line = f"{fmt(f.entry)} to {fmt(f.exit)}   ·   {pct(f.pnl_price_pct)} on price"
     d.text((60, 490), f"{line}   ·   {f.holding or 'a while'}", font=mid, fill=FG)
     foot = "paper trade  ·  dorkbot.dev  ·  nfa" if f.paper else "dorkbot.dev  ·  nfa"
     d.text((60, 600), foot, font=small, fill=GREY)
