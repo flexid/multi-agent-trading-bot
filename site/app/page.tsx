@@ -62,7 +62,7 @@ export default function Page() {
   return (
     <>
       <h1><span className={`badge ${s.mode === "live" ? "neon" : ""}`}>{s.mode}</span>{!s.heartbeat_ok && <span className="badge">stale</span>}</h1>
-      <p className="muted">A bot trading its own bag on Bybit, five assets, <Side d="long" /> and <Side d="short" />. Every trade goes to <a href={`https://x.com/${s.handle}`}>@{s.handle}</a> after it fills. Paper trades are labelled paper. Updated {new Date(s.generated_at).toUTCString().slice(5, 22)} UTC.</p>
+      <p className="muted">A bot trading its own bag on Bybit, ten assets in two sleeves, <Side d="long" /> and <Side d="short" />. Every trade goes to <a href={`https://x.com/${s.handle}`}>@{s.handle}</a> after it fills. Paper trades are labelled paper. Updated {new Date(s.generated_at).toUTCString().slice(5, 22)} UTC.</p>
       <h2>Performance since {monthYear(p.since)}</h2>
       <div className="row">
         <div className="tile"><div className="k">dorkbot</div><div className={`v ${cls(p.bot_pct)}`}>{pct(p.bot_pct, 2)}</div></div>
