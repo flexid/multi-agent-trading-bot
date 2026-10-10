@@ -1,0 +1,3 @@
+<article><header>Polymarket coverage</header><div class="overflow"><table><tr><th>asset</th><th>open markets</th><th>unmapped</th><th>ladder points</th><th>up/down</th><th>status</th></tr>{% for c in pm_cov %}<tr><td>{{ c.asset|tick }}</td><td>{{ c.open_markets }}</td><td>{{ c.unmapped }}</td><td>{{ c.ladder }}</td><td>{{ c.updown }}</td><td class="{{ 'down' if c.open_markets == 0 else 'warn' if c.usable == 0 else 'up' }}">{{ c.status }}</td></tr>{% endfor %}</table></div>
+<p class="muted">"no markets": nothing on Polymarket is mapped to the asset. "none usable": markets exist but every one fails a filter (window under an hour, thin volume, resolution too near or too far, no price yet).</p>
+</article>

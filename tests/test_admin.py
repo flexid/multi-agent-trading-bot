@@ -116,3 +116,25 @@ def test_money_filter_formats_european_with_dollar() -> None:
     assert fmt_money(Decimal("-15.7069")) == "-$ 15,71"
     assert fmt_money(Decimal("13.38"), signed=True) == "+$ 13,38"
     assert fmt_money(None) == "$ 0,00"
+
+
+def test_every_dashboard_page_has_a_template_that_includes_exactly_its_panels() -> None:
+    """The page → panel map in code and the includes in the templates must not drift:
+    a panel included without its data builder renders empty or fails."""
+    import re
+    from pathlib import Path
+
+    from app.admin.app import PAGES, PANELS
+
+    root = Path("app/admin/templates")
+    for page, panels in PAGES.items():
+        text = (root / f"{page}.html").read_text()
+        included = tuple(re.findall(r'include "_p_(\w+)\.html"', text))
+        assert included == panels, page
+        assert all(p in PANELS for p in panels)
+        assert 'include "_head.html"' in text
+    shown = {p for panels in PAGES.values() for p in panels}
+    assert shown == set(PANELS)  # no orphan panel
+    nav = (root / "base.html").read_text()
+    for page in PAGES:
+        assert f'href="/{"" if page == "overview" else page}"' in nav

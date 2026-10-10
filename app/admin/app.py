@@ -335,142 +335,238 @@ def djaf_panel(s: Session, cfg: Config, now: datetime, month: datetime) -> dict[
     }
 
 
-@app.get("/", response_class=HTMLResponse)
-def overview(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
+# --- dashboard pages: each panel has a data builder; a page runs only its own ----------
+
+
+def _p_money(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    real = s.execute(
+        select(AccountSnapshot).order_by(AccountSnapshot.ts.desc()).limit(1)
+    ).scalar_one_or_none()
+    real_coins = [
+        c
+        for c in (real.coins if real else [])
+        if Decimal(str(c.get("wallet_balance") or 0)) != 0
+        or Decimal(str(c.get("borrow_amount") or 0)) != 0
+    ]
+    return {"real": real, "real_coins": real_coins, **_p_ledgers(s, cfg, now, risk)}
+
+
+def _p_ledgers(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    return {"ledgers": s.scalars(select(PaperAccount).order_by(PaperAccount.id)).all()}
+
+
+def _p_sleeves(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    from app.risk.exposure import betas
+    from app.risk.sleeves import day_locked, sleeve_account
+
+    beta = betas(s, cfg, now)
+    rows = []
+    locks = (risk.day_locked_sleeves or {}) if risk else {}
+    modes = (risk.sleeve_modes or {}) if risk else {}
+    for name in cfg.sleeves:
+        rows.append(
+            {
+                "name": name,
+                "cfg": cfg.sleeves[name],
+                "acct": sleeve_account(s, cfg, name, "primary", now, beta, 1),
+                "locked": day_locked(locks, name, now),
+                "mode": modes.get(name, "shadow"),
+            }
+        )
+    return {"sleeve_rows": rows, "beta": beta}
+
+
+def _p_betas(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    from app.risk.exposure import beta_table
+
+    return {"beta_rows": beta_table(s, cfg, now)}
+
+
+def _p_open(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    rows = s.scalars(
+        select(Position)
+        .where(Position.status.in_(["open", "closing"]))
+        .order_by(Position.opened_at)
+    ).all()
+    return {"open_pos": rows}
+
+
+def _p_closed(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    rows = s.scalars(
+        select(Position)
+        .where(Position.status == "closed")
+        .order_by(Position.closed_at.desc())
+        .limit(30)
+    ).all()
+    return {"recent": rows}
+
+
+def _p_costs(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    from app.costs_sleeves import costs_by_sleeve
+
+    day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    llm_day = s.execute(
+        select(func.coalesce(func.sum(LLMCall.cost_usd), 0)).where(LLMCall.ts >= day)
+    ).scalar_one()
+    llm_month = s.execute(
+        select(func.coalesce(func.sum(LLMCall.cost_usd), 0)).where(LLMCall.ts >= month)
+    ).scalar_one()
+    by_model = s.execute(
+        select(LLMCall.model, func.count(), func.sum(LLMCall.cost_usd))
+        .where(LLMCall.ts >= month)
+        .group_by(LLMCall.model)
+        .order_by(func.sum(LLMCall.cost_usd).desc())
+    ).all()
+    reads_month = s.execute(
+        select(func.count()).select_from(XPostRecord).where(XPostRecord.fetched_at >= month)
+    ).scalar_one()
+    posts_month = s.execute(
+        select(func.count())
+        .select_from(XPostOut)
+        .where(XPostOut.posted_at >= month, XPostOut.dry_run.is_(False))
+    ).scalar_one()
+    return {
+        "llm_day": llm_day,
+        "llm_month": llm_month,
+        "by_model": by_model,
+        "reads_month": reads_month,
+        "posts_month": posts_month,
+        "x_month": Decimal(reads_month) * Decimal("0.005")
+        + Decimal(posts_month) * Decimal("0.015"),
+        "budget": cfg.budget.api_usd_per_month,
+        "sleeve_costs": costs_by_sleeve(s, cfg, month),
+    }
+
+
+def _p_djaf(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return {"djaf": djaf_panel(s, cfg, now, month)}
+
+
+def _p_optima(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    from app.agents.optima import latest
+
+    return {"optima": latest(s, max_age=timedelta(days=30))}
+
+
+def _p_exposure(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    from app.risk.exposure import betas, track_exposure
+
+    beta = betas(s, cfg, now)
+    equity_of = {a.track: a.equity for a in s.scalars(select(PaperAccount)).all()}
+    exposures = []
+    for tr in ("primary", "max", "inverse", "pilot", "live"):
+        if tr not in equity_of:
+            continue
+        e = track_exposure(s, tr, beta)
+        eq = equity_of[tr]
+        exposures.append((e, e.net_beta / eq if eq else None, e.gross / eq if eq else None))
+    return {"beta": beta, "exposures": exposures}
+
+
+def _p_stops(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    from app.risk.wickouts import stats as wick_stats
+
+    return {"wicks": wick_stats(s, cfg.trading.assets)}
+
+
+def _p_polymarket(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    return {"pm_cov": [pm_coverage(s, a, now) for a in cfg.trading.assets]}
+
+
+def _p_freshness(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    return {"sources": s.scalars(select(DataSource).order_by(DataSource.name)).all()}
+
+
+def _p_controls(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    return {}
+
+
+PANELS: dict[str, Any] = {
+    "money": _p_money,
+    "sleeves": _p_sleeves,
+    "betas": _p_betas,
+    "ledgers": _p_ledgers,
+    "open": _p_open,
+    "closed": _p_closed,
+    "costs": _p_costs,
+    "djaf": _p_djaf,
+    "optima": _p_optima,
+    "exposure": _p_exposure,
+    "stops": _p_stops,
+    "polymarket": _p_polymarket,
+    "freshness": _p_freshness,
+    "controls": _p_controls,
+}
+# The pages of the dashboard and the panels each one shows (the templates include the same).
+PAGES: dict[str, tuple[str, ...]] = {
+    "overview": ("money", "sleeves", "ledgers", "open", "controls"),
+    "trades": ("open", "closed", "stops"),
+    "risk": ("sleeves", "exposure", "betas", "stops"),
+    "readings": ("djaf", "polymarket"),
+    "costs": ("costs", "optima"),
+    "system": ("freshness", "controls"),
+}
+
+
+def dashboard(request: Request, user: str, page: str) -> HTMLResponse:
     now = datetime.now(UTC)
     cfg = get_config()
+    ctx: dict[str, Any] = {}
     with new_session() as s:
-        ledgers = s.scalars(select(PaperAccount).order_by(PaperAccount.id)).all()
-        open_pos = s.scalars(
-            select(Position)
-            .where(Position.status.in_(["open", "closing"]))
-            .order_by(Position.opened_at)
-        ).all()
-        recent = s.scalars(
-            select(Position)
-            .where(Position.status == "closed")
-            .order_by(Position.closed_at.desc())
-            .limit(30)
-        ).all()
-        heartbeats = s.scalars(select(Heartbeat)).all()
-        sources = s.scalars(select(DataSource).order_by(DataSource.name)).all()
         risk = s.get(RiskState, 1)
-        day = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        llm_day = s.execute(
-            select(func.coalesce(func.sum(LLMCall.cost_usd), 0)).where(LLMCall.ts >= day)
-        ).scalar_one()
-        llm_month = s.execute(
-            select(func.coalesce(func.sum(LLMCall.cost_usd), 0)).where(LLMCall.ts >= month)
-        ).scalar_one()
-        by_model = s.execute(
-            select(LLMCall.model, func.count(), func.sum(LLMCall.cost_usd))
-            .where(LLMCall.ts >= month)
-            .group_by(LLMCall.model)
-            .order_by(func.sum(LLMCall.cost_usd).desc())
-        ).all()
-        reads_month = s.execute(
-            select(func.count()).select_from(XPostRecord).where(XPostRecord.fetched_at >= month)
-        ).scalar_one()
-        posts_month = s.execute(
-            select(func.count())
-            .select_from(XPostOut)
-            .where(XPostOut.posted_at >= month, XPostOut.dry_run.is_(False))
-        ).scalar_one()
+        heartbeats = s.scalars(select(Heartbeat)).all()
         pending_ctl = s.execute(
             select(func.count())
             .select_from(ControlRequest)
             .where(ControlRequest.applied_at.is_(None))
         ).scalar_one()
-        pm_cov = [pm_coverage(s, a, now) for a in cfg.trading.assets]
-        from app.risk.wickouts import stats as wick_stats
-
-        wicks = wick_stats(s, cfg.trading.assets)
-        from app.costs_sleeves import costs_by_sleeve
-        from app.risk.exposure import beta_table
-        from app.risk.sleeves import day_locked, sleeve_account
-
-        sleeve_rows = []
-        if cfg.sleeves:
-            from app.risk.exposure import betas as _betas
-
-            b30 = _betas(s, cfg, now)
-            locks = (risk.day_locked_sleeves or {}) if risk else {}
-            modes = (risk.sleeve_modes or {}) if risk else {}
-            for name in cfg.sleeves:
-                sa = sleeve_account(s, cfg, name, "primary", now, b30, 1)
-                sleeve_rows.append(
-                    {
-                        "name": name,
-                        "cfg": cfg.sleeves[name],
-                        "acct": sa,
-                        "locked": day_locked(locks, name, now),
-                        "mode": modes.get(name, "shadow"),
-                    }
-                )
-        beta_rows = beta_table(s, cfg, now)
-        sleeve_costs = costs_by_sleeve(s, cfg, month)
-        djaf = djaf_panel(s, cfg, now, month)
-        from app.agents.optima import latest as optima_latest
-
-        optima = optima_latest(s, max_age=timedelta(days=30))
-        from app.risk.exposure import betas as asset_betas
-        from app.risk.exposure import track_exposure
-
-        beta = asset_betas(s, cfg, now)
-        equity_of = {a.track: a.equity for a in ledgers}
-        exposures = []
-        for tr in ("primary", "max", "inverse", "pilot", "live"):
-            if tr not in equity_of:
-                continue
-            e = track_exposure(s, tr, beta)
-            eq = equity_of[tr]
-            exposures.append((e, e.net_beta / eq if eq else None, e.gross / eq if eq else None))
-        real = s.execute(
-            select(AccountSnapshot).order_by(AccountSnapshot.ts.desc()).limit(1)
-        ).scalar_one_or_none()
-        real_coins = [
-            c
-            for c in (real.coins if real else [])
-            if Decimal(str(c.get("wallet_balance") or 0)) != 0
-            or Decimal(str(c.get("borrow_amount") or 0)) != 0
-        ]
-    x_month = Decimal(reads_month) * Decimal("0.005") + Decimal(posts_month) * Decimal("0.015")
-    stale = {h.process: (now - h.ts) > timedelta(minutes=5) for h in heartbeats}
+        for panel in PAGES[page]:
+            ctx.update(PANELS[panel](s, cfg, now, risk))
     return render(
         request,
-        "overview.html",
+        f"{page}.html",
         user=user,
         now=now,
         cfg=cfg,
-        ledgers=ledgers,
-        open_pos=open_pos,
-        recent=recent,
-        heartbeats=heartbeats,
-        stale=stale,
-        sources=sources,
-        pm_cov=pm_cov,
-        wicks=wicks,
-        sleeve_rows=sleeve_rows,
-        beta_rows=beta_rows,
-        sleeve_costs=sleeve_costs,
-        djaf=djaf,
-        optima=optima,
-        beta=beta,
-        exposures=exposures,
-        real=real,
-        real_coins=real_coins,
         risk=risk,
-        llm_day=llm_day,
-        llm_month=llm_month,
-        by_model=by_model,
-        x_month=x_month,
-        reads_month=reads_month,
-        posts_month=posts_month,
-        budget=cfg.budget.api_usd_per_month,
+        heartbeats=heartbeats,
+        stale={h.process: (now - h.ts) > timedelta(minutes=5) for h in heartbeats},
         pending_ctl=pending_ctl,
         stepped=stepped_up(request),
+        **ctx,
     )
+
+
+@app.get("/", response_class=HTMLResponse)
+def overview(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
+    return dashboard(request, user, "overview")
+
+
+@app.get("/trades", response_class=HTMLResponse)
+def trades_page(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
+    return dashboard(request, user, "trades")
+
+
+@app.get("/risk", response_class=HTMLResponse)
+def risk_page(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
+    return dashboard(request, user, "risk")
+
+
+@app.get("/readings", response_class=HTMLResponse)
+def readings_page(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
+    return dashboard(request, user, "readings")
+
+
+@app.get("/costs", response_class=HTMLResponse)
+def costs_page(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
+    return dashboard(request, user, "costs")
+
+
+@app.get("/system", response_class=HTMLResponse)
+def system_page(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
+    return dashboard(request, user, "system")
 
 
 @app.get("/decisions", response_class=HTMLResponse)
