@@ -18,6 +18,7 @@ from app.risk import leverage as lev
 from app.risk.stops import place_stop
 
 ZERO = Decimal(0)
+ONE = Decimal(1)
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,7 @@ class AccountState:
     peak_equity: Decimal
     day_pnl_pct: Decimal  # realized + unrealized since 00:00 UTC, fraction
     day_high_pnl_pct: Decimal  # best day P&L seen today, fraction
-    gross_exposure: Decimal  # sum of |position notional|, in quote
+    gross_exposure: Decimal  # sum of |position notional|, in quote, this track
     trades_today: dict[str, int]  # asset -> opened today
     losing_days_in_row: int
     paused_until: datetime | None
@@ -35,6 +36,7 @@ class AccountState:
     emergency_brake: bool
     half_risk: bool
     leverage_ceiling: Decimal
+    net_beta_exposure: Decimal = Decimal(0)  # signed Σ notional × beta, in quote, this track
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,7 @@ class MarketState:
     maintenance_rate: Decimal = Decimal("0.03")
     depth_truncated: bool = False  # 200 levels did not reach ±2%: depth is a lower bound
     atr: Decimal | None = None  # ATR(14, 4h); stop placement needs it
+    beta: Decimal = Decimal(1)  # 30-day beta to BTC; the correlation cap weighs by it
     levels: tuple[Decimal, ...] = ()  # round numbers and recent swings near the price
 
 
@@ -65,6 +68,7 @@ class Limits:
     gross_exposure_max: Decimal  # × equity
     depth_cap: Decimal  # 0.05
     day_loss_stop: Decimal  # −0.02
+    net_beta_exposure_max: Decimal = Decimal("1.5")  # × equity, beta-weighted same-direction
     day_lock_profit: Decimal = Decimal("0.015")  # from +1.5% …
     day_lock_floor: Decimal = Decimal("0.0075")  # … protect +0.75%
     drawdown_pause: Decimal = Decimal("-0.10")
@@ -287,6 +291,23 @@ def assess(
     if notional > room:
         hits.append(RuleHit("gross_exposure", f"{notional:.0f} > room {room:.0f}", "cap"))
         notional = max(ZERO, room)
+    # Correlation cap (owner 2026-10-10): five same-direction crypto positions are mostly
+    # one bet. A trade that adds to the net beta-weighted direction fits in what is left
+    # under net_beta_exposure_max × equity; a trade against the net reduces it, no cap.
+    sign = ONE if c.direction is Direction.LONG else -ONE
+    if sign * acct.net_beta_exposure >= 0:
+        beta = mkt.beta if mkt.beta > 0 else ONE
+        room_beta = lim.net_beta_exposure_max * acct.equity - abs(acct.net_beta_exposure)
+        if notional * beta > room_beta:
+            hits.append(
+                RuleHit(
+                    "correlated_exposure",
+                    f"{notional:.0f} × beta {beta:.2f} > room {room_beta:.0f} "
+                    f"(net {acct.net_beta_exposure:+.0f}, cap {lim.net_beta_exposure_max}× equity)",
+                    "cap",
+                )
+            )
+            notional = max(ZERO, room_beta / beta)
     if notional <= 0:
         hits.append(RuleHit("no_room", "no exposure room left", "block"))
         return Assessment(asset, False, None, hits)

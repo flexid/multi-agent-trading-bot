@@ -278,3 +278,33 @@ def test_max_track_limits_use_their_own_risk_per_trade() -> None:
     mx = limits_for_max(lim, cfg)  # type: ignore[arg-type]
     assert mx.risk_per_trade == D("0.025") and mx.leverage_max == lim.leverage_max
     assert lim.risk_per_trade == D("0.005")  # the primary's limits are untouched
+
+
+def test_correlation_cap_sizes_same_direction_trades_into_the_room_left() -> None:
+    from app.risk.exposure import beta_from_returns, net_beta_exposure
+
+    # betas: a coin moving 1.5× BTC gets 1.5; too little data → 1
+    btc = [0.01, -0.02, 0.03, -0.01, 0.02, -0.03, 0.01, 0.02, -0.02, 0.01, 0.03, -0.01]
+    assert beta_from_returns([x * 1.5 for x in btc], btc) == D("1.5")
+    assert beta_from_returns([0.01, 0.02], [0.01, 0.02]) == D(1)
+    # three same-direction longs at beta ≈ 1 on a 10k book: net 1.2× equity
+    net = net_beta_exposure(
+        [("long", D(4000), "BTC"), ("long", D(4000), "ETH"), ("long", D(4000), "SOL")],
+        {"BTC": D(1), "ETH": D(1), "SOL": D(1)},
+    )
+    assert net == D(12000)
+    # the next long fits only into the 0.3× (3,000) left under the 1.5× cap
+    a = engine.assess(cons(), account(net_beta_exposure=net), market(), limits())
+    assert a.allowed and a.plan is not None and a.plan.notional <= D(3000)
+    assert any(h.rule == "correlated_exposure" for h in a.hits)
+    # a short against the net is not capped by it
+    s = engine.assess(
+        cons(direction=Direction.SHORT, stop=103.0, target=94.0),
+        account(net_beta_exposure=net),
+        market(),
+        limits(),
+    )
+    assert not any(h.rule == "correlated_exposure" for h in s.hits)
+    # at the cap, nothing fits: blocked
+    full = engine.assess(cons(), account(net_beta_exposure=D(15000)), market(), limits())
+    assert not full.allowed and any(h.rule == "no_room" for h in full.hits)

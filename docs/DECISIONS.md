@@ -218,3 +218,7 @@ Senior-trader review of the stop-hunt changes: keep them; the hard stop goes fro
 ## 2026-10-10 · Suppressed triggers are logged with the move that followed
 
 When the 2/day cap blocks a trigger, the reason is logged (`suppressed_triggers`, once per hour per reason) with the asset's spot; an hourly job fills the price move 4 h and 1 d later. Shown on the decision log and summarized in the memo. Logging only: `check()` still returns None under the cap, the cap and the trigger thresholds are unchanged, and nothing reads the log for decisions. Owner: evaluate after the shadow period whether more triggered cycles are worth their cost.
+
+## 2026-10-10 · Correlation-aware exposure cap (owner briefing)
+
+Each asset gets a 30-day beta to BTC from daily returns (BTC = 1, 1 when fewer than ten matching days). Per track, net beta exposure = Σ sign × notional × beta over open positions; the risk engine caps it at `trading.net_beta_exposure_max` × equity (1.5 to start, admin-editable 0.5–5): a trade that adds to the net direction is sized into the room left, one against it is uncapped. Exposure (gross and net) is now computed per track, which also fixes the gross cap having counted every track's positions together. Betas and the per-track exposure are logged on the cycle row and shown on the admin overview ("Correlated exposure") and in the decision log header.

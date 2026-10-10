@@ -12,6 +12,7 @@ risk_per_trade = 0.005
 risk_per_trade_max = 0.025      # the max shadow track: the leveraged variant (owner goal 1%/day, 2026-10-09)
 capital_share_per_asset = 0.20
 gross_exposure_max = 3.0
+net_beta_exposure_max = 1.5     # beta-weighted same-direction crypto exposure, × equity (owner 2026-10-10)
 holding_min_hours = 1
 holding_max_days = 7
 short_allowed = true

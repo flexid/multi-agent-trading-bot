@@ -198,6 +198,8 @@ class Cycle(Base):
     status: Mapped[str] = mapped_column(String(12))  # running | done | failed
     error: Mapped[str | None] = mapped_column(Text)
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=0)
+    # Beta-weighted exposure at the time of the cycle: betas, per-track net and gross × equity
+    beta_exposure: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
 class AgentOutputRecord(Base):

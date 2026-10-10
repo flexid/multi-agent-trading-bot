@@ -33,6 +33,8 @@ class TradingConfig(_Section):
     risk_per_trade_max: Decimal = Decimal("0.025")
     capital_share_per_asset: Decimal
     gross_exposure_max: Decimal
+    # Beta-weighted same-direction exposure cap, × equity (owner 2026-10-10)
+    net_beta_exposure_max: Decimal = Decimal("1.5")
     holding_min_hours: int
     holding_max_days: int
     short_allowed: bool

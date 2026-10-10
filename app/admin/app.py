@@ -116,6 +116,7 @@ EDITABLE: dict[str, tuple[Decimal, Decimal]] = {
     "trading.risk_per_trade_max": (Decimal("0.001"), Decimal("0.05")),  # the max track only
     "trading.capital_share_per_asset": (Decimal("0.05"), Decimal("0.5")),
     "trading.gross_exposure_max": (Decimal(1), Decimal(3)),
+    "trading.net_beta_exposure_max": (Decimal("0.5"), Decimal(5)),  # beta-weighted, × equity
     "trading.day_loss_stop": (Decimal("-0.05"), Decimal("-0.005")),
     "trading.depth_cap": (Decimal("0.01"), Decimal("0.1")),
     "budget.api_usd_per_month": (Decimal(50), Decimal(5000)),
@@ -313,6 +314,18 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
         from app.risk.wickouts import stats as wick_stats
 
         wicks = wick_stats(s, cfg.trading.assets)
+        from app.risk.exposure import betas as asset_betas
+        from app.risk.exposure import track_exposure
+
+        beta = asset_betas(s, cfg, now)
+        equity_of = {a.track: a.equity for a in ledgers}
+        exposures = []
+        for tr in ("primary", "max", "inverse", "pilot", "live"):
+            if tr not in equity_of:
+                continue
+            e = track_exposure(s, tr, beta)
+            eq = equity_of[tr]
+            exposures.append((e, e.net_beta / eq if eq else None, e.gross / eq if eq else None))
         real = s.execute(
             select(AccountSnapshot).order_by(AccountSnapshot.ts.desc()).limit(1)
         ).scalar_one_or_none()
@@ -338,6 +351,8 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
         sources=sources,
         pm_cov=pm_cov,
         wicks=wicks,
+        beta=beta,
+        exposures=exposures,
         real=real,
         real_coins=real_coins,
         risk=risk,

@@ -22,6 +22,7 @@ from app.db.models import (
     AccountSnapshot,
     AgentOutputRecord,
     Candle,
+    Cycle,
     DecisionRecord,
     MacroObservation,
     OrderBookSnapshot,
@@ -34,6 +35,7 @@ from app.decision.consensus import Agreement, Consensus
 from app.decision.evidence import spot_and_atr
 from app.decision.pm import Direction, Proposal
 from app.risk import engine
+from app.risk.exposure import betas, track_exposure
 
 
 def levels_for(session: Session, symbol: str, spot: Decimal) -> tuple[Decimal, ...]:
@@ -76,6 +78,7 @@ def limits_from_config(cfg: Config) -> engine.Limits:
         leverage_max=Decimal(t.leverage_max),
         leverage_max_spx6900=Decimal(t.leverage_max_spx6900),
         gross_exposure_max=t.gross_exposure_max,
+        net_beta_exposure_max=t.net_beta_exposure_max,
         depth_cap=t.depth_cap,
         day_loss_stop=t.day_loss_stop,
         drawdown_pause=t.drawdown_pause,
@@ -92,7 +95,14 @@ def risk_state(session: Session) -> RiskState:
     return state
 
 
-def account_state(session: Session, cfg: Config, mode: str, now: datetime) -> engine.AccountState:
+def account_state(
+    session: Session,
+    cfg: Config,
+    mode: str,
+    now: datetime,
+    track: str | None = None,
+    beta: dict[str, Decimal] | None = None,
+) -> engine.AccountState:
     state = risk_state(session)
     if mode == "live":
         snap = session.execute(
@@ -124,15 +134,10 @@ def account_state(session: Session, cfg: Config, mode: str, now: datetime) -> en
     if paper and paper.day_start_equity > 0:
         day_pnl = paper.equity / paper.day_start_equity - 1
         day_high = paper.day_high_equity / paper.day_start_equity - 1
-    gross = Decimal(
-        str(
-            session.execute(
-                select(func.coalesce(func.sum(Position.notional), 0)).where(
-                    Position.status == "open"
-                )
-            ).scalar_one()
-        )
-    )
+    # Exposure is per track: the max and inverse tracks must not crowd out the primary.
+    track = track or ("live" if mode == "live" else "primary")
+    exp = track_exposure(session, track, beta or {})
+    gross, net_beta = exp.gross, exp.net_beta
     starting = state.starting_capital or (paper.starting_capital if paper else None)
     return engine.AccountState(
         equity=equity,
@@ -141,6 +146,7 @@ def account_state(session: Session, cfg: Config, mode: str, now: datetime) -> en
         day_pnl_pct=day_pnl,
         day_high_pnl_pct=day_high,
         gross_exposure=gross,
+        net_beta_exposure=net_beta,
         trades_today={k: int(v) for k, v in opened_today.items()},
         losing_days_in_row=losing_days_in_row(session, now),
         paused_until=state.paused_until,
@@ -281,9 +287,33 @@ def apply_risk(
 ) -> dict[str, engine.Assessment]:
     now = now or datetime.now(UTC)
     lim = limits_with_state(limits_from_config(cfg), risk_state(session))
-    acct = account_state(session, cfg, mode, now)
-    # Comparison track (shadow only): same rules with the ceiling at leverage_max.
-    acct_max = engine.AccountState(**{**acct.__dict__, "leverage_ceiling": lim.leverage_max})
+    beta = betas(session, cfg, now)
+    acct = account_state(session, cfg, mode, now, beta=beta)
+    # Comparison track (shadow only): same rules with the ceiling at leverage_max, its own
+    # exposure.
+    max_exp = track_exposure(session, "max", beta)
+    acct_max = engine.AccountState(
+        **{
+            **acct.__dict__,
+            "leverage_ceiling": lim.leverage_max,
+            "gross_exposure": max_exp.gross,
+            "net_beta_exposure": max_exp.net_beta,
+        }
+    )
+    cycle = session.get(Cycle, cycle_id)
+    if cycle is not None and acct.equity:
+        cycle.beta_exposure = {
+            "betas": {a: str(b) for a, b in beta.items()},
+            "primary": {
+                "net_beta_x_equity": str(round(acct.net_beta_exposure / acct.equity, 3)),
+                "gross_x_equity": str(round(acct.gross_exposure / acct.equity, 3)),
+            },
+            "max": {
+                "net_beta_x_equity": str(round(max_exp.net_beta / acct.equity, 3)),
+                "gross_x_equity": str(round(max_exp.gross / acct.equity, 3)),
+            },
+            "cap_x_equity": str(lim.net_beta_exposure_max),
+        }
     account_hits = engine.account_rules(acct, lim, now)
     state = risk_state(session)
     for h in account_hits:
@@ -309,7 +339,10 @@ def apply_risk(
     rows = session.scalars(select(DecisionRecord).where(DecisionRecord.cycle_id == cycle_id)).all()
     for d in rows:
         c = consensus_from_row(d)
-        mkt = market_state(session, cfg, d.asset, cycle_id, now, c.direction)
+        mkt = replace(
+            market_state(session, cfg, d.asset, cycle_id, now, c.direction),
+            beta=beta.get(d.asset, Decimal(1)),
+        )
         a = engine.assess(c, acct, mkt, lim, account_hits=account_hits)
         out[d.asset] = a
         a_max = (
