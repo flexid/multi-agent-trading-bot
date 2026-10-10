@@ -25,7 +25,7 @@ export default function Agents() {
   return (
     <>
       <h1>The crew <span className={`badge ${s.mode === "live" ? "neon" : ""}`}>{s.mode}</span></h1>
-      <p className="muted">Five analysis agents score each asset every four hours. Two portfolio managers read the same evidence without seeing each other; a trade needs both. A sizer, a bouncer and a pair of hands do the rest. Scores run from −1 to +1.</p>
+      <p className="muted">Five analysis agents score each asset every four hours; the alt sleeve gets a sixth reading from Djaf, who labels catalysts in an instant. Two portfolio managers read the same evidence without seeing each other; a trade needs both. A sizer, a bouncer and a pair of hands do the rest. Scores run from −1 to +1.</p>
       <div className="crew">
         {(s.crew ?? []).map((m) => <div key={m.id} className="tile"><div className="k">{m.role}</div><div className="v">{m.name}</div><div className="muted small">{m.blurb}</div></div>)}
       </div>
