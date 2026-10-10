@@ -31,15 +31,18 @@ export default function Agents() {
         {(s.crew ?? []).map((m) => <div key={m.id} className="tile"><div className="k">{m.role}</div><div className="v">{m.name}</div><div className="muted small">{m.blurb}</div></div>)}
       </div>
       <h2>Latest readings</h2>
-      {s.assets.map((a) => (
-        <section key={a.asset}>
-          <h2>{tick(a.cashtag)} · {a.consensus} <span className="badge">Dyne {a.pm_claude ?? "–"}</span><span className="badge">Dork {a.pm_gpt ?? "–"}</span></h2>
+      <p className="muted small">Tap a coin to open or close its readings.</p>
+      {s.assets.map((a, i) => (
+        <details key={a.asset} className="acc" open={i === 0}>
+          <summary><span className="t">{tick(a.cashtag)}</span><span className="muted">{a.consensus}</span><span className="badge">Dyne {a.pm_claude ?? "–"}</span><span className="badge">Dork {a.pm_gpt ?? "–"}</span></summary>
+          <div className="acc-body">
           <p className="muted">{a.reason}. Formula {sc(a.formula_score)}, consensus {sc(a.consensus_score)}.
             {a.macro_regime && <> Macro regime {a.macro_regime}, tradfi coupling {a.coupling?.toFixed(2)}; macro parts tradfi {sc(a.macro_tradfi)} / crypto-native {sc(a.macro_native)}.</>}</p>
           <div className="scroll-x"><table className="notes"><thead><tr><th className="name">reading</th><th className="num">score</th><th className="num">confidence</th><th>notes</th></tr></thead><tbody>
             {a.agents.map((g) => <tr key={g.agent}><td className="name">{name(s, g.agent)}{!g.valid && <span className="badge">stale</span>}</td><td className={`num ${cls(g.score)}`}>{sc(g.score)}</td><td className="num">{pct(g.confidence * 100, 0)}</td><td className="note">{g.reasons.join(" · ")}</td></tr>)}
           </tbody></table></div>
-        </section>
+          </div>
+        </details>
       ))}
       <section className="panel">
       <h2>Leaderboard <span className="muted small">how well each reading predicted the next day</span></h2>

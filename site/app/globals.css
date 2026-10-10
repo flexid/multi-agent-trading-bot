@@ -60,3 +60,17 @@ button.more { margin-top: 10px; background: #141414; color: var(--fg); border: 1
 table.notes { table-layout: fixed; } table.notes th.name, table.notes td.name { width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } table.notes th.num, table.notes td.num { width: 76px; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; } table.notes td.note { color: var(--muted); }
 @media (max-width: 720px) { .scroll-x > table.notes { min-width: 640px; } }
 .crew-intro { margin-bottom: 64px; }
+/* accordion: a clear row with a chevron and show/hide, used for the latest readings */
+details.acc { border: 1px solid var(--line); border-radius: 10px; background: #0f0f0f; margin: 0 0 8px; }
+details.acc > summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px; cursor: pointer; list-style: none; border-radius: 10px; }
+details.acc > summary::-webkit-details-marker { display: none; }
+details.acc > summary:hover { background: #141414; }
+details.acc > summary::before { content: "▸"; color: var(--accent); width: 14px; transition: transform .15s; }
+details.acc[open] > summary::before { transform: rotate(90deg); }
+details.acc > summary::after { content: "show"; margin-left: auto; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+details.acc[open] > summary::after { content: "hide"; }
+details.acc[open] > summary { border-bottom: 1px solid var(--line); border-radius: 10px 10px 0 0; }
+details.acc > summary .t { font-weight: 650; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; font-size: 15px; }
+details.acc > .acc-body { padding: 10px 14px 12px; }
+details.acc .badge { margin-left: 0; }
+

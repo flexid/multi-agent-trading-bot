@@ -1,7 +1,7 @@
 <article><header>Prediction markets · <b>Orak</b></header>
 {% if not pmarkets %}<p class="muted">No usable markets right now.</p>{% else %}
 <p class="muted small" style="margin-bottom:.6rem">Per asset, the six busiest markets that passed every filter (volume, time to resolution, a price). Orak counts for the bluechips; for the alts it is shown for reference only.</p>
-{% for g in pmarkets %}<details {{ 'open' if loop.first else '' }}><summary><b>{{ g.asset|tick }}</b> <span class="muted small">{{ g.used }} markets used</span></summary>
+{% for g in pmarkets %}<details class="acc" {{ 'open' if loop.first else '' }}><summary><b>{{ g.asset|tick }}</b> <span class="muted small">{{ g.used }} markets used</span></summary>
 <div class="overflow"><table><tr><th>market</th><th>type</th><th>says</th><th class="num">volume 24h</th><th class="num">resolves in</th><th></th></tr>{% for r in g.rows %}<tr><td class="small">{{ r.m.question[:110] if r.m else '–' }}</td><td class="muted">{{ r.kind }}</td><td>{{ r.says }}</td><td class="num">${{ '{:,.0f}'.format(r.volume) }}</td><td class="num">{{ '%.0f h'|format(r.hours) if r.hours < 72 else '%.0f d'|format(r.hours / 24) }}</td><td>{% if r.m %}<a href="https://polymarket.com/market/{{ r.m.slug }}" rel="noopener noreferrer" target="_blank">open</a>{% endif %}</td></tr>{% endfor %}</table></div></details>{% endfor %}
 {% endif %}
 </article>
