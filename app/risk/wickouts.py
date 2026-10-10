@@ -54,8 +54,10 @@ def check(session: Session, now: datetime | None = None) -> int:
 @dataclass(frozen=True)
 class WickStats:
     asset: str
-    stopped: int
+    stopped: int  # stop-outs with a wick-out verdict
     wick_outs: int
+    hard_exits: int = 0  # stop-outs that went all the way to the hard stop
+    hard_beyond_pct: float | None = None  # how far past the soft stop those filled, % of entry
 
     @property
     def rate(self) -> float | None:
@@ -68,13 +70,26 @@ def stats(session: Session, assets: list[str], track: str = "primary") -> list[W
             Position.track == track,
             Position.status == "closed",
             Position.close_reason.in_(STOP_REASONS),
-            Position.wick_out.is_not(None),
         )
     ).all()
     out = []
     for a in assets:
         mine = [p for p in rows if p.asset == a]
-        out.append(WickStats(a, len(mine), sum(1 for p in mine if p.wick_out)))
+        judged = [p for p in mine if p.wick_out is not None]
+        beyond = [
+            float(abs(p.exit_price - p.stop) / p.entry_price * 100)
+            for p in mine
+            if p.close_reason == "stop_hard" and p.exit_price is not None and p.entry_price
+        ]
+        out.append(
+            WickStats(
+                a,
+                len(judged),
+                sum(1 for p in judged if p.wick_out),
+                len(beyond),
+                round(sum(beyond) / len(beyond), 2) if beyond else None,
+            )
+        )
     return out
 
 
