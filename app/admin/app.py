@@ -450,6 +450,144 @@ def _p_optima(s: Session, cfg: Config, now: datetime, risk: RiskState | None) ->
     return {"optima": latest(s, max_age=timedelta(days=30))}
 
 
+READING_AGENTS = ("indicators", "chart_patterns", "polymarket", "macro", "x_sentiment", "catalysts")
+
+
+def _p_matrix(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    """The latest finished cycle as one table per sleeve: every reading's score and
+    confidence per asset, the formula and consensus scores, and what each manager said."""
+    from app.db.models import AgentOutputRecord, Cycle, DecisionRecord
+
+    cycle = s.scalars(
+        select(Cycle).where(Cycle.status == "done").order_by(Cycle.id.desc()).limit(1)
+    ).first()
+    if cycle is None:
+        return {"matrix": None}
+    outs = s.scalars(
+        select(AgentOutputRecord).where(
+            AgentOutputRecord.cycle_id == cycle.id, AgentOutputRecord.variant == "main"
+        )
+    ).all()
+    decs = {
+        d.asset: d
+        for d in s.scalars(select(DecisionRecord).where(DecisionRecord.cycle_id == cycle.id)).all()
+    }
+    by_asset: dict[str, dict[str, Any]] = {}
+    for o in outs:
+        by_asset.setdefault(o.asset, {})[o.agent] = o
+    groups = []
+    sleeves = cfg.sleeves or {}
+    names = list(sleeves) or ["all"]
+    for name in names:
+        assets = sleeves[name].assets if sleeves else cfg.trading.assets
+        rows: list[dict[str, Any]] = [
+            {"asset": a, "cells": by_asset.get(a, {}), "dec": decs.get(a)} for a in assets
+        ]
+        scores: list[float] = [
+            float(d.formula_score)
+            for d in (decs.get(a) for a in assets)
+            if d is not None and d.formula_score is not None
+        ]
+        groups.append(
+            {
+                "name": name,
+                "rows": rows,
+                "agents": [ag for ag in READING_AGENTS if any(ag in r["cells"] for r in rows)],
+                "mean_formula": sum(scores) / len(scores) if scores else None,
+            }
+        )
+    return {"matrix": {"cycle": cycle, "groups": groups}}
+
+
+def _p_sentiment(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    """Market mood: Fear & Greed, BTC dominance, the macro regime, and per asset the X
+    sentiment of the last 24 hours (labelled posts by stance) with the mention volume."""
+    from app.agents.x_sentiment import WINDOW_H, mention_volume
+    from app.db.models import AgentOutputRecord, MacroObservation
+
+    def series(name: str, days: int) -> tuple[float | None, float | None]:
+        rows = s.execute(
+            select(MacroObservation.date, MacroObservation.value)
+            .where(
+                MacroObservation.series == name,
+                MacroObservation.date >= now - timedelta(days=days + 2),
+            )
+            .order_by(MacroObservation.date)
+        ).all()
+        if not rows:
+            return None, None
+        last = float(rows[-1][1])
+        before = [float(v) for d, v in rows if d <= rows[-1][0] - timedelta(days=days)]
+        return last, (last - before[-1]) if before else None
+
+    fng, fng_d7 = series("FNG", 7)
+    dom, dom_d7 = series("BTC_DOMINANCE", 7)
+    macro = s.scalars(
+        select(AgentOutputRecord)
+        .where(AgentOutputRecord.agent == "macro", AgentOutputRecord.variant == "main")
+        .order_by(AgentOutputRecord.id.desc())
+        .limit(1)
+    ).first()
+    regime = None
+    if macro and macro.evidence:
+        parts = str(macro.evidence[0]).split(" ")
+        regime = parts[1] if len(parts) > 1 else None
+    since = now - timedelta(hours=WINDOW_H)
+    stances = s.execute(
+        select(XPostRecord.asset, XPostRecord.stance, func.count())
+        .where(XPostRecord.labeled_at.is_not(None), XPostRecord.created_at >= since)
+        .group_by(XPostRecord.asset, XPostRecord.stance)
+    ).all()
+    counts: dict[str, dict[str, int]] = {}
+    for asset, stance, n in stances:
+        if asset:
+            counts.setdefault(asset, {})[stance or "neutral"] = int(n)
+    latest_x = {
+        o.asset: o
+        for o in s.scalars(
+            select(AgentOutputRecord)
+            .where(
+                AgentOutputRecord.agent == "x_sentiment",
+                AgentOutputRecord.variant == "main",
+                AgentOutputRecord.computed_at >= now - timedelta(hours=12),
+            )
+            .order_by(AgentOutputRecord.id)
+        ).all()
+    }
+    rows: list[dict[str, Any]] = []
+    for asset in cfg.trading.assets:
+        c = counts.get(asset, {})
+        mv = mention_volume(s, asset, now)
+        o = latest_x.get(asset)
+        rows.append(
+            {
+                "asset": asset,
+                "sleeve": cfg.sleeve_of(asset),
+                "score": o.score if o else None,
+                "confidence": o.confidence if o else None,
+                "bullish": c.get("bullish", 0),
+                "bearish": c.get("bearish", 0),
+                "neutral": c.get("neutral", 0),
+                "mentions": mv[0] if mv else None,
+                "buzz": (mv[0] / mv[1]) if mv and mv[1] > 0 else None,
+                "flags": list(o.risk_flags or []) if o else [],
+            }
+        )
+    scored: list[float] = [float(r["score"]) for r in rows if r["score"] is not None]
+    return {
+        "sentiment": {
+            "fng": fng,
+            "fng_d7": fng_d7,
+            "dominance": dom,
+            "dominance_d7": dom_d7,
+            "regime": regime,
+            "x_mean": sum(scored) / len(scored) if scored else None,
+            "rows": rows,
+            "window_h": WINDOW_H,
+        }
+    }
+
+
 def _p_exposure(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
     from app.risk.exposure import betas, track_exposure
 
@@ -498,13 +636,15 @@ PANELS: dict[str, Any] = {
     "polymarket": _p_polymarket,
     "freshness": _p_freshness,
     "controls": _p_controls,
+    "matrix": _p_matrix,
+    "sentiment": _p_sentiment,
 }
 # The pages of the dashboard and the panels each one shows (the templates include the same).
 PAGES: dict[str, tuple[str, ...]] = {
     "overview": ("money", "sleeves", "ledgers", "open", "controls"),
     "trades": ("open", "closed", "stops"),
     "risk": ("sleeves", "exposure", "betas", "stops"),
-    "readings": ("djaf", "polymarket"),
+    "readings": ("matrix", "sentiment", "djaf", "polymarket"),
     "costs": ("costs", "optima"),
     "system": ("freshness", "controls"),
 }
