@@ -49,10 +49,10 @@ def render(f: TradeFacts) -> bytes:
         d.textlength(f.direction, font=big),
         d.textlength(lev, font=mid),
     )
-    x = RIGHT_EDGE - (w_tag + 24 + w_side + 24 + w_lev)
-    d.text((x, logo_mid_y), f.cashtag, font=big, fill=FG, anchor="lm")
-    d.text((x + w_tag + 24, logo_mid_y), f.direction, font=big, fill=side_col, anchor="lm")
-    d.text((x + w_tag + 24 + w_side + 24, logo_mid_y + 4), lev, font=mid, fill=GREY, anchor="lm")
+    x = RIGHT_EDGE - (w_tag + 24 + w_side)
+    d.text((x, logo_mid_y - 18), f.cashtag, font=big, fill=FG, anchor="lm")
+    d.text((x + w_tag + 24, logo_mid_y - 18), f.direction, font=big, fill=side_col, anchor="lm")
+    d.text((RIGHT_EDGE - w_lev, logo_mid_y + 36), lev, font=mid, fill=GREY, anchor="lm")
     res_col = GREEN if f.pnl_margin_pct >= 0 else RED
     d.text((60, 250), pct(f.pnl_margin_pct), font=huge, fill=res_col)
     d.text((60, 390), "on margin", font=mid, fill=GREY)
