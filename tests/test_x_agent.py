@@ -127,3 +127,11 @@ async def test_timeline_pages_follow_the_next_token_and_can_include_replies() ->
     assert [p.id for p in first + second] == ["1", "2", "3"] and tok == "p2" and tok2 is None
     assert seen[0]["exclude"] == "retweets" and "pagination_token" not in seen[0]
     assert seen[1].get("pagination_token") == tok  # noqa: S105
+
+
+def test_search_order_rotates_per_cycle_slot() -> None:
+    assets = ["BTC", "ETH", "SOL", "XRP"]
+    first = {xs.search_order(assets, NOW + timedelta(hours=4 * i), 4)[0] for i in range(4)}
+    assert first == set(assets)  # every asset leads once over four cycles
+    assert sorted(xs.search_order(assets, NOW, 4)) == sorted(assets)
+    assert xs.search_order([], NOW, 4) == []

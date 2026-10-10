@@ -171,9 +171,11 @@ async def fetch_posts(session: Session, cfg: Config, client: XClient, now: datet
             new += 1
         return new
 
-    # Half of the allowance to the curated accounts (quality), half to search (breadth).
+    # A third of the allowance to the curated accounts (quality), the rest to search
+    # (breadth); the asset order rotates per cycle so every asset gets its turn when the
+    # allowance does not cover all ten (2026-10-10: the alts never got searched).
     accounts = [a for a in cfg.x.accounts if a]
-    account_share = allowance // 2 if accounts else 0
+    account_share = allowance // 3 if accounts else 0
     per_account = max(5, account_share // max(len(accounts), 1)) if accounts else 0
     for handle in accounts:
         if account_share < 5:
@@ -188,7 +190,7 @@ async def fetch_posts(session: Session, cfg: Config, client: XClient, now: datet
         stored += store(posts, None, handle)
 
     per_asset = max(10, min(cfg.x.search_per_asset, allowance // len(cfg.trading.assets)))
-    for asset in cfg.trading.assets:
+    for asset in search_order(cfg.trading.assets, now, cfg.trading.cycle_hours):
         if allowance < 10:
             break
         posts = await client.search_recent(SEARCH_QUERY[asset], max_results=per_asset)
@@ -197,6 +199,16 @@ async def fetch_posts(session: Session, cfg: Config, client: XClient, now: datet
     await count_mentions(session, cfg, client, now)
     session.commit()
     return stored
+
+
+def search_order(assets: list[str], now: datetime, cycle_hours: int) -> list[str]:
+    """The assets rotated by the cycle slot, so a short allowance reaches a different
+    first asset each cycle."""
+    if not assets:
+        return []
+    slot = int(now.timestamp() // (max(cycle_hours, 1) * 3600))
+    k = slot % len(assets)
+    return assets[k:] + assets[:k]
 
 
 async def count_mentions(session: Session, cfg: Config, client: XClient, now: datetime) -> int:
