@@ -74,3 +74,4 @@ details.acc > summary .t { font-weight: 650; color: var(--accent); text-transfor
 details.acc > .acc-body { padding: 10px 14px 12px; }
 details.acc .badge { margin-left: 0; }
 
+details.acc .scroll-x { margin: 0 -14px; padding: 0 14px; }
