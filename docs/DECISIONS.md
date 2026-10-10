@@ -192,3 +192,7 @@ The owner's target is an average of 1% per day on capital, net of every cost, to
 ## 2026-10-09 · Go-live starts a fresh ledger; the shadow ledgers freeze
 
 In live mode the executor runs one track, `live`, on ledger 4, created on the first live tick with starting capital = the subaccount's real equity (latest account snapshot); `risk_state.starting_capital` is set to the same number so "% against starting capital" means real money. The paper tracks (primary, max) keep running beside live as the control group, on the same decisions, so the record shows live fills against the paper version at the live rules and against the leveraged version (`risk_per_trade_max`); that comparison is the evidence for stepping live risk up toward the owner's goal. Only the live track is posted to X and shown on the public site once live. The public site, the go-live checker, the report and the memo read `primary` before go-live and `live` after; shadow trades keep their paper badge on the site. Why: before this the live trades would have been booked onto the 10,000 USDT paper ledger, mixing simulated and real history and sizing day-loss and brake rules against paper numbers.
+
+## 2026-10-09 · Leverage capped at 10x everywhere
+
+Bybit spot margin lends up to 10x; the 20x admin bound only ever affected the paper max track. Owner: cap everything at 10x. `leverage_max = 10`, `leverage_max_spx6900 = 10`, admin bounds 1–10 for both.

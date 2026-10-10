@@ -106,8 +106,11 @@ CSRF = "dorkbot_csrf"
 # Parameters the owner may change from the admin, with the hard bounds the executor
 # enforces again in code. Leverage never above 10 (SPEC §12 M8b).
 EDITABLE: dict[str, tuple[Decimal, Decimal]] = {
-    "trading.leverage_max": (Decimal(1), Decimal(20)),  # owner 2026-10-09: settable to 20x
-    "trading.leverage_max_spx6900": (Decimal(1), Decimal(10)),  # and SPX6900 to 10x
+    "trading.leverage_max": (
+        Decimal(1),
+        Decimal(10),
+    ),  # owner 2026-10-09: Bybit spot margin tops at 10x
+    "trading.leverage_max_spx6900": (Decimal(1), Decimal(10)),
     "trading.risk_per_trade": (Decimal("0.001"), Decimal("0.02")),
     "trading.risk_per_trade_max": (Decimal("0.001"), Decimal("0.05")),  # the max track only
     "trading.capital_share_per_asset": (Decimal("0.05"), Decimal("0.5")),
