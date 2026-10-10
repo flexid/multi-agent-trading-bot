@@ -25,9 +25,9 @@ Exits never wait for a cycle. The exchange-side backup stop (bot stop ± 0.5 ATR
 | every 5 min (+40 s) | public site | sanitized snapshot to R2, OG image when it changed |
 | every minute (:30 s) | heartbeat | the admin shows staleness after 5 min |
 | **00:02, 04:02, 08:02, 12:02, 16:02, 20:02** | **the cycle** (`cycle_hours = 4`) | five agents score each asset (X search per ticker + curated accounts + mention counts, labelling), both PMs propose, consensus, risk engine, decisions stored; the executor acts on them within 10 s. Measured: ~140 s, ~$0.60 per cycle |
-| 00:40 daily | go-live check | SPEC §10 criteria, flips `risk_state.mode` when all hold |
+| 00:40 daily | go-live check | SPEC §10 criteria, flips `risk_state.mode` when all hold; also classifies wick-outs for stopped trades whose holding window ended |
 | 01:10 daily | backup | `pg_dump`, 14 days, private bucket |
-| 01:30 on the 1st and 15th | weight tuning | only after ≥ 100 closed primary trades |
+| 01:30 on the 1st and 15th | weight tuning | agent weights only after ≥ 100 closed primary trades; the stop buffer moves on the wick-out rate once 20 stops exist |
 | 02:00 on the 1st | cost report | LLM, X, server |
 | Monday 06:00 | weekly memo | the week's facts in code plus model-written proposals, written to `logs/memo-<date>.md` and emailed to the owner; nothing is applied automatically |
 

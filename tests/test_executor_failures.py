@@ -61,6 +61,7 @@ def seed_decision(
     stop: str = "98",
     target: str = "106",
     atr: str | None = None,
+    hard_stop: str | None = None,
 ) -> int:
     from app.db.session import new_session
 
@@ -92,6 +93,7 @@ def seed_decision(
                     "notional": "2000",
                     "margin": "1000",
                     **({"atr": atr} if atr else {}),
+                    **({"hard_stop": hard_stop} if hard_stop else {}),
                 },
                 "plan_max": {
                     "entry": entry,
@@ -316,3 +318,26 @@ async def test_inverse_track_takes_the_other_side_with_mirrored_levels(db: None)
     # the same distances mirrored around the plan's entry (100): stop 102, target 94
     assert (primary.stop, primary.target) == (D(98), D(106))
     assert (inverse.stop, inverse.target) == (D(102), D(94))
+
+
+@needs_db
+async def test_soft_stop_waits_for_the_fifteen_minute_close(db: None) -> None:
+    """A wick through the soft stop does not close; a 15-minute close beyond it does; the
+    hard stop closes on touch."""
+    from datetime import UTC, datetime
+
+    seed_decision(stop="98", atr="1", hard_stop="97")  # hard stop one ATR further
+    ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+    await ex.tick()
+    (pos,) = positions()
+    assert pos.hard_stop == D(97)
+    symbol = get_config().symbol(ASSET)
+    # wick to 97.5 inside the same 15-minute bucket: open stays open
+    ex.quotes[symbol] = quote("97.5", "97.6")
+    await ex.tick()
+    assert positions()[0].status == "open"
+    # the bucket ends with the mid at 97.55: on the next pass the close is beyond 98
+    bucket = int(datetime.now(UTC).timestamp() // 900)
+    ex._candle_ref[symbol] = (bucket - 1, D("97.55"))
+    await ex.tick()
+    assert positions()[0].status == "closed" and positions()[0].close_reason == "stop"

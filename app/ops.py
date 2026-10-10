@@ -51,12 +51,16 @@ def backup() -> Path | None:
 
 
 def golive_check(cfg: Config) -> None:
+    from app.risk import wickouts
     from app.risk.golive import capital_ramp, decide, ramp
 
     with new_session() as s:
         verdict = decide(s, cfg)
         ramp(s)
         capital_ramp(s, cfg)
+        n = wickouts.check(s)
+    if n:
+        log.info("wick-out check: %d stopped trade(s) classified", n)
     log.info(
         "go-live check: %s (%d/%d criteria)",
         "READY" if verdict.ready else "not yet",
@@ -67,10 +71,13 @@ def golive_check(cfg: Config) -> None:
 
 def tuning(cfg: Config) -> None:
     from app.decision.tuning import tune
+    from app.risk import wickouts
 
     with new_session() as s:
         new = tune(s, cfg)
+        buffer = wickouts.tune_buffer(s, cfg.trading.assets)
     log.info("weight tuning: %s", new or "skipped (fewer than 100 closed trades)")
+    log.info("stop buffer after wick-out tuning: %s ATR", buffer)
 
 
 def cost_report(now: datetime | None = None) -> str:

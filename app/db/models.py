@@ -294,9 +294,12 @@ class Position(Base):
     margin: Mapped[Decimal]
     notional: Mapped[Decimal]
     borrowed: Mapped[Decimal] = mapped_column(default=0)  # base coin (short) or quote (long)
-    stop: Mapped[Decimal]
+    stop: Mapped[Decimal]  # soft stop: fires on a 15-minute close beyond it
+    hard_stop: Mapped[Decimal | None]  # touch stop an ATR further; sizing and backup use it
     target: Mapped[Decimal]
     trail_stop: Mapped[Decimal | None]
+    # Stopped out, and price then reached the target within the planned hold: a wick-out.
+    wick_out: Mapped[bool | None] = mapped_column(Boolean)
     max_hold_hours: Mapped[int] = mapped_column(Integer)
     opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -503,6 +506,8 @@ class RiskState(Base):
     live_selftest_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_golive_check: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     golive_report: Mapped[list[Any] | None] = mapped_column(JSONB)
+    stop_buffer_atr: Mapped[Decimal | None] = mapped_column(Numeric(3, 2))  # wick-out tuning
+    hard_stop_atr: Mapped[Decimal | None] = mapped_column(Numeric(3, 2))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 

@@ -309,6 +309,9 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
             .where(ControlRequest.applied_at.is_(None))
         ).scalar_one()
         pm_cov = [pm_coverage(s, a, now) for a in cfg.trading.assets]
+        from app.risk.wickouts import stats as wick_stats
+
+        wicks = wick_stats(s, cfg.trading.assets)
         real = s.execute(
             select(AccountSnapshot).order_by(AccountSnapshot.ts.desc()).limit(1)
         ).scalar_one_or_none()
@@ -333,6 +336,7 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
         stale=stale,
         sources=sources,
         pm_cov=pm_cov,
+        wicks=wicks,
         real=real,
         real_coins=real_coins,
         risk=risk,

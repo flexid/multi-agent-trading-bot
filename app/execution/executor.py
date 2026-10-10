@@ -117,6 +117,7 @@ class Executor:
         self.collateral_ratios: dict[str, Decimal] = {}
         self.frozen = False  # after a kill switch: no new positions until resumed
         self.kill_real_only = False  # a self-test kill leaves the paper tracks alone
+        self._candle_ref: dict[str, tuple[int, Decimal]] = {}  # 15-minute bucket, last mid
         self.style = style.load()
         self._alerted: set[str] = set()  # risk states already emailed this episode
 
@@ -360,6 +361,7 @@ class Executor:
         rows = session.scalars(
             select(Position).where(Position.status.in_(["open", "closing"]))
         ).all()
+        closes = self._closes_15m(now)
         for row in rows:
             quote = self.quotes.get(row.symbol)
             if quote is None:
@@ -371,7 +373,11 @@ class Executor:
             )
             pos = sim.update_trail(pos, quote)
             reason = sim.exit_reason(
-                pos, quote, now, kill=kill and not (self.kill_real_only and row.mode == "paper")
+                pos,
+                quote,
+                now,
+                kill=kill and not (self.kill_real_only and row.mode == "paper"),
+                close_15m=closes.get(row.symbol),
             )
             if reason is None and close_all:
                 reason = ExitReason.RISK
@@ -464,7 +470,9 @@ class Executor:
         # A real position that our liquidation guard closed is booked at its real fill,
         # not at the modelled liquidation price with the whole margin gone.
         calc = (
-            ExitReason.STOP if reason is ExitReason.LIQUIDATION and row.mode != "paper" else reason
+            ExitReason.STOP_HARD
+            if reason is ExitReason.LIQUIDATION and row.mode != "paper"
+            else reason
         )
         fill = sim.close_position(pos, exit_quote, Decimal(0), calc)
         net = fill.net_pnl - row.exit_fee
@@ -506,17 +514,32 @@ class Executor:
 
     # --- exchange-side backup stop ---------------------------------------------------
 
+    def _closes_15m(self, now: datetime) -> dict[str, Decimal]:
+        """The close of the 15-minute candle that just ended, per symbol, on the first pass
+        after a boundary; empty otherwise. The last mid seen before the boundary is the
+        close; the bucket index tells a new candle from the running one."""
+        bucket = int(now.timestamp() // 900)
+        out: dict[str, Decimal] = {}
+        for symbol, quote in self.quotes.items():
+            prev = self._candle_ref.get(symbol)
+            if prev is not None and prev[0] != bucket:
+                out[symbol] = prev[1]
+            self._candle_ref[symbol] = (bucket, quote.mid)
+        return out
+
     @staticmethod
     def backup_trigger(row: Position) -> Decimal:
-        """``BACKUP_ATR_MULT`` ATR beyond the stop the bot itself enforces (the trailing
-        stop once armed). Without an ATR on the row, the stop distance stands in for it."""
+        """``BACKUP_ATR_MULT`` ATR beyond the stop the bot itself enforces on touch: the
+        hard stop (or the trailing stop once it is armed and tighter). Without an ATR on
+        the row, the stop distance stands in for it."""
         assert row.entry_price is not None
-        atr = row.atr if row.atr and row.atr > 0 else abs(row.entry_price - row.stop)
+        touch = row.hard_stop if row.hard_stop is not None else row.stop
+        atr = row.atr if row.atr and row.atr > 0 else abs(row.entry_price - touch)
         offset = BACKUP_ATR_MULT * atr
         if row.direction == "long":
-            stop = max(row.stop, row.trail_stop) if row.trail_stop is not None else row.stop
+            stop = max(touch, row.trail_stop) if row.trail_stop is not None else touch
             return stop - offset
-        stop = min(row.stop, row.trail_stop) if row.trail_stop is not None else row.stop
+        stop = min(touch, row.trail_stop) if row.trail_stop is not None else touch
         return stop + offset
 
     async def _sync_backup_stop(self, row: Position, gw: Gateway) -> None:
@@ -646,6 +669,7 @@ class Executor:
                     **plan,
                     "entry": str(quote.mid),
                     "stop": str(Decimal(plan["stop"]) + offset),
+                    "hard_stop": str(Decimal(plan.get("hard_stop", plan["stop"])) + offset),
                     "target": str(Decimal(plan["target"]) + offset),
                 }
                 log.info("%s: entry clamped to spot (%+.2f%% from plan)", d.asset, drift * 100)
@@ -656,6 +680,9 @@ class Executor:
                 plan = {
                     **plan,
                     "stop": str(entry + (entry - Decimal(plan["stop"]))),
+                    "hard_stop": str(
+                        entry + (entry - Decimal(plan.get("hard_stop", plan["stop"])))
+                    ),
                     "target": str(entry - (Decimal(plan["target"]) - entry)),
                 }
             if notional / leverage > acct.cash:
@@ -691,6 +718,7 @@ class Executor:
                     self.qty_steps.get(symbol, QTY_STEP_FALLBACK),
                     collateral_ratio=self.collateral_ratios.get(symbol, Decimal("0.98")),
                     maintenance_rate=self.cfg.risk.maintenance_margin_rate,
+                    hard_stop=Decimal(plan["hard_stop"]) if plan.get("hard_stop") else None,
                 )
             except ValueError as exc:
                 log.warning("%s: %s", d.asset, exc)
@@ -739,6 +767,7 @@ class Executor:
                 notional=pos.qty * pos.entry,
                 borrowed=pos.borrowed,
                 stop=pos.stop,
+                hard_stop=pos.hard_stop,
                 target=pos.target,
                 max_hold_hours=pos.max_hold_hours,
                 opened_at=now,
@@ -816,6 +845,7 @@ class Executor:
             margin=row.margin,
             borrowed=row.borrowed,
             stop=row.stop,
+            hard_stop=row.hard_stop,
             target=row.target,
             opened_at=row.opened_at,
             max_hold_hours=row.max_hold_hours,

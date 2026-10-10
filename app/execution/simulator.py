@@ -27,7 +27,8 @@ class Side(StrEnum):
 
 
 class ExitReason(StrEnum):
-    STOP = "stop"
+    STOP = "stop"  # the soft stop: a 15-minute candle closed beyond it
+    STOP_HARD = "stop_hard"  # the hard stop, an ATR further: touched
     TARGET = "target"
     TRAIL = "trail"
     TIME = "time"
@@ -66,10 +67,11 @@ class PaperPosition:
     last_interest_at: datetime | None = None
     collateral_ratio: Decimal = Decimal("0.98")  # of the base coin, from the API
     maintenance_rate: Decimal = MAINTENANCE
+    hard_stop: Decimal | None = None  # touch stop beyond the soft ``stop``; None = legacy touch
 
     @property
     def stop_distance(self) -> Decimal:
-        return abs(self.entry - self.stop)
+        return abs(self.entry - (self.hard_stop if self.hard_stop is not None else self.stop))
 
     @property
     def liquidation_price(self) -> Decimal:
@@ -104,6 +106,7 @@ def open_position(
     qty_step: Decimal,
     collateral_ratio: Decimal = Decimal("0.98"),
     maintenance_rate: Decimal = MAINTENANCE,
+    hard_stop: Decimal | None = None,
 ) -> PaperPosition:
     price = quote.ask if side is Side.LONG else quote.bid
     qty = round_qty(notional / price, qty_step)
@@ -128,6 +131,7 @@ def open_position(
         last_interest_at=quote.ts,
         collateral_ratio=collateral_ratio,
         maintenance_rate=maintenance_rate,
+        hard_stop=hard_stop,
     )
 
 
@@ -181,16 +185,28 @@ def liquidation_room(pos: PaperPosition, quote: Quote) -> Decimal | None:
 
 
 def exit_reason(
-    pos: PaperPosition, quote: Quote, now: datetime, kill: bool = False
+    pos: PaperPosition,
+    quote: Quote,
+    now: datetime,
+    kill: bool = False,
+    close_15m: Decimal | None = None,
 ) -> ExitReason | None:
+    """``close_15m``: the close of the 15-minute candle that just ended, on the first pass
+    after its boundary; None on every other pass. With a hard stop set, the soft stop
+    fires only on such a close beyond it, the hard stop on touch (owner 2026-10-10)."""
     if kill:
         return ExitReason.KILL
     price = quote.bid if pos.side is Side.LONG else quote.ask  # the price we could exit at
     liq = pos.liquidation_price
+    hard = pos.hard_stop
     if pos.side is Side.LONG:
         if liq > 0 and price <= liq:
             return ExitReason.LIQUIDATION
-        if price <= pos.stop:
+        if hard is not None and price <= hard:
+            return ExitReason.STOP_HARD
+        if hard is None and price <= pos.stop:
+            return ExitReason.STOP
+        if hard is not None and close_15m is not None and close_15m <= pos.stop:
             return ExitReason.STOP
         if pos.trail_stop is not None and price <= pos.trail_stop:
             return ExitReason.TRAIL
@@ -199,7 +215,11 @@ def exit_reason(
     else:
         if price >= liq:
             return ExitReason.LIQUIDATION
-        if price >= pos.stop:
+        if hard is not None and price >= hard:
+            return ExitReason.STOP_HARD
+        if hard is None and price >= pos.stop:
+            return ExitReason.STOP
+        if hard is not None and close_15m is not None and close_15m >= pos.stop:
             return ExitReason.STOP
         if pos.trail_stop is not None and price >= pos.trail_stop:
             return ExitReason.TRAIL

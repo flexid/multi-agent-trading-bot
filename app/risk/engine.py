@@ -15,6 +15,7 @@ from decimal import ROUND_DOWN, Decimal
 from app.decision.consensus import Agreement, Consensus
 from app.decision.pm import Direction
 from app.risk import leverage as lev
+from app.risk.stops import place_stop
 
 ZERO = Decimal(0)
 
@@ -50,6 +51,8 @@ class MarketState:
     collateral_ratio: Decimal = Decimal("0.98")  # of the base coin, from the API
     maintenance_rate: Decimal = Decimal("0.03")
     depth_truncated: bool = False  # 200 levels did not reach ±2%: depth is a lower bound
+    atr: Decimal | None = None  # ATR(14, 4h); stop placement needs it
+    levels: tuple[Decimal, ...] = ()  # round numbers and recent swings near the price
 
 
 @dataclass(frozen=True)
@@ -68,6 +71,8 @@ class Limits:
     emergency_brake: Decimal = Decimal("-0.25")
     max_trades_per_asset_day: int = 3
     fee_multiple: Decimal = Decimal(3)
+    stop_buffer_atr: Decimal = Decimal("0.5")  # beyond a level, in ATR (tuned by wick-outs)
+    hard_stop_atr: Decimal = Decimal(1)  # the touch stop sits this far beyond the soft one
     min_valid_agents: int = 3
 
 
@@ -91,6 +96,7 @@ class TradePlan:
     notional: Decimal  # quote value of the position
     margin: Decimal  # own capital committed
     hits: list[RuleHit] = field(default_factory=list)
+    hard_stop: Decimal | None = None  # touch stop; ``stop`` is the soft, close-based one
 
 
 @dataclass(frozen=True)
@@ -185,7 +191,21 @@ def assess(
     assert p.entry_low and p.entry_high and p.stop and p.target and p.max_hold_hours
     entry = Decimal(str((p.entry_low + p.entry_high) / 2))
     stop, target = Decimal(str(p.stop)), Decimal(str(p.target))
-    stop_distance = abs(entry - stop) / entry
+    # Stop hunts (owner 2026-10-10): the soft stop moves clear of levels, the hard stop
+    # sits an ATR beyond it, and the size is set by the hard stop.
+    placed = place_stop(
+        c.direction,
+        entry,
+        stop,
+        mkt.atr,
+        mkt.levels,
+        buffer=lim.stop_buffer_atr,
+        hard=lim.hard_stop_atr,
+    )
+    if placed.moved:
+        hits.append(RuleHit("stop_buffer", placed.reason, "adjust"))
+    stop, hard_stop = placed.soft, placed.hard
+    stop_distance = abs(entry - hard_stop) / entry
     target_distance = abs(target - entry) / entry
 
     if c.direction is Direction.SHORT and not (mkt.margin_enabled and mkt.short_allowed):
@@ -276,6 +296,7 @@ def assess(
         direction=c.direction,
         entry=entry,
         stop=stop,
+        hard_stop=hard_stop,
         target=target,
         max_hold_hours=p.max_hold_hours,
         leverage=_round_down(leverage, Decimal("0.1")),

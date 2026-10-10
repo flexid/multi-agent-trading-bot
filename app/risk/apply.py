@@ -21,6 +21,7 @@ from app.config import Config
 from app.db.models import (
     AccountSnapshot,
     AgentOutputRecord,
+    Candle,
     DecisionRecord,
     MacroObservation,
     OrderBookSnapshot,
@@ -33,6 +34,32 @@ from app.decision.consensus import Agreement, Consensus
 from app.decision.evidence import spot_and_atr
 from app.decision.pm import Direction, Proposal
 from app.risk import engine
+
+
+def levels_for(session: Session, symbol: str, spot: Decimal) -> tuple[Decimal, ...]:
+    """Round numbers within ±8% of spot plus the swing lows/highs of the last 48 hours."""
+    from app.risk.stops import round_levels, swing_levels
+
+    rows = session.execute(
+        select(Candle.high, Candle.low)
+        .where(Candle.symbol == symbol, Candle.interval == "60")
+        .order_by(Candle.open_time.desc())
+        .limit(48)
+    ).all()
+    highs = [Decimal(str(r.high)) for r in reversed(rows)]
+    lows = [Decimal(str(r.low)) for r in reversed(rows)]
+    band = spot * Decimal("0.08")
+    found = round_levels(spot, spot - band, spot + band) + swing_levels(highs, lows)
+    return tuple(sorted({lv for lv in found if spot - band <= lv <= spot + band}))
+
+
+def limits_with_state(lim: engine.Limits, state: RiskState) -> engine.Limits:
+    """The tuned stop multiples live in risk_state (wick-out tuning)."""
+    return replace(
+        lim,
+        stop_buffer_atr=state.stop_buffer_atr or lim.stop_buffer_atr,
+        hard_stop_atr=state.hard_stop_atr or lim.hard_stop_atr,
+    )
 
 
 def limits_for_max(lim: engine.Limits, cfg: Config) -> engine.Limits:
@@ -174,8 +201,12 @@ def market_state(
         coupling = 0.0
     fees = cfg_fee(cfg)
     borrow_rate, collateral_ratio = margin_terms(session, cfg.base_coin(asset))
+    spot, atr = spot_and_atr(session, symbol)
+    levels = levels_for(session, symbol, Decimal(str(spot))) if spot else ()
     return engine.MarketState(
         depth_quote_2pct=depth,
+        atr=Decimal(str(atr)) if atr else None,
+        levels=levels,
         depth_truncated=truncated,
         atr_extreme=atr_extreme,
         event_today=event_today(now),
@@ -196,6 +227,7 @@ def _plan_dict(p: engine.TradePlan, atr: float | None = None) -> dict[str, Any]:
     plan: dict[str, Any] = {
         "entry": str(p.entry),
         "stop": str(p.stop),
+        "hard_stop": str(p.hard_stop) if p.hard_stop is not None else str(p.stop),
         "target": str(p.target),
         "max_hold_hours": p.max_hold_hours,
         "leverage": str(p.leverage),
@@ -248,7 +280,7 @@ def apply_risk(
     session: Session, cfg: Config, cycle_id: int, mode: str, now: datetime | None = None
 ) -> dict[str, engine.Assessment]:
     now = now or datetime.now(UTC)
-    lim = limits_from_config(cfg)
+    lim = limits_with_state(limits_from_config(cfg), risk_state(session))
     acct = account_state(session, cfg, mode, now)
     # Comparison track (shadow only): same rules with the ceiling at leverage_max.
     acct_max = engine.AccountState(**{**acct.__dict__, "leverage_ceiling": lim.leverage_max})
