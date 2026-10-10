@@ -480,7 +480,10 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         assets: list[AssetView] = []
         if last_cycle:
             outs = s.scalars(
-                select(AgentOutputRecord).where(AgentOutputRecord.cycle_id == last_cycle.id)
+                select(AgentOutputRecord).where(
+                    AgentOutputRecord.cycle_id == last_cycle.id,
+                    AgentOutputRecord.variant == "main",  # not the shadow labeller's copies
+                )
             ).all()
             decs = {
                 d.asset: d
