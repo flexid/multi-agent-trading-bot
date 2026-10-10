@@ -351,3 +351,26 @@ class Order(BybitModel):
     def is_final(self) -> bool:
         """No further fills can arrive on this order."""
         return self.order_status in FINAL_ORDER_STATES
+
+
+class Announcement(BaseModel):
+    """One row of ``/v5/announcements/index`` (public). Title and description are untrusted
+    text: for classification and the admin only, never for the PMs."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    title: str
+    description: str = ""
+    url: str = ""
+    type: dict[str, Any] = Field(default_factory=dict)  # {"key": "new_crypto", "title": ...}
+    tags: list[str] = Field(default_factory=list)
+    date_ms: int = Field(alias="dateTimestamp")
+    start_ms: int | None = Field(default=None, alias="startDateTimestamp")
+
+    @property
+    def kind(self) -> str:
+        return str(self.type.get("key") or "")
+
+    @property
+    def published_at(self) -> datetime:
+        return datetime.fromtimestamp(self.date_ms / 1000, tz=UTC)

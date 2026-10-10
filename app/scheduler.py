@@ -32,6 +32,8 @@ def jobs(cfg: Config, secrets: Secrets) -> dict[str, fetch.Fetcher]:
         "macro.fred": fetch.make_fetch_macro(secrets),
         "macro.gold_stables": fetch.make_fetch_gold_stables(),
         "crypto_native": fetch.make_fetch_crypto_native(secrets),  # every 15 min: dominance
+        "catalysts.bybit": fetch.make_fetch_announcements(cfg, secrets),  # alt sleeve
+        "catalysts.unlocks": fetch.make_fetch_unlocks(cfg),  # hourly
     }
 
 
@@ -111,10 +113,11 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
         coalesce=True,
     )
     for name, fetcher in jobs(cfg, secrets).items():
-        # Macro data moves daily; the rest every 15 minutes, 20 s after the candle close.
+        # Macro data and the unlock calendar move daily; the rest every 15 minutes, 20 s
+        # after the candle close.
         trigger = (
             CronTrigger(hour="*", minute="5", second="0")
-            if name.startswith("macro.")
+            if name.startswith("macro.") or name == "catalysts.unlocks"
             else CronTrigger(minute="0,15,30,45", second="20")
         )
         scheduler.add_job(

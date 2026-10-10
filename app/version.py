@@ -1,6 +1,11 @@
 """Logic version: bumped when the decision logic changes in a way that makes earlier
 decisions not comparable. Stored on every cycle row.
 
+5  2026-10-10  alt sleeve only: the Polymarket agent is replaced by the catalyst agent
+              (Djaf, TypeSafe Jev): project and alt-news X accounts, Bybit announcements
+              and the unlock calendar, classified by Jev, scored with time decay in code;
+              Jev also labels the alt sleeve's X posts. Sonnet runs beside it in shadow.
+              Bluechips unchanged. The 2026-11-07 review date stands.
 4  2026-10-10  two sleeves: bluechips (BTC, ETH, SOL, XRP, DOGE; 70% of capital, 1% risk,
               leverage to 10x) and alts (PEPE, HBAR, PUMP, SPX6900, ENA; 30%, 0.5% risk,
               3x, depth caps, Polymarket weight ~0, X and charts up, Sonnet vision). Each
@@ -16,5 +21,5 @@ decisions not comparable. Stored on every cycle row.
 1  2026-10-08  initial logic (SPEC §6-§9).
 """
 
-LOGIC_VERSION = 4
+LOGIC_VERSION = 5
 FROZEN_UNTIL = "2026-11-07"  # the 4-week review; no logic change before then

@@ -94,6 +94,10 @@ All five run every 4 hours, plus triggered cycles (§7). Output per agent per as
 
 During shadow mode every agent also runs on the other provider. Per task, keep the model that measurably scores better.
 
+### 6.x Catalyst agent (alt sleeve only, logic v5)
+
+Crew name Djaf. Sources: official project and alt-news accounts on X, Bybit announcements and the token-unlock calendar (DefiLlama datasets). TypeSafe Jev classifies every text event (asset, type ∈ {listing, delisting, unlock, hack, partnership, other}, direction, materiality as a probability); unlocks are labelled by code from the schedule. Code scores: a decayed sum of sign × materiality × type weight with half-lives per type, unlocks ramping up over the week before the date. Jev also labels the alt sleeve's X posts. While not live, claude-sonnet-5-5 labels the same inputs in parallel and both get an IC. Jev calls follow the LLM-layer contract (timeout, one retry, fail closed, logged with cost and latency). The PMs see labels only, never event text.
+
 ## 7. Decision layer
 
 1. **Evidence pack:** the five agent outputs per asset, open positions, P&L for the day, the last 10 decisions with outcomes, macro regime and coupling.

@@ -21,11 +21,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.admin import auth, notify
 from app.agents.names import display as agent_display
 from app.agents.polymarket import coverage as pm_coverage
-from app.config import get_config, get_secrets
+from app.config import Config, get_config, get_secrets
 from app.db.models import (
     AccountSnapshot,
     AdminUser,
@@ -266,6 +267,74 @@ def step_up(
 # --- pages -----------------------------------------------------------------------------
 
 
+def djaf_panel(s: Session, cfg: Config, now: datetime, month: datetime) -> dict[str, Any]:
+    """Jev's cost and latency this month, Jev-vs-Sonnet agreement on events and posts, and
+    the IC of both labellers' readings (variant main = Jev, alt = Sonnet)."""
+    from app.agents.catalysts import agreement
+    from app.db.models import CatalystEvent, XPostLabel
+    from app.decision.tuning import LOOKBACK_DAYS, score_agents
+
+    jev = s.execute(
+        select(
+            func.count(),
+            func.coalesce(func.sum(LLMCall.cost_usd), 0),
+            func.coalesce(func.avg(LLMCall.latency_ms), 0),
+            func.coalesce(func.sum(LLMCall.input_tokens), 0),
+        ).where(LLMCall.ts >= month, LLMCall.provider == "typesafe")
+    ).one()
+    events = s.scalars(
+        select(CatalystEvent)
+        .where(CatalystEvent.classified_at.is_not(None))
+        .order_by(CatalystEvent.event_at.desc())
+        .limit(400)
+    ).all()
+    ev_agree = agreement(list(events))
+    labels = s.execute(
+        select(XPostLabel.post_id, XPostLabel.labeler, XPostLabel.asset, XPostLabel.stance).where(
+            XPostLabel.labeled_at >= now - timedelta(days=30)
+        )
+    ).all()
+    by_post: dict[str, dict[str, tuple[str | None, str | None]]] = {}
+    for post_id, labeler, asset, stance in labels:
+        by_post.setdefault(post_id, {})[labeler] = (asset, stance)
+    pairs = [v for v in by_post.values() if "jev" in v and "sonnet" in v]
+    post_agree = {
+        "posts": len(pairs),
+        "asset": round(sum(v["jev"][0] == v["sonnet"][0] for v in pairs) / len(pairs), 3)
+        if pairs
+        else None,
+        "stance": round(sum(v["jev"][1] == v["sonnet"][1] for v in pairs) / len(pairs), 3)
+        if pairs
+        else None,
+    }
+    since = now - timedelta(days=LOOKBACK_DAYS)
+    main = {r.name: r for r in score_agents(s, cfg, since)}
+    alt = {r.name: r for r in score_agents(s, cfg, since, variant="alt")}
+    ic_rows = [
+        {
+            "agent": agent,
+            "jev_1d": main[agent].ic.get("1d") if agent in main else None,
+            "jev_n": main[agent].sample if agent in main else 0,
+            "sonnet_1d": alt[agent].ic.get("1d") if agent in alt else None,
+            "sonnet_n": alt[agent].sample if agent in alt else 0,
+        }
+        for agent in ("catalysts", "x_sentiment")
+    ]
+    recent = [e for e in events if e.source != "unlocks" or e.event_at >= now - timedelta(days=3)][
+        :12
+    ]
+    return {
+        "calls": int(jev[0]),
+        "usd": float(jev[1]),
+        "latency_ms": int(jev[2]),
+        "tokens": int(jev[3]),
+        "events": ev_agree,
+        "posts": post_agree,
+        "ic": ic_rows,
+        "recent": recent,
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 def overview(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
     now = datetime.now(UTC)
@@ -341,6 +410,7 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
                 )
         beta_rows = beta_table(s, cfg, now)
         sleeve_costs = costs_by_sleeve(s, cfg, month)
+        djaf = djaf_panel(s, cfg, now, month)
         from app.risk.exposure import betas as asset_betas
         from app.risk.exposure import track_exposure
 
@@ -381,6 +451,7 @@ def overview(request: Request, user: str = Depends(current_user)) -> HTMLRespons
         sleeve_rows=sleeve_rows,
         beta_rows=beta_rows,
         sleeve_costs=sleeve_costs,
+        djaf=djaf,
         beta=beta,
         exposures=exposures,
         real=real,

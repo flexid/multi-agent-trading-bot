@@ -26,6 +26,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "qrcode>=7.4",
     "sqlalchemy>=2.0",
+    "typesafe-sdk>=0.7.4",
     "uvicorn[standard]>=0.30",
     "websockets>=13",
 ]

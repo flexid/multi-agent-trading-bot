@@ -17,6 +17,7 @@ import time
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -24,6 +25,7 @@ from app.config import get_config, get_secrets
 from app.db.models import LLMCall
 from app.db.session import new_session
 from app.llm.base import Completion, Image, LLMError, Prompt, Provider, Usage, cost_usd
+from app.llm.jev_client import JSON, JevProvider, Judgment
 
 log = logging.getLogger(__name__)
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
@@ -44,6 +46,8 @@ def provider_for(model: str) -> Provider:
         return _anthropic()
     if model.startswith("gpt-"):
         return _openai()
+    if is_jev(model):
+        raise LLMError(f"{model} answers typed questions: use app.llm.judge, not complete")
     raise LLMError(f"no provider for model {model}")
 
 
@@ -59,6 +63,115 @@ def _openai() -> Provider:
     from app.llm.openai_client import OpenAIProvider
 
     return OpenAIProvider(get_secrets().openai_api_key)
+
+
+@lru_cache(maxsize=1)
+def _jev() -> JevProvider:
+    from app.llm.jev_client import JevProvider
+
+    return JevProvider(get_secrets().jev_api_key)
+
+
+def is_jev(model: str) -> bool:
+    return model.startswith("jev-")
+
+
+async def judge(
+    task: str,
+    *,
+    version: int,
+    state: JSON,
+    questions: dict[str, Any],
+    model: str | None = None,
+    cycle_id: int | None = None,
+    asset: str | None = None,
+) -> Judgment:
+    """A TypeSafe Jev judgment: typed answers over ``state``. Same contract as ``complete``:
+    the model from config, a timeout, one retry, then ``LLMError``; every call logged with
+    tokens, cost and latency. ``version`` is the question set's version (bumped when the
+    questions change), stored where a prompt version would be."""
+    cfg = get_config()
+    model = model or getattr(cfg.models, task)
+    if not is_jev(model):
+        raise LLMError(f"judge needs a jev model, got {model}")
+    provider = _jev()
+    prompt = Prompt(name=task, version=version, system="")
+    user_text = json.dumps(state, default=str)
+    started = time.monotonic()
+    error: str | None = None
+    attempts = 0
+    for attempts in (1, 2):
+        try:
+            result = await asyncio.wait_for(
+                provider.judge(
+                    model=model, state=state, questions=questions, timeout_s=cfg.llm.jev_timeout_s
+                ),
+                timeout=cfg.llm.jev_timeout_s + 2,
+            )
+        except (LLMError, TimeoutError) as exc:
+            error = f"{type(exc).__name__}: {exc}"[:2000]
+            log.warning("jev %s attempt %d failed: %s", task, attempts, error)
+            continue
+        latency = int((time.monotonic() - started) * 1000)
+        _log_judgment(task, prompt, result, cycle_id, asset, user_text, latency, attempts)
+        return result
+    latency = int((time.monotonic() - started) * 1000)
+    _log_call(
+        task,
+        provider.name,
+        prompt,
+        None,
+        cycle_id,
+        asset,
+        None,
+        user_text,
+        error,
+        model,
+        latency,
+        attempts,
+    )
+    raise LLMError(f"{task} on {model} failed after {attempts} attempts: {error}")
+
+
+def _log_judgment(
+    task: str,
+    prompt: Prompt,
+    result: Judgment,
+    cycle_id: int | None,
+    asset: str | None,
+    user_text: str,
+    latency_ms: int,
+    attempts: int,
+) -> None:
+    cfg = get_config()
+    try:
+        with new_session() as session:
+            session.add(
+                LLMCall(
+                    ts=datetime.now(UTC),
+                    task=task,
+                    asset=asset,
+                    cycle_id=cycle_id,
+                    provider="typesafe",
+                    model=result.model,
+                    prompt_name=prompt.name,
+                    prompt_version=prompt.version,
+                    input_chars=len(user_text),
+                    images=0,
+                    input_tokens=result.usage.input_tokens,
+                    output_tokens=result.usage.output_tokens,
+                    cached_input_tokens=0,
+                    cost_usd=cost_usd(cfg.llm.pricing, result.model, result.usage),
+                    latency_ms=latency_ms,
+                    attempts=attempts,
+                    ok=True,
+                    error=None,
+                    output=result.answers,
+                )
+            )
+            session.commit()
+    except Exception:  # logging must never take the call down with it
+        log.exception("could not log jev call %s", task)
 
 
 async def complete[SchemaT: BaseModel](
@@ -170,4 +283,15 @@ def _log_call(
         log.exception("could not log llm call %s", task)
 
 
-__all__ = ["Completion", "Image", "LLMError", "Prompt", "Usage", "complete", "load_prompt"]
+__all__ = [
+    "Completion",
+    "Image",
+    "Judgment",
+    "LLMError",
+    "Prompt",
+    "Usage",
+    "complete",
+    "is_jev",
+    "judge",
+    "load_prompt",
+]

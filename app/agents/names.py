@@ -52,6 +52,14 @@ CREW: list[Member] = [
         "talking compared with a normal day. Crowded one-way chatter makes it suspicious.",
     ),
     Member(
+        "catalysts",
+        "Djaf",
+        "analysis agent (alts)",
+        "The instant decision maker for the alt sleeve: reads the project accounts, the "
+        "exchange notices and the unlock calendar, and labels each catalyst in a blink: "
+        "which coin, what kind, which way, how much it matters. Code turns that into a score.",
+    ),
+    Member(
         "pm_1",
         "Dyne",
         "portfolio manager (Claude)",

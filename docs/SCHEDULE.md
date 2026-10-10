@@ -19,6 +19,7 @@ Exits never wait for a cycle. The exchange-side backup stop (bot stop ± 0.5 ATR
 | when | job | notes |
 |---|---|---|
 | :00 / :15 / :30 / :45 (+20 s) | data fetches | candles 1h/4h/1d, 200-level books, account, perp funding and OI, margin terms, Polymarket prices (whole crypto events), Fear & Greed + BTC dominance |
+| :00 / :15 / :30 / :45 (+20 s) | catalysts | Bybit announcements that name an alt-sleeve asset → pending catalyst events (Jev labels them in the cycle); hourly (:05) the DefiLlama unlock calendar for ENA, PUMP, HBAR |
 | :01 / :16 / :31 / :46, and at startup | Polymarket mapping | parser first, model for the leftovers |
 | :03 / :18 / :33 / :48 | trigger check | price move > 2× ATR within an hour, Polymarket shift > 10 pp within an hour, or a credible X news shock → a **triggered cycle**, at most 2 per day |
 | :05 every hour | macro | FRED series |

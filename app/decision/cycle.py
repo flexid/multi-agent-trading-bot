@@ -20,7 +20,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.agents import run_chart, run_indicators, run_macro, run_polymarket, run_x
+from app.agents import run_catalysts, run_chart, run_indicators, run_macro, run_polymarket, run_x
 from app.agents.indicators_summary import summarize
 from app.agents.schema import AgentOutput
 from app.config import Config, get_config
@@ -66,6 +66,7 @@ async def run_agents(
         "macro": macro(),
         "x_sentiment": run_x.run(cfg, fetch=x_fetch, cycle_id=cycle_id),
         "chart_patterns": run_chart.run(cfg, vision=vision, cycle_id=cycle_id),
+        "catalysts": run_catalysts.run(cfg, fetch=x_fetch, cycle_id=cycle_id),  # alts only
     }
     results = await asyncio.gather(*tasks.values(), return_exceptions=True)
     for name, result in zip(tasks, results, strict=True):
@@ -77,7 +78,9 @@ async def run_agents(
     return by_asset, regime, couplings
 
 
-def store_outputs(cycle_id: int, by_asset: dict[str, list[AgentOutput]]) -> None:
+def store_outputs(
+    cycle_id: int, by_asset: dict[str, list[AgentOutput]], variant: str = "main"
+) -> None:
     with new_session() as session:
         for outs in by_asset.values():
             for o in outs:
@@ -86,6 +89,7 @@ def store_outputs(cycle_id: int, by_asset: dict[str, list[AgentOutput]]) -> None
                         cycle_id=cycle_id,
                         agent=o.agent,
                         asset=o.asset,
+                        variant=variant,
                         score=o.score,
                         confidence=o.confidence,
                         horizon=o.horizon.value,
@@ -98,6 +102,26 @@ def store_outputs(cycle_id: int, by_asset: dict[str, list[AgentOutput]]) -> None
                     )
                 )
         session.commit()
+
+
+def store_shadow_outputs(cfg: Config, cycle_id: int) -> None:
+    """While not live, the alt-sleeve readings scored from the shadow labeller (Sonnet
+    beside Jev) are stored as variant ``alt`` so both get an IC (owner 2026-10-10)."""
+    try:
+        shadow = run_catalysts.run_shadow(cfg)
+        shadow += run_x.run_shadow(cfg)
+    except Exception as exc:  # a comparison must never fail the cycle
+        log.warning("shadow outputs failed: %s", exc)
+        return
+    if shadow:
+        store_outputs(cycle_id, _group(shadow), "alt")
+
+
+def _group(outs: list[AgentOutput]) -> dict[str, list[AgentOutput]]:
+    grouped: dict[str, list[AgentOutput]] = {}
+    for o in outs:
+        grouped.setdefault(o.asset, []).append(o)
+    return grouped
 
 
 def _dec(value: float | None) -> Decimal | None:
@@ -222,6 +246,7 @@ async def run_cycle(
             cfg, cycle_id, x_fetch=x_fetch, vision=vision
         )
         store_outputs(cycle_id, by_asset)
+        store_shadow_outputs(cfg, cycle_id)
         symbols = {a: cfg.symbol(a) for a in cfg.trading.assets}
         with new_session() as session:
             pack = build_pack(

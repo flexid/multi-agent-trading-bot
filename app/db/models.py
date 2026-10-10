@@ -16,6 +16,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -154,6 +155,70 @@ class XPostRecord(Base):
     credibility: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     shock: Mapped[bool | None] = mapped_column(Boolean)  # market-moving news
     labeled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CatalystEvent(Base):
+    """One catalyst for the alt sleeve (owner 2026-10-10): a post from a project or alt-news
+    account, a Bybit announcement, or a token unlock. ``text`` is untrusted and stays out of
+    every PM prompt; the PMs only see labels. Jev labels the text sources; unlocks are
+    labelled by code from the calendar. ``shadow`` holds the Sonnet labels for the same
+    event while in shadow mode (agreement and IC are compared in the admin)."""
+
+    __tablename__ = "catalyst_events"
+    __table_args__ = (
+        UniqueConstraint("source", "source_id", name="uq_catalyst_source"),
+        Index("ix_catalyst_asset_event_at", "asset", "event_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(String(10))  # x | bybit | unlocks
+    source_id: Mapped[str] = mapped_column(String(120))
+    author: Mapped[str | None] = mapped_column(String(64))  # X handle for source x
+    url: Mapped[str | None] = mapped_column(String(300))
+    text: Mapped[str] = mapped_column(Text)  # untrusted; admin display and classification only
+    event_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True)
+    )  # when it happens/was posted
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    hint_asset: Mapped[str | None] = mapped_column(String(10))  # the code-side match, pre-label
+    asset: Mapped[str | None] = mapped_column(String(10))  # label: a sleeve asset or none
+    type: Mapped[str | None] = mapped_column(
+        String(12)
+    )  # listing|delisting|unlock|hack|partnership|other
+    direction: Mapped[str | None] = mapped_column(String(8))  # bullish|bearish|neutral
+    materiality: Mapped[Decimal | None] = mapped_column(
+        Numeric(4, 3)
+    )  # P(moves price > 3% in 48 h)
+    confidence: Mapped[Decimal | None] = mapped_column(
+        Numeric(4, 3)
+    )  # the type choice's confidence
+    supply_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(8, 4)
+    )  # unlocks: % of supply released
+    classifier: Mapped[str | None] = mapped_column(String(40))  # model id that labelled it
+    classified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    labels: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # the full probability tables
+    shadow: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # Sonnet's labels (shadow mode)
+
+
+class XPostLabel(Base):
+    """Per-labeller copy of an X post's labels, kept while two labellers run side by side
+    (Jev for the alt sleeve, Sonnet as the shadow). ``x_posts`` keeps the labels the
+    agent uses; this table is for agreement and IC comparison."""
+
+    __tablename__ = "x_post_labels"
+
+    post_id: Mapped[str] = mapped_column(
+        ForeignKey("x_posts.id", ondelete="CASCADE"), primary_key=True
+    )
+    labeler: Mapped[str] = mapped_column(String(10), primary_key=True)  # jev | sonnet
+    model: Mapped[str] = mapped_column(String(60))
+    asset: Mapped[str | None] = mapped_column(String(10))
+    stance: Mapped[str | None] = mapped_column(String(10))
+    kind: Mapped[str | None] = mapped_column(String(10))
+    credibility: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    shock: Mapped[bool | None] = mapped_column(Boolean)
+    labeled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class LLMCall(Base):

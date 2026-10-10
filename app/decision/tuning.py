@@ -78,12 +78,16 @@ def _ic(pairs: list[tuple[float, float]]) -> float | None:
 
 
 def score_agents(
-    session: Session, cfg: Config, since: datetime, until: datetime | None = None
+    session: Session,
+    cfg: Config,
+    since: datetime,
+    until: datetime | None = None,
+    variant: str = "main",
 ) -> list[Score]:
     stmt = select(AgentOutputRecord).where(
         AgentOutputRecord.computed_at >= since,
         AgentOutputRecord.valid.is_(True),
-        AgentOutputRecord.variant == "main",
+        AgentOutputRecord.variant == variant,
     )
     if until is not None:
         stmt = stmt.where(AgentOutputRecord.computed_at < until)

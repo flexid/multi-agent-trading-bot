@@ -58,6 +58,17 @@ class SleeveConfig(_Section):
     models: dict[str, str] = Field(default_factory=dict)  # task -> model overrides
 
 
+class CatalystsConfig(_Section):
+    """The catalyst agent for the alt sleeve (owner 2026-10-10): official project and alt-news
+    X accounts, Bybit announcements and a token-unlock calendar, classified by Jev."""
+
+    accounts: list[str] = Field(default_factory=list)  # X handles, read every cycle (billed)
+    reads_per_cycle_max: int = 30  # share of the daily X read budget
+    shadow_model: str = "claude-sonnet-5-5"  # runs beside Jev while not live; "" turns it off
+    unlock_slugs: dict[str, str] = Field(default_factory=dict)  # asset -> DefiLlama slug
+    unlock_horizon_days: int = 30  # how far ahead unlocks are loaded
+
+
 class PilotConfig(_Section):
     enabled: bool = False
     capital_usdt: Decimal = Decimal(200)
@@ -130,6 +141,7 @@ class TaskModels(_Section):
     post_writer: str
     post_auditor: str
     memo: str = "claude-opus-5-5"  # weekly improvement memo (owner 2026-10-09)
+    catalysts: str = "jev-latest"  # the catalyst classifier (owner 2026-10-10)
 
 
 class ModelsConfig(TaskModels):
@@ -140,6 +152,7 @@ class LLMConfig(_Section):
     timeout_s: float = 120
     max_output_tokens: int = 4000
     effort: str = "medium"
+    jev_timeout_s: float = 20  # Jev answers in well under a second; fail closed early
     pricing: dict[str, tuple[Decimal, Decimal]] = Field(default_factory=dict)
 
 
@@ -152,6 +165,7 @@ class Config(_Section):
     risk: RiskConfig = RiskConfig()
     agents: AgentsConfig = AgentsConfig()
     x: XConfig = XConfig()
+    catalysts: CatalystsConfig = CatalystsConfig()
     site: SiteConfig = SiteConfig()
     budget: BudgetConfig
     models: ModelsConfig
@@ -198,6 +212,7 @@ class Secrets(BaseSettings):
     x_access_token_secret: SecretStr = SecretStr("")
     x_bearer_token: SecretStr = SecretStr("")
 
+    jev_api_key: SecretStr = SecretStr("")  # TypeSafe Jev; scheduler only, never the admin
     fred_api_key: SecretStr = SecretStr("")
     coingecko_api_key: SecretStr = SecretStr("")
 

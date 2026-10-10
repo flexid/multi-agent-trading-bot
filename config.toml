@@ -36,8 +36,8 @@ risk_per_trade = 0.005
 leverage_max = 3
 net_beta_exposure_max = 1.5
 day_loss_stop = -0.02
-weights = { polymarket = 0.0, x_sentiment = 0.30, chart_patterns = 0.30 }   # thin, attention-driven names
-models = { chart_patterns = "claude-sonnet-5-5" }                         # cheaper vision
+weights = { polymarket = 0.0, catalysts = 0.20, x_sentiment = 0.30, chart_patterns = 0.30 }   # Djaf replaces Orak here (logic v5)
+models = { chart_patterns = "claude-sonnet-5-5", x_sentiment = "jev-latest" }   # cheaper vision; Jev labels the posts
 
 [pilot]                         # execution pilot after M9 (owner): real orders, 1x, small
 enabled = true                  # owner enabled the pilot 2026-10-09
@@ -91,6 +91,17 @@ dominance_weight = 0.0          # BTC dominance tilt: logged only until real dom
 [agents.weights_by_asset]       # overrides on the tuned weights, renormalized per asset
 DOGE = { x_sentiment = 0.30 }   # a memecoin: attention on X drives it (owner 2026-10-10)
 
+[catalysts]                     # Djaf: catalyst agent for the alt sleeve (owner 2026-10-10, logic v5)
+# Official project accounts, then alt-news accounts; handles verified on X 2026-10-10.
+accounts = ["pepecoineth", "hedera", "pumpfun", "spx6900", "ethena", "DefiLlama", "Tokenomist_ai", "cryptorank_io", "Bybit_Official"]
+reads_per_cycle_max = 30        # of the daily X read budget (5 posts per account minimum page)
+shadow_model = "claude-sonnet-5-5"   # labels the same events and posts beside Jev while not live
+unlock_horizon_days = 30
+[catalysts.unlock_slugs]        # DefiLlama emissions datasets; PEPE and SPX6900 have no schedule (fully circulating)
+ENA = "ethena"
+PUMP = "pump"
+HBAR = "hedera"
+
 [x]                             # X sentiment agent (SPEC §6)
 # Curated accounts, handles without "@". Owner's list (2026-10-09), duplicates removed.
 accounts = [
@@ -127,6 +138,7 @@ polymarket = "gpt-5.6-luna"
 x_sentiment = "claude-sonnet-5-5"
 post_writer = "claude-sonnet-5-5"
 post_auditor = "gpt-5.6-terra"
+catalysts = "jev-latest"         # TypeSafe Jev: the alt sleeve's catalyst classifier (owner 2026-10-10)
 
 [models.shadow_alt]             # the other provider per task, run alongside during shadow mode
 pm_1 = "gpt-6-astra"
@@ -153,3 +165,5 @@ effort = "medium"               # Anthropic output_config.effort / OpenAI reason
 "gpt-5.6-terra" = [2.0, 12.0]   # third-party trackers, 2026-10-10
 "gpt-5.6-luna" = [0.2, 1.2]     # third-party trackers, 2026-10-10
 "gpt-6-astra" = [10.0, 50.0]    # third-party trackers, 2026-10-10
+"jev-1.13.0" = [0.042, 0.0]     # TypeSafe, docs.typesafe.ai/models 2026-10-10: $0.042 per Mtok input, output free
+"jev-latest" = [0.042, 0.0]

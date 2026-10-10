@@ -24,16 +24,19 @@ import math
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.agents.jev_questions import CREDIBILITY_LEVELS, post_questions
+from app.agents.jev_questions import VERSION as QUESTIONS_VERSION
 from app.agents.schema import AgentOutput, Horizon
 from app.config import Config
 from app.data.x import XClient, XPost
-from app.db.models import XPostRecord
-from app.llm import LLMError, Prompt, complete
+from app.db.models import RiskState, XPostLabel, XPostRecord
+from app.llm import LLMError, Prompt, complete, is_jev, judge
 
 log = logging.getLogger(__name__)
 
@@ -74,6 +77,19 @@ MENTION_QUERY = {
     "ENA": "($ENA OR #ENA OR ethena) -is:retweet",
     "BNB": "($BNB OR #BNB) -is:retweet",
     "SPX6900": "($SPX OR SPX6900 OR #SPX6900) -is:retweet",
+}
+# Plain-language names for the Jev asset choice (a literal reader: name the confusions).
+ASSET_TEXT = {
+    "BTC": "Bitcoin (ticker BTC)",
+    "ETH": "Ethereum (ticker ETH)",
+    "SOL": "Solana (ticker SOL)",
+    "XRP": "XRP, Ripple's token (ticker XRP)",
+    "DOGE": "Dogecoin (ticker DOGE)",
+    "PEPE": "Pepe, the frog memecoin (ticker PEPE)",
+    "HBAR": "Hedera, the Hedera Hashgraph token (ticker HBAR)",
+    "PUMP": "the pump.fun launchpad token (ticker PUMP)",
+    "SPX6900": "the SPX6900 memecoin (ticker SPX; not the S&P 500 index)",
+    "ENA": "Ethena, the synthetic dollar protocol token (ticker ENA)",
 }
 MEME_ASSETS = {
     "DOGE",
@@ -244,6 +260,33 @@ def mention_volume(session: Session, asset: str, now: datetime) -> tuple[int, fl
 # --- labels --------------------------------------------------------------------
 
 
+def labeler_for(cfg: Config, rec: XPostRecord) -> str:
+    """The model that labels a post: the sleeve's ``x_sentiment`` override when the post
+    was searched for one of its assets or comes from a catalyst account (owner 2026-10-10:
+    Jev for the alt sleeve), else the task's model."""
+    sleeve = cfg.sleeve_cfg(rec.query_asset) if rec.query_asset else None
+    if sleeve is None and rec.author and rec.author in cfg.catalysts.accounts:
+        for s in cfg.sleeves.values():
+            if s.models.get(TASK):
+                sleeve = s
+                break
+    return (sleeve.models.get(TASK) if sleeve else None) or cfg.models.x_sentiment
+
+
+def labeler_for_asset(cfg: Config, asset: str) -> str:
+    sleeve = cfg.sleeve_cfg(asset)
+    return (sleeve.models.get(TASK) if sleeve else None) or cfg.models.x_sentiment
+
+
+def shadow_on(session: Session, cfg: Config) -> bool:
+    return _shadow_on(session, cfg)
+
+
+def _shadow_on(session: Session, cfg: Config) -> bool:
+    state = session.get(RiskState, 1)
+    return bool(cfg.catalysts.shadow_model) and (state is None or state.mode != "live")
+
+
 async def label_unlabeled(
     session: Session, cfg: Config, prompt: Prompt, cycle_id: int | None = None
 ) -> int:
@@ -253,6 +296,56 @@ async def label_unlabeled(
         .order_by(XPostRecord.fetched_at)
         .limit(300)
     ).all()
+    by_model: dict[str, list[XPostRecord]] = {}
+    for rec in rows:
+        by_model.setdefault(labeler_for(cfg, rec), []).append(rec)
+    done = 0
+    for model, group in by_model.items():
+        if is_jev(model):
+            done += await _label_with_jev(session, cfg, group, model, prompt, cycle_id)
+        else:
+            done += await _label_with_model(session, cfg, group, model, prompt, cycle_id)
+    return done
+
+
+def _apply(rec: XPostRecord, label: PostLabel, assets: set[str], now: datetime) -> None:
+    rec.asset = label.asset if label.asset in assets else None
+    rec.stance = label.stance.value
+    rec.kind = label.kind.value
+    rec.credibility = Decimal(str(round(label.credibility, 3)))
+    rec.shock = label.shock
+    rec.labeled_at = now
+
+
+def _shadow_row(
+    rec: XPostRecord, label: PostLabel, labeler: str, model: str, now: datetime
+) -> XPostLabel:
+    return XPostLabel(
+        post_id=rec.id,
+        labeler=labeler,
+        model=model,
+        asset=label.asset if label.asset != "none" else None,
+        stance=label.stance.value,
+        kind=label.kind.value,
+        credibility=Decimal(str(round(label.credibility, 3))),
+        shock=label.shock,
+        labeled_at=now,
+    )
+
+
+async def _label_with_model(
+    session: Session,
+    cfg: Config,
+    rows: list[XPostRecord],
+    model: str,
+    prompt: Prompt,
+    cycle_id: int | None,
+    *,
+    apply: bool = True,
+    labeler: str | None = None,
+) -> int:
+    """Label ``rows`` with a text model. ``apply`` writes the labels on the posts; with
+    ``labeler`` the labels are also kept in ``x_post_labels`` for the comparison."""
     assets = set(cfg.trading.assets)
     done = 0
     for start in range(0, len(rows), LABEL_BATCH):
@@ -261,7 +354,7 @@ async def label_unlabeled(
         payload = json.dumps([{"id": r.id, "text": r.text[:600]} for r in batch])
         try:
             result = await complete(
-                TASK, LabelBatch, prompt=prompt, user_text=payload, cycle_id=cycle_id
+                TASK, LabelBatch, prompt=prompt, user_text=payload, cycle_id=cycle_id, model=model
             )
         except LLMError:
             continue  # stays unlabeled; logged by the LLM layer
@@ -270,14 +363,83 @@ async def label_unlabeled(
             rec = by_id.get(label.id)
             if rec is None:
                 continue
-            rec.asset = label.asset if label.asset in assets else None
-            rec.stance = label.stance.value
-            rec.kind = label.kind.value
-            rec.credibility = Decimal(str(round(label.credibility, 3)))
-            rec.shock = label.shock
-            rec.labeled_at = now
+            if apply:
+                _apply(rec, label, assets, now)
+            if labeler:
+                session.merge(_shadow_row(rec, label, labeler, result.model, now))
             done += 1
         session.commit()
+    return done
+
+
+JEV_BATCH = 10  # posts per Jev request (five questions each; a small state reads better)
+
+
+def _post_label_from_answers(post_id: str, answers: dict[str, Any], i: int) -> PostLabel:
+    a, s, k, c, sh = (answers[f"p{i}_{q}"] for q in ("asset", "stance", "kind", "cred", "shock"))
+    # credibility: the probability-weighted level over four levels → 0..1
+    cred = max(0.0, min(1.0, float(c["score"]) / (len(CREDIBILITY_LEVELS) - 1)))
+    return PostLabel(
+        id=post_id,
+        asset=str(a["choice"]),
+        stance=Stance(str(s["choice"])),
+        kind=Kind(str(k["choice"])),
+        credibility=cred,
+        shock=float(sh["noul"]) >= 0.5,
+    )
+
+
+async def _label_with_jev(
+    session: Session,
+    cfg: Config,
+    rows: list[XPostRecord],
+    model: str,
+    prompt: Prompt,
+    cycle_id: int | None,
+) -> int:
+    """Jev labels the posts (one request per ``JEV_BATCH`` posts, five questions each);
+    while not live, the shadow text model labels the same posts into ``x_post_labels``."""
+    assets = set(cfg.trading.assets)
+    asset_text = {a: ASSET_TEXT.get(a, a) for a in cfg.trading.assets}
+    done = 0
+    labelled: list[XPostRecord] = []
+    for start in range(0, len(rows), JEV_BATCH):
+        batch = rows[start : start + JEV_BATCH]
+        state = {"posts": [{"text": r.text[:600]} for r in batch]}
+        try:
+            result = await judge(
+                TASK,
+                version=QUESTIONS_VERSION,
+                state=state,
+                questions=post_questions(len(batch), asset_text),
+                model=model,
+                cycle_id=cycle_id,
+                asset=batch[0].query_asset if len({r.query_asset for r in batch}) == 1 else None,
+            )
+        except LLMError:
+            continue  # fail closed: the posts stay unlabeled
+        now = datetime.now(UTC)
+        for i, rec in enumerate(batch):
+            try:
+                label = _post_label_from_answers(rec.id, result.answers, i)
+            except (KeyError, ValueError):
+                continue
+            _apply(rec, label, assets, now)
+            session.merge(_shadow_row(rec, label, "jev", result.model, now))
+            labelled.append(rec)
+            done += 1
+        session.commit()
+    if labelled and _shadow_on(session, cfg):
+        await _label_with_model(
+            session,
+            cfg,
+            labelled,
+            cfg.catalysts.shadow_model,
+            prompt,
+            cycle_id,
+            apply=False,
+            labeler="sonnet",
+        )
     return done
 
 
@@ -296,6 +458,38 @@ def evaluate(
         )
     ).all()
     return aggregate(list(rows), asset, data_age_min, now, mention_volume(session, asset, now))
+
+
+def evaluate_shadow(
+    session: Session, asset: str, data_age_min: int, now: datetime | None = None
+) -> AgentOutput:
+    """The same aggregation over the shadow labeller's labels of the same posts."""
+    now = now or datetime.now(UTC)
+    pairs = session.execute(
+        select(XPostRecord, XPostLabel)
+        .join(XPostLabel, XPostLabel.post_id == XPostRecord.id)
+        .where(
+            XPostLabel.labeler == "sonnet",
+            XPostLabel.asset == asset,
+            XPostRecord.created_at >= now - timedelta(hours=WINDOW_H),
+        )
+    ).all()
+    rows = [
+        XPostRecord(
+            id=rec.id,
+            text="",
+            fetched_at=rec.fetched_at,
+            created_at=rec.created_at,
+            asset=lab.asset,
+            stance=lab.stance,
+            kind=lab.kind,
+            credibility=lab.credibility,
+            shock=lab.shock,
+            labeled_at=lab.labeled_at,
+        )
+        for rec, lab in pairs
+    ]
+    return aggregate(rows, asset, data_age_min, now, mention_volume(session, asset, now))
 
 
 def aggregate(

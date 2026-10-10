@@ -22,6 +22,7 @@ from pydantic import SecretStr
 
 from app.execution.bybit_models import (
     AccountInfo,
+    Announcement,
     ApiKeyInfo,
     FeeRate,
     Instrument,
@@ -238,6 +239,14 @@ class BybitClient:
                 if row.get("currency") == coin:
                     return MarginCoin.model_validate(row)
         return None
+
+    async def announcements(self, kind: str | None = None, limit: int = 50) -> list[Announcement]:
+        """Public announcements, newest first. ``kind``: new_crypto, delistings,
+        maintenance_updates, latest_bybit_news, ... (None for all)."""
+        result = await self._get(
+            "/v5/announcements/index", {"locale": "en-US", "type": kind, "limit": limit}
+        )
+        return [Announcement.model_validate(row) for row in result.get("list") or []]
 
     # --- account (signed reads) ------------------------------------------
 

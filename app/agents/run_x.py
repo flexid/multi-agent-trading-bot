@@ -34,6 +34,21 @@ async def run(cfg: Config, *, fetch: bool = True, cycle_id: int | None = None) -
         return [xs.evaluate(session, asset, age_min, now) for asset in cfg.trading.assets]
 
 
+def run_shadow(cfg: Config) -> list[AgentOutput]:
+    """X sentiment for the Jev-labelled assets, aggregated from the shadow labeller's
+    labels (``x_post_labels``) instead of the posts' own; variant ``alt`` for the IC."""
+    now = datetime.now(UTC)
+    with new_session() as session:
+        assets = [
+            a for a in cfg.trading.assets if xs.labeler_for_asset(cfg, a) != cfg.models.x_sentiment
+        ]
+        if not assets or not xs.shadow_on(session, cfg):
+            return []
+        newest = session.execute(select(func.max(XPostRecord.fetched_at))).scalar_one_or_none()
+        age_min = int((now - newest).total_seconds() // 60) if newest else 10_000
+        return [xs.evaluate_shadow(session, asset, age_min, now) for asset in assets]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-fetch", action="store_true", help="skip the billed X reads")
