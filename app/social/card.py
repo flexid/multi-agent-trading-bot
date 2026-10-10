@@ -11,6 +11,7 @@ from app.social.templates import TradeFacts, fmt, pct
 
 BRAND = Path(__file__).resolve().parents[2] / "site" / "public" / "brand"
 ORANGE, GREEN, RED, GREY, FG, BG = "#fe7e1c", "#b6ff00", "#ff5c5c", "#8f958f", "#ececec", "#0a0a0a"
+RIGHT_EDGE = 1140  # the avatar's right edge; the top-right line aligns to it
 
 
 def render(f: TradeFacts) -> bytes:
@@ -32,27 +33,31 @@ def render(f: TradeFacts) -> bytes:
         font("DejaVuSans.ttf", 34),
         font("DejaVuSans.ttf", 26),
     )
+    logo_mid_y = 48 + 60  # fallback centre line when the wordmark cannot be loaded
     try:
         logo = Image.open(BRAND / "logo-600.png").convert("RGBA")
         logo = logo.resize((420, round(logo.height * 420 / logo.width)), Image.Resampling.LANCZOS)
         img.paste(logo, (60, 48), logo)
+        logo_mid_y = 48 + logo.height // 2
     except OSError:
         d.text((60, 48), "dorkbot", font=big, fill=ORANGE)
+    # "$SOL long 2x" top right: right edge on the avatar's, centred on the wordmark
     side_col = GREEN if f.direction == "long" else RED
-    d.text((60, 190), f.cashtag, font=big, fill=FG)
-    w = d.textlength(f.cashtag, font=big)
-    d.text((60 + w + 24, 190), f.direction, font=big, fill=side_col)
-    d.text(
-        (60 + w + 24 + d.textlength(f.direction, font=big) + 24, 204),
-        f"{float(f.leverage):g}x",
-        font=mid,
-        fill=GREY,
+    lev = f"{float(f.leverage):g}x"
+    w_tag, w_side, w_lev = (
+        d.textlength(f.cashtag, font=big),
+        d.textlength(f.direction, font=big),
+        d.textlength(lev, font=mid),
     )
+    x = RIGHT_EDGE - (w_tag + 24 + w_side + 24 + w_lev)
+    d.text((x, logo_mid_y), f.cashtag, font=big, fill=FG, anchor="lm")
+    d.text((x + w_tag + 24, logo_mid_y), f.direction, font=big, fill=side_col, anchor="lm")
+    d.text((x + w_tag + 24 + w_side + 24, logo_mid_y + 4), lev, font=mid, fill=GREY, anchor="lm")
     res_col = GREEN if f.pnl_margin_pct >= 0 else RED
-    d.text((60, 280), pct(f.pnl_margin_pct), font=huge, fill=res_col)
-    d.text((60, 420), "on margin", font=mid, fill=GREY)
+    d.text((60, 250), pct(f.pnl_margin_pct), font=huge, fill=res_col)
+    d.text((60, 390), "on margin", font=mid, fill=GREY)
     line = f"{fmt(f.entry)} to {fmt(f.exit)}   ·   {pct(f.pnl_price_pct)} on price"
-    d.text((60, 490), f"{line}   ·   {f.holding or 'a while'}", font=mid, fill=FG)
+    d.text((60, 470), f"{line}   ·   {f.holding or 'a while'}", font=mid, fill=FG)
     foot = "paper trade  ·  dorkbot.dev  ·  nfa" if f.paper else "dorkbot.dev  ·  nfa"
     d.text((60, 600), foot, font=small, fill=GREY)
     try:
