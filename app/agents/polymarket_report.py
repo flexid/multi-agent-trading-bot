@@ -29,6 +29,7 @@ from app.agents.polymarket import (
 from app.config import get_config
 from app.db.models import Cycle, PolymarketMarket
 from app.db.session import new_session
+from app.decision.evidence import spot_and_atr
 
 PRICE_OF = re.compile(r"^will the price of", re.I)
 TOUCH = re.compile(r"^will \w+ (reach|hit|dip to|fall to|drop to)", re.I)
@@ -83,6 +84,8 @@ def report(assets: list[str] | None = None) -> str:
         for asset in assets:
             cov = Coverage(asset)
             ladder, updown = _points(s, asset, now, cov)
+            spot, _ = spot_and_atr(s, cfg.symbol(asset))
+            spot = spot or 1.0
             by_id = {
                 m.id: m
                 for m in s.scalars(
@@ -91,7 +94,7 @@ def report(assets: list[str] | None = None) -> str:
                     )
                 )
             }
-            score, level, shift, _ = score_ladder(ladder, 1.0) if ladder else (0.0, 0.0, 0.0, [])
+            score, level, shift, _ = score_ladder(ladder, spot) if ladder else (0.0, 0.0, 0.0, [])
             ud_score, _ = score_updown(updown)
             lines.append(
                 f"\n== {asset}: {len(ladder)} ladder points, {len(updown)} up/down used; "
@@ -112,7 +115,7 @@ def report(assets: list[str] | None = None) -> str:
                 lad_groups.items(), key=lambda kv: -sum(p.volume_24h for p in kv[1])
             ):
                 vol = sum(p.volume_24h for p in pts)
-                _, lvl, sh, _ = score_ladder(pts, 1.0)
+                _, lvl, sh, _ = score_ladder(pts, spot)
                 w = f"{sum(max(p.volume_24h, 1.0) for p in pts) / total_w:6.0%}"
                 contrib = (
                     f"level {lvl:+.2f}, shift {sh:+.2f} on its own; "
