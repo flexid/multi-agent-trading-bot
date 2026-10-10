@@ -32,6 +32,7 @@ from app.decision.pm import Proposal, ask_both
 from app.decision.tuning import current_weights
 from app.llm import load_prompt
 from app.risk.apply import apply_risk
+from app.version import LOGIC_VERSION
 
 log = logging.getLogger("cycle")
 
@@ -236,7 +237,14 @@ async def run_cycle(
     mode = "live" if cfg.trading.live_allowed else "shadow"  # the go-live checker (M9) refines this
     with new_session() as session:
         abort_stale_cycles(session, now)
-        cycle = Cycle(started_at=now, kind=kind, trigger=trigger, mode=mode, status="running")
+        cycle = Cycle(
+            started_at=now,
+            kind=kind,
+            trigger=trigger,
+            mode=mode,
+            status="running",
+            logic_version=LOGIC_VERSION,
+        )
         session.add(cycle)
         session.commit()
         cycle_id = cycle.id

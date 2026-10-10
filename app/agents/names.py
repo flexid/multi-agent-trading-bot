@@ -55,9 +55,8 @@ CREW: list[Member] = [
         "catalysts",
         "Djaf",
         "analysis agent (alts)",
-        "The instant decision maker for the alt sleeve: reads the project accounts, the "
-        "exchange notices and the unlock calendar, and labels each catalyst in a blink: "
-        "which coin, what kind, which way, how much it matters. Code turns that into a score.",
+        "The instant decision maker for the alt sleeve: project accounts, exchange notices "
+        "and the unlock calendar, labelled in a blink. Code turns the labels into a score.",
     ),
     Member(
         "pm_1",
