@@ -219,7 +219,9 @@ async def test_exchange_unreachable_retries_the_exit_until_it_lands(db: None) ->
     await ex.tick()
     (pos,) = positions()
     assert pos.status == "closed" and pos.close_reason == "stop"
-    assert [c[0] for c in gw.calls] == ["open", "open", "close", "close", "close"]
+    # three paper tracks open (primary, max, inverse); the inverse short does not stop out
+    # at 97, so the closes are: primary (unreachable), max, primary again
+    assert [c[0] for c in gw.calls] == ["open", "open", "open", "close", "close", "close"]
 
 
 @needs_db
@@ -301,3 +303,16 @@ async def test_entry_is_sized_down_to_free_cash_instead_of_skipped(db: None) -> 
     (pos,) = positions()
     assert pos.notional <= D("600") * 2 and pos.notional >= D("1000")  # fitted, not skipped
     assert pos.margin <= D("600")
+
+
+@needs_db
+async def test_inverse_track_takes_the_other_side_with_mirrored_levels(db: None) -> None:
+    seed_decision(direction="long", entry="100", stop="98", target="106")
+    ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+    await ex.tick()
+    (primary,), (inverse,) = positions("primary"), positions("inverse")
+    assert primary.direction == "long" and inverse.direction == "short"
+    assert inverse.mode == "paper"
+    # the same distances mirrored around the plan's entry (100): stop 102, target 94
+    assert (primary.stop, primary.target) == (D(98), D(106))
+    assert (inverse.stop, inverse.target) == (D(102), D(94))

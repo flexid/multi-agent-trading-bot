@@ -196,3 +196,7 @@ In live mode the executor runs one track, `live`, on ledger 4, created on the fi
 ## 2026-10-09 · Leverage capped at 10x everywhere
 
 Bybit spot margin lends up to 10x; the 20x admin bound only ever affected the paper max track. Owner: cap everything at 10x. `leverage_max = 10`, `leverage_max_spx6900 = 10`, admin bounds 1–10 for both.
+
+## 2026-10-09 · The inverse track (for fun)
+
+A fourth paper track, `inverse` (ledger 5), takes the opposite side of every primary decision with the stop and target mirrored around the entry, at the primary's size. Owner's idea, "just for fun"; it is also a clean control: if the bot has no edge, primary and inverse should look alike after costs; if it has the reverse of one, inverse wins. Never posted, never on the public site, shown on the admin's paper ledgers and in the memo.

@@ -126,7 +126,7 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
     ).all()
     by_track = {
         t: _track_stats([p for p in closed if p.track == t]).__dict__
-        for t in ("primary", "max", "pilot", "live")
+        for t in ("primary", "max", "pilot", "live", "inverse")
     }
     pilot_rows = session.scalars(select(Position).where(Position.track == "pilot")).all()
     paper_rows = session.scalars(select(Position).where(Position.track == "primary")).all()

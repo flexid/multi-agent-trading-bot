@@ -61,14 +61,17 @@ BACKUP_ATR_MULT = Decimal("0.5")  # backup stop sits this many ATR beyond the bo
 EXIT_ALERT_AFTER = 3  # passes an exit may stay unfinished before the owner is emailed
 # Which tracks run in each process mode, and the mode their positions are stored with.
 TRACKS: dict[str, dict[str, str]] = {
-    "paper": {"primary": "paper", "max": "paper"},
-    "pilot": {"primary": "paper", "max": "paper", "pilot": "pilot"},
+    # "inverse" (owner, for fun, 2026-10-09): the opposite of every primary trade, on paper,
+    # with the stop and target mirrored around the entry. Tells whether the bot's reasoning
+    # has an edge, no edge, or the reverse of one.
+    "paper": {"primary": "paper", "max": "paper", "inverse": "paper"},
+    "pilot": {"primary": "paper", "max": "paper", "pilot": "pilot", "inverse": "paper"},
     # One real-money track; the paper tracks keep running beside it as the control group
     # (same decisions at the live rules and at risk_per_trade_max), which is the evidence
     # for stepping live risk up toward the owner's goal.
-    "live": {"primary": "paper", "max": "paper", "live": "live"},
+    "live": {"primary": "paper", "max": "paper", "live": "live", "inverse": "paper"},
 }
-LEDGER_IDS = {"primary": 1, "max": 2, "pilot": 3, "live": 4}
+LEDGER_IDS = {"primary": 1, "max": 2, "pilot": 3, "live": 4, "inverse": 5}
 TAKER_FEE = {"USDT": Decimal("0.001"), "USDC": Decimal("0.0005")}
 LIQ_WARN_ROOM = Decimal("0.30")  # mail when under 30% of the entry-to-liquidation distance is left
 CASH_FIT_BUFFER = Decimal("0.995")  # leave the entry fee in cash when sizing to what is free
@@ -646,6 +649,15 @@ class Executor:
                     "target": str(Decimal(plan["target"]) + offset),
                 }
                 log.info("%s: entry clamped to spot (%+.2f%% from plan)", d.asset, drift * 100)
+            if track == "inverse":
+                # The mirror image: the other side, the same distances the other way round.
+                side = Side.SHORT if side is Side.LONG else Side.LONG
+                entry = Decimal(plan["entry"])
+                plan = {
+                    **plan,
+                    "stop": str(entry + (entry - Decimal(plan["stop"]))),
+                    "target": str(entry - (Decimal(plan["target"]) - entry)),
+                }
             if notional / leverage > acct.cash:
                 # The last asset to open finds the cash already committed as margin by the
                 # others (five shares of 20%, fees paid). Size down to what is free rather
