@@ -375,8 +375,8 @@ def _p_sleeves(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -
 
     def lock_label(locks_: dict[str, Any], name_: str, now_: datetime) -> str:
         info = lock_info(locks_, name_, now_)
-        if info is None:
-            return ""
+        if info is None or (risk is not None and risk.aggressive):
+            return ""  # aggressive mode ignores every lock
         return (
             "all new trades locked"
             if len(info["dirs"]) == 2
@@ -1240,6 +1240,8 @@ def aggressive_post(
         before = bool(state.aggressive)
         state.aggressive = want
         state.aggressive_since = now if want else None
+        if want:
+            state.day_locked_sleeves = {}  # no locks in this mode: clear what was set
         s.add(
             ParamChange(
                 ts=now,
