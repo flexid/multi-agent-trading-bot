@@ -78,7 +78,12 @@ def pack_for(cycle_id: int | None = None) -> tuple[Cycle, dict[str, Any], bool]:
             couplings=couplings,
             now=cycle.started_at,
         )
-        return cycle, json.loads(pack.model_dump_json()), False
+        rebuilt: dict[str, Any] = json.loads(pack.model_dump_json())
+        for asset in rebuilt["assets"]:  # the cycle's own and later decisions were not there yet
+            asset["recent_decisions"] = [
+                d for d in asset["recent_decisions"] if d.get("hours_ago", 0) > 0
+            ]
+        return cycle, rebuilt, False
 
 
 def dump(cycle_id: int | None = None) -> str:
