@@ -230,12 +230,20 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
         "x_mentions": buzz,
         "optima": optima_facts(session),
         "charts_first": charts_first_facts(session, cfg, now),
+        "solo_calls": solo_facts(session, cfg, now),
     }
 
 
 def charts_first_facts(session: Session, cfg: Config, now: datetime) -> list[dict[str, Any]]:
     """The logged charts-first score against the real one (owner 2026-10-10)."""
     from app.decision.charts_first import compare
+
+    return compare(session, cfg, now - timedelta(days=90))
+
+
+def solo_facts(session: Session, cfg: Config, now: datetime) -> dict[str, Any]:
+    """What followed when one manager called and the other stayed flat (owner 2026-10-11)."""
+    from app.decision.solo_calls import compare
 
     return compare(session, cfg, now - timedelta(days=90))
 
@@ -344,6 +352,24 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
         ic = "n/a" if r["ic_1d"] is None else f"{r['ic_1d']:+.2f}"
         lines.append(f"- {r['kind']} {r['name']}: IC {ic} on {r['sample']} samples")
     lines.append(f"- weights: {f['agent_weights']}")
+    solo = f.get("solo_calls") or {}
+    if solo.get("decisions"):
+        lines += ["", "## Solo calls: one manager called, the other stayed flat (logged only)"]
+        shares = ", ".join(
+            f"{m} flat {s:.0%}" for m, s in solo["flat_share"].items() if s is not None
+        )
+        lines.append(
+            f"- {solo['decisions']} decisions: {solo['agreed']} agreed, {solo['solo']} solo, "
+            f"{solo['opposite']} opposite; {shares}"
+        )
+        for r in solo["pairs"]:
+            d1 = r["d1"]
+            after = (
+                f"{d1['mean'] * 100:+.2f}% after a day, {d1['won']:.0%} right on {d1['n']}"
+                if d1["mean"] is not None
+                else "no next-day price yet"
+            )
+            lines.append(f"- {r['caller']} called, {r['flat']} flat: {r['calls']} calls, {after}")
     cf = f.get("charts_first") or []
     if cf:
         lines += ["", "## Charts first vs the real score (logged only, for the review)"]

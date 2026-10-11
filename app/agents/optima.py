@@ -407,6 +407,12 @@ def _charts_first(session: Session, cfg: Config, now: datetime) -> list[dict[str
     return compare(session, cfg, now - timedelta(days=IC_DAYS))
 
 
+def _solo(session: Session, cfg: Config, now: datetime) -> dict[str, Any]:
+    from app.decision.solo_calls import compare
+
+    return compare(session, cfg, now - timedelta(days=IC_DAYS))
+
+
 def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     return {
@@ -415,6 +421,7 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
         "execution": execution_facts(session, cfg, now),
         "budget": budget_facts(session, cfg, now),
         "charts_first": _charts_first(session, cfg, now),
+        "solo_calls": _solo(session, cfg, now),
     }
 
 
