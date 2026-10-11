@@ -108,9 +108,18 @@ export default function Page() {
           {s.closed_trades.length >= 5 && (<>
             <div className="best-toggle"><span className="toggle"><button className={best === "wins" ? "on" : ""} onClick={() => setBest("wins")}>top 5 wins</button><button className={best === "losses" ? "on" : ""} onClick={() => setBest("losses")}>top 5 losses</button></span></div>
             <div className="best">
-              {[...s.closed_trades].sort((a, b) => best === "wins" ? b.margin_pct - a.margin_pct : a.margin_pct - b.margin_pct).slice(0, 5).map((t, i) => (
-                <span key={i} className={`badge ${best === "wins" ? "neon" : "down"}`}>{tick(t.cashtag)} <Side d={t.direction} /> {pct(t.margin_pct)}{!allPaper(s.closed_trades) && t.paper ? " · paper" : ""}</span>
-              ))}
+              {(() => {
+                // only real wins under "wins" and real losses under "losses": with two winners
+                // the list is two long, it is not padded with losing trades
+                const rows = [...s.closed_trades]
+                  .filter((t) => (best === "wins" ? t.margin_pct > 0 : t.margin_pct < 0))
+                  .sort((a, b) => (best === "wins" ? b.margin_pct - a.margin_pct : a.margin_pct - b.margin_pct))
+                  .slice(0, 5);
+                if (rows.length === 0) return <span className="muted small">{best === "wins" ? "no winning trades yet" : "no losing trades yet"}</span>;
+                return rows.map((t, i) => (
+                  <span key={i} className={`badge ${best === "wins" ? "neon" : "down"}`}>{tick(t.cashtag)} <Side d={t.direction} /> {pct(t.margin_pct)}{!allPaper(s.closed_trades) && t.paper ? " · paper" : ""}</span>
+                ));
+              })()}
             </div>
           </>)}
           <ClosedTable rows={s.closed_trades.slice(0, 10)} tagRows={!allPaper(s.closed_trades)} />
