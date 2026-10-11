@@ -979,7 +979,10 @@ def decisions(
     for dec_id, track in pos_rows:
         if dec_id is not None:
             opened_by.setdefault(dec_id, []).append(track)
-    why = {d.id: why_no_trade(d, sorted(opened_by.get(d.id, []))) for d in decs}
+    horizon = datetime.now(UTC) - timedelta(hours=get_config().trading.cycle_hours)
+    why = {
+        d.id: why_no_trade(d, sorted(opened_by.get(d.id, [])), expired=d.ts < horizon) for d in decs
+    }
     return render(
         request,
         "decisions.html",
@@ -1017,7 +1020,7 @@ BLOCK_WORDS = {
 BLOCKING = ("block", "close_all", "brake", "pause")
 
 
-def why_no_trade(d: DecisionRecord, opened: list[str]) -> str:
+def why_no_trade(d: DecisionRecord, opened: list[str], expired: bool = False) -> str:
     """A short note for the decision log when the managers called a direction and no
     trade (or not every ledger's trade) followed: the risk rule that blocked it, or what
     each ledger's executor ran into."""
@@ -1047,7 +1050,12 @@ def why_no_trade(d: DecisionRecord, opened: list[str]) -> str:
     parts = [f"opened on {', '.join(opened)}"] if opened else []
     parts += [f"{reason} ({', '.join(tracks)})" for reason, tracks in by_reason.items()]
     if not parts and d.action == "open":
-        return "approved, not opened yet"
+        # the executor only acts on plans younger than one cycle
+        return (
+            "approved, never opened (reason not recorded)"
+            if expired
+            else "approved, not opened yet"
+        )
     return " · ".join(parts)
 
 

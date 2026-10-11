@@ -165,5 +165,7 @@ def test_the_decision_log_says_why_an_agreed_call_did_not_trade() -> None:
     assert why_no_trade(funds, []) == "out of funds (primary, inverse)"
     assert why_no_trade(funds, ["pilot"]) == "opened on pilot · out of funds (primary, inverse)"
     assert why_no_trade(dec(action="open"), []) == "approved, not opened yet"
+    old = why_no_trade(dec(action="open"), [], expired=True)
+    assert old == "approved, never opened (reason not recorded)"
     held = dec(action="open", exec_notes={"pilot": "already in a DOGE trade"})
     assert why_no_trade(held, ["primary"]) == "opened on primary · already in a DOGE trade (pilot)"

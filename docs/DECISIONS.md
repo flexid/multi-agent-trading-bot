@@ -331,3 +331,7 @@ The log also contained the full evidence pack, which showed two bugs. (1) **The 
 
 When the managers call a direction and nothing opens, the reason column now adds a short note. Blocked by the risk engine (`action = none`): the blocking rule in plain words, such as "conviction too low to borrow for a short" or "exposure cap is full". Approved but not opened by a ledger's executor: the executor records why per track in `decisions.exec_notes` ("out of funds", "already in a DOGE trade", "sleeve closed for the day", "rejected by the exchange: ..."), and the log shows "opened on pilot · out of funds (primary, inverse)". Decisions from before this change show the risk-rule reason, or "approved, not opened yet" where the executor's reason was not recorded.
 
+## 2026-10-11 · The daily trade limit counts trades, not approvals
+
+Found through the new notes in the decision log: `trades_per_day` (three per asset per day) counted decisions with an approved plan, whether or not anything opened. With the paper ledgers out of cash, three approvals without a single trade used up the day's limit for SOL, DOGE and ENA, and the extra cycle at 15:17 UTC was blocked by it. The count is now the positions actually opened today on the track being sized.
+

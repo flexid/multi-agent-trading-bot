@@ -122,11 +122,15 @@ def account_state(
         state.peak_equity, state.updated_at = peak, now
         session.commit()
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Trades actually opened today on this track, per asset. Approved plans that never
+    # opened (no cash, a rejected order) do not count: until 2026-10-11 they did, and three
+    # approvals without a single trade used up the day's limit.
+    count_track = track or ("live" if mode == "live" else "primary")
     opened_today = dict(
         session.execute(
-            select(DecisionRecord.asset, func.count())
-            .where(DecisionRecord.ts >= day_start, DecisionRecord.action == "open")
-            .group_by(DecisionRecord.asset)
+            select(Position.asset, func.count())
+            .where(Position.track == count_track, Position.opened_at >= day_start)
+            .group_by(Position.asset)
         ).all()
     )
     ceiling = state.leverage_ceiling  # primary track follows live rules in shadow too (owner)
