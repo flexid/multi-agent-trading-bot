@@ -300,6 +300,8 @@ class Cycle(Base):
     error: Mapped[str | None] = mapped_column(Text)
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=0)
     logic_version: Mapped[int | None] = mapped_column(Integer)  # app/version.py at the time
+    # the exact evidence pack both managers received (their user message), for audits
+    evidence_pack: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     # Beta-weighted exposure at the time of the cycle: betas, per-track net and gross × equity
     beta_exposure: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 

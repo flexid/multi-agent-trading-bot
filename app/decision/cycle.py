@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import json
 import logging
 import sys
 from datetime import UTC, datetime, timedelta
@@ -283,6 +284,11 @@ async def run_cycle(
                 couplings=couplings,
                 now=now,
             )
+        with new_session() as session:  # the managers' exact input, kept for audits
+            row = session.get(Cycle, cycle_id)
+            if row is not None:
+                row.evidence_pack = json.loads(pack.model_dump_json())
+                session.commit()
         spots = {a.asset: a.spot for a in pack.assets}
         prompt = load_prompt("pm")
         models = {"pm_1": cfg.models.pm_1, "pm_2": cfg.models.pm_2}
