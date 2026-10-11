@@ -117,6 +117,22 @@ async def compose(
     return fallback, "template", False, notes
 
 
+def opener_x_id(session: Session, position_id: int) -> str | None:
+    """The X id of the opening post that actually went out for a position. A position can
+    have more than one "open" row (a first draft blocked by the whitelist, then the one
+    that was posted); expecting exactly one made the BTC close post fail on 2026-10-11."""
+    return session.scalars(
+        select(XPostOut.x_id)
+        .where(
+            XPostOut.position_id == position_id,
+            XPostOut.kind == "open",
+            XPostOut.x_id.is_not(None),
+        )
+        .order_by(XPostOut.id.desc())
+        .limit(1)
+    ).first()
+
+
 async def enqueue(
     session: Session,
     cfg: Config,
@@ -156,10 +172,7 @@ async def enqueue(
     lo, hi = cfg.posting.delay_minutes
     reply_to = None
     if kind == "close":
-        opener = session.execute(
-            select(XPostOut.x_id).where(XPostOut.position_id == pos.id, XPostOut.kind == "open")
-        ).scalar_one_or_none()
-        reply_to = opener
+        reply_to = opener_x_id(session, pos.id)
     row = XPostOut(
         position_id=pos.id,
         kind=kind,

@@ -339,3 +339,7 @@ Found through the new notes in the decision log: `trades_per_day` (three per ass
 
 Owner: a post such as "500M outflows last week" is labelled bearish, correctly for the text, while the market may have turned since. Every labelled post now also carries `fresh`: true for something that happened or was announced within about a day or a new forward-looking view, false for a recap of older, already known information. The Sonnet labeller gets the field in its prompt (v4), Jev a sixth question per post (question set v2). The score does **not** use it: `aggregate` is unchanged and the field never reaches the managers' evidence lines. The admin's market-sentiment table shows the recaps per asset (bullish / bearish) and "Ears, fresh only", the score without them, so the review can judge whether recaps should count less or posts should decay with age.
 
+## 2026-10-11 · A close post replies to the opener that went out
+
+The BTC close post of 16:06 UTC was never queued: the position had two "open" post rows (a draft blocked by the whitelist and the retry that was posted), and the lookup for the opener to reply to demanded exactly one. It now takes the latest opener that has an X id. The missing close post was queued by hand afterwards.
+

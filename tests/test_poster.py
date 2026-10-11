@@ -148,3 +148,40 @@ async def test_highlight_close_gets_a_card_and_ordinary_closes_do_not() -> None:
     )
     assert poster.is_highlight("close", good, cfg) and not poster.is_highlight("close", meh, cfg)
     assert not poster.is_highlight("open", good, cfg)
+
+
+def test_a_close_post_replies_to_the_opener_that_went_out() -> None:
+    """Two "open" rows for one position (a blocked draft and the posted retry) must not
+    break the close post: it replies to the one with an X id."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import delete
+
+    from app.db.models import XPostOut
+    from app.db.session import new_session
+    from app.social.poster import opener_x_id
+    from tests.test_data_layer import _db_available
+
+    if not _db_available():
+        return
+    now = datetime.now(UTC)
+    with new_session() as s:
+        s.execute(delete(XPostOut).where(XPostOut.position_id == 987654))
+        common = dict(
+            position_id=987654,
+            kind="open",
+            text="t",
+            source="writer",
+            audit_ok=True,
+            scheduled_at=now,
+            dry_run=False,
+            created_at=now,
+        )
+        s.add(XPostOut(**common, whitelist_ok=False, x_id=None, error="blocked by whitelist"))
+        s.commit()
+        assert opener_x_id(s, 987654) is None
+        s.add(XPostOut(**common, whitelist_ok=True, x_id="111"))
+        s.commit()
+        assert opener_x_id(s, 987654) == "111"
+        s.execute(delete(XPostOut).where(XPostOut.position_id == 987654))
+        s.commit()
