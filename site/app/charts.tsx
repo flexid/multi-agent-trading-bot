@@ -148,26 +148,45 @@ function Bars({ rows, fmt = (v: number) => pct(v, 2) }: { rows: { label: string;
 }
 
 function Heatmap({ history, assets }: { history: Snapshot["history"]; assets: string[] }) {
+  // One day at a time by default (a week of cycles does not fit the panel); "all" scrolls.
+  const days = useMemo(() => Array.from(new Set(history.map((h) => h.ts.slice(0, 10)))), [history]);
+  const [day, setDay] = useState<string>("latest");
   if (!history.length) return <p className="muted">No cycles in the last week.</p>;
+  const picked = day === "latest" ? days[days.length - 1] : day;
+  const rows = picked === "all" ? history : history.filter((h) => h.ts.slice(0, 10) === picked);
+  const all = picked === "all";
   const color = (v: number | null) => {
     if (v == null) return "transparent";
     const a = Math.min(1, Math.abs(v)) * 0.85 + 0.1;
     return v >= 0 ? `rgba(182,255,0,${a})` : `rgba(255,92,92,${a})`;
   };
+  const label = (d: string) => new Date(`${d}T00:00:00Z`).toUTCString().slice(5, 11);
+  const stamp = (ts: string) => (all ? new Date(ts).toUTCString().slice(5, 11) : new Date(ts).toUTCString().slice(17, 22));
   return (
-    <div className="heat" style={{ gridTemplateColumns: `56px repeat(${history.length}, 1fr)` }}>
-      <div />
-      {history.map((h, i) => <div key={i} className="heat-x muted">{i % Math.max(1, Math.floor(history.length / 6)) === 0 ? new Date(h.ts).toUTCString().slice(5, 11) : ""}</div>)}
-      {assets.map((a) => (
-        <div key={a} style={{ display: "contents" }}>
-          <div className="heat-y muted">{a === "SPX6900" ? "SPX" : a}</div>
-          {history.map((h, i) => {
-            const v = h.scores[a] ?? null, d = h.directions[a] ?? "flat";
-            return <div key={i} className={`heat-cell ${d}`} style={{ background: color(v) }} title={`${new Date(h.ts).toUTCString().slice(5, 22)} UTC · ${a} · ${d}${v == null ? "" : ` · ${v > 0 ? "+" : ""}${v.toFixed(2)}`}`}>{d === "long" ? "▲" : d === "short" ? "▼" : ""}</div>;
-          })}
+    <>
+      <div className="heat-days">
+        <span className="toggle">
+          {days.map((d) => <button key={d} className={picked === d ? "on" : ""} onClick={() => setDay(d)}>{label(d)}</button>)}
+          <button className={all ? "on" : ""} onClick={() => setDay("all")}>all</button>
+        </span>
+        <span className="muted small">{rows.length} cycle{rows.length === 1 ? "" : "s"}{all ? " · scroll sideways" : " · times in UTC"}</span>
+      </div>
+      <div className="heat-scroll">
+        <div className={`heat ${all ? "wide" : ""}`} style={{ gridTemplateColumns: all ? `56px repeat(${rows.length}, 28px)` : `56px repeat(${rows.length}, minmax(28px, 1fr))` }}>
+          <div />
+          {rows.map((h, i) => <div key={i} className="heat-x muted">{all ? (i === 0 || h.ts.slice(0, 10) !== rows[i - 1].ts.slice(0, 10) ? stamp(h.ts) : "") : stamp(h.ts)}</div>)}
+          {assets.map((a) => (
+            <div key={a} style={{ display: "contents" }}>
+              <div className="heat-y muted">{a === "SPX6900" ? "SPX" : a}</div>
+              {rows.map((h, i) => {
+                const v = h.scores[a] ?? null, d = h.directions[a] ?? "flat";
+                return <div key={i} className={`heat-cell ${d}`} style={{ background: color(v) }} title={`${new Date(h.ts).toUTCString().slice(5, 22)} UTC · ${a} · ${d}${v == null ? "" : ` · ${v > 0 ? "+" : ""}${v.toFixed(2)}`}`}>{d === "long" ? "▲" : d === "short" ? "▼" : ""}</div>;
+              })}
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
+      </div>
+    </>
   );
 }
 

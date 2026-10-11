@@ -75,3 +75,11 @@ details.acc > .acc-body { padding: 10px 14px 12px; }
 details.acc .badge { margin-left: 0; }
 
 details.acc .scroll-x { margin: 0 -14px; padding: 0 14px; }
+/* heatmap: a day picker, and a sideways scroll when the whole week is shown */
+.heat-days { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 8px; }
+.heat-days .toggle { flex-wrap: wrap; border-radius: 14px; }
+.heat-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; padding-bottom: 4px; }
+.heat { min-width: 0; } .heat.wide { width: max-content; } .heat.wide .heat-cell { aspect-ratio: auto; height: 14px; }
+.heat-x { font-size: 10px; overflow: visible; }
+.heat-y { position: sticky; left: 0; background: var(--bg); z-index: 1; padding-right: 4px; }
+
