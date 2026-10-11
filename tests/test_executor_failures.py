@@ -358,7 +358,7 @@ async def test_aggressive_mode_banks_a_trade_at_its_share_of_the_goal(db: None) 
     with new_session() as s:
         equity = s.get(PaperAccount, 1).equity  # type: ignore[union-attr]
     # the price move that makes the trade worth 1.2% of the ledger's equity, after its fees
-    move = (equity * D("0.012") + pos.fees) / pos.qty
+    move = (equity * D("0.012") + pos.fees * 2) / pos.qty  # both fees and a margin
     symbol = get_config().symbol(ASSET)
     assert pos.entry_price is not None
     up = pos.entry_price + move
@@ -374,7 +374,8 @@ async def test_aggressive_mode_banks_a_trade_at_its_share_of_the_goal(db: None) 
         await ex.tick()
         closed = positions()[0]
         assert closed.status == "closed" and closed.close_reason == "take_profit"
-        assert closed.pnl is not None and closed.pnl >= equity * D("0.01") * D("0.9")
+        # net of every cost, the exit fee included: at least the goal is banked
+        assert closed.pnl is not None and closed.pnl >= equity * D("0.01")
     finally:
         with new_session() as s:
             after = s.get(RiskState, 1)

@@ -355,3 +355,7 @@ What it changes: risk per trade × 2.5 per sleeve (bluechips 1% → 2.5%, alts 0
 
 What still protects the account: each trade's own soft and hard stop (a plan cannot be sized without one), the liquidation guard, the exchange-side backup stop on real positions, the kill switch, and a brake set by hand or by a balance mismatch (non-negotiable 8). Hard bounds in code: risk per trade ≤ 5%, leverage ≤ 10x. Not changed: the pilot (1x at its fixed size), open positions' stops and time limits, and, once live, the go-live leverage ramp (2x, 5x, 10x). Each cycle records whether the switch was on (`cycles.aggressive`); with it off the logic is unchanged, so no logic version bump. The mode aims at the goal and does not guarantee it; without a loss lock a losing run is not stopped and a ledger can lose most of its value. The owner was told and chose it.
 
+## 2026-10-11 · Aggressive mode's profit level is net of every cost
+
+Owner: "1-2% net profit". The take-profit check now also subtracts the fee for closing, so the profit banked, after entry fee, exit fee and borrow interest, is at least 1% of the ledger's equity.
+

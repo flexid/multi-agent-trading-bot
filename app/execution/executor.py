@@ -411,7 +411,12 @@ class Executor:
                 if row.track not in equity_of:
                     equity_of[row.track] = self.ledger(session, now, row.track).equity
                 goal = equity_of[row.track] * take_profit
-                if goal > 0 and sim.unrealized(pos, quote) >= goal:
+                # Net of everything: entry fee and interest are in ``unrealized``; the
+                # fee for closing is taken off here, so what is banked is at least the goal.
+                exit_fee = (
+                    quote.mid * pos.qty * TAKER_FEE.get(self.cfg.exchange.quote, Decimal("0.001"))
+                )
+                if goal > 0 and sim.unrealized(pos, quote) - exit_fee >= goal:
                     reason = ExitReason.TAKE_PROFIT
             if reason is None and row.status == "closing":
                 reason = ExitReason(row.close_reason or "risk")  # retry a pending exit
