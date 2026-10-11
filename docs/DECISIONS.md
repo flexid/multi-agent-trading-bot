@@ -301,3 +301,7 @@ Owner's choice after the effort test: `llm.effort_by_provider = { xai = "high" }
 
 A deploy at 02:49 UTC restarted the scheduler one minute into triggered cycle 17 and the cycle was lost; it was rerun by hand. `scripts/deploy.sh` now runs `python -m app.decision.idle` on the server after the build and before the restart: it waits (up to 15 minutes) while a cycle is running and in the 90 seconds before a scheduled one, and the deploy stops rather than interrupt.
 
+## 2026-10-11 · Majority trades halve the margin, not the risk input; position size is already per sleeve
+
+Fix: the half size for a two-of-three majority was applied to the risk-per-trade input, which only lowers the leverage and does nothing at 1x. It now halves the margin, like the existing half-risk rule, with the leverage worked out as for a full agreement. Checked while looking into why the paper ledger had no cash for a DOGE trade: since logic v4 a position's margin is 20% of its **sleeve's** equity, which is 14% of the book for a bluechip and 6% for an alt, so all ten assets fit at once. The five positions holding all the cash were opened on 9 October, before the sleeves, at 20% of the whole book; nothing needs changing, the cash frees as they close (by 12 October 15:20 UTC at the latest).
+

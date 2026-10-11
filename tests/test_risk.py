@@ -313,6 +313,14 @@ def test_a_two_of_three_majority_trades_at_half_the_risk() -> None:
     half = engine.assess(cons(agreement=Agreement.MAJORITY), account(), market(), limits())
     assert full.allowed and half.allowed and full.plan and half.plan
     assert half.plan.notional == pytest.approx(full.plan.notional / 2, rel=0.02)
+    assert half.plan.leverage == full.plan.leverage  # the size halves, not the leverage
+    # also at 1x, where halving the risk alone would have changed nothing
+    f1 = engine.assess(cons(stop=80.0, target=150.0), account(), market(), limits())
+    h1 = engine.assess(
+        cons(agreement=Agreement.MAJORITY, stop=80.0, target=150.0), account(), market(), limits()
+    )
+    assert f1.plan and h1.plan and f1.plan.leverage == 1
+    assert h1.plan.notional == pytest.approx(f1.plan.notional / 2, rel=0.02)
     assert any(h.rule == "majority_half_size" for h in half.hits)
     assert not any(h.rule == "majority_half_size" for h in full.hits)
     assert not any(h.rule == "disagree_or_low_conviction" for h in half.hits)
