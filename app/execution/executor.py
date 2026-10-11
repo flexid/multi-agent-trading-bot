@@ -119,6 +119,8 @@ class Executor:
         self.frozen = False  # after a kill switch: no new positions until resumed
         self.kill_real_only = False  # a self-test kill leaves the paper tracks alone
         self._candle_ref: dict[str, tuple[int, Decimal]] = {}  # 15-minute bucket, last mid
+        self._orphan_checked_at = datetime.min.replace(tzinfo=UTC)
+        self._orphan_seen: set[str] = set()  # unowned backup stops seen once already
         # sleeves under their day-loss lock (directions, since when), per pass
         self._locked_cache: dict[str, dict[str, Any]] = {}
         self.style = style.load()
@@ -655,6 +657,54 @@ class Executor:
                 "placed. The bot's own stop is active; the executor retries every pass.",
             )
 
+    async def cancel_orphan_backups(self, session: Session, now: datetime) -> int:
+        """Cancel backup stops on the exchange that no open position owns.
+
+        A placement can land on the exchange while the call that made it reports a failure
+        (a timeout): the bot then never records the link and places another, and the first
+        one stays behind after the position is closed. Found on 2026-10-11: a buy stop for
+        a DOGE short that had been closed hours earlier, which would have opened a position
+        nobody asked for. Checked once a minute; an orphan is cancelled and reported."""
+        gw = self.gateway
+        if not getattr(gw, "supports_backup_stop", False) or not hasattr(
+            gw, "resting_backup_stops"
+        ):
+            return 0
+        if now - self._orphan_checked_at < timedelta(seconds=60):
+            return 0
+        self._orphan_checked_at = now
+        try:
+            resting = await gw.resting_backup_stops()
+        except Exception as exc:  # a failed read must not disturb the trading loop
+            log.warning("could not list backup stops: %s", exc)
+            return 0
+        owned = set(
+            session.scalars(
+                select(Position.backup_stop_link).where(
+                    Position.status.in_(["open", "closing"]),
+                    Position.backup_stop_link.is_not(None),
+                )
+            ).all()
+        )
+        cancelled = 0
+        for symbol, link in resting:
+            if link in owned:
+                continue
+            # a stop placed this very minute may not be recorded yet: leave it one round
+            if link in self._orphan_seen:
+                if await gw.cancel_backup_stop(symbol, link):
+                    cancelled += 1
+                    self._orphan_seen.discard(link)
+                    log.warning("%s: cancelled an orphan backup stop %s", symbol, link)
+                    self._alert(
+                        f"dorkbot: cancelled a leftover stop order on {symbol}",
+                        f"A backup stop ({link}) was resting on Bybit for {symbol} with no "
+                        "open position behind it. The executor cancelled it.",
+                    )
+            else:
+                self._orphan_seen.add(link)
+        return cancelled
+
     async def _backup_triggered(
         self, row: Position, gw: Gateway, quote: Quote, now: datetime
     ) -> bool:
@@ -1088,6 +1138,7 @@ class Executor:
             kill = self.apply_controls(session, now)
             close_all = self.risk_close_all(session, now)
             await self.manage_open(session, now, kill, close_all)
+            await self.cancel_orphan_backups(session, now)
             if not close_all:
                 await self.open_new(session, now)
             self.snapshot(session, now)

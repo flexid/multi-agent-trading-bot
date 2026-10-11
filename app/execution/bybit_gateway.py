@@ -42,6 +42,7 @@ EXIT_ATTEMPTS = 5  # per call; the executor calls again every tick until flat
 SETTLE_POLL_S = 0.3
 SETTLE_POLLS = 5
 STOP_FILTER = "StopOrder"
+BACKUP_PREFIX = "bk-"  # the link ids of our exchange-side backup stops
 BORROW_ERRORS = {170033, 170034, 170035, 170041, 170131, 170132}  # insufficient borrow / margin
 ORDER_NOT_FOUND = {170213, 110001}  # cancel: the order no longer exists
 
@@ -340,6 +341,15 @@ class BybitGateway:
             log.error("%s: backup stop not placed: %s", symbol, exc)
             return False
         return True
+
+    async def resting_backup_stops(self) -> list[tuple[str, str]]:
+        """(symbol, link id) of every backup stop of ours resting on the exchange."""
+        orders = await self.client.open_orders(order_filter=STOP_FILTER)
+        return [
+            (o.symbol, o.order_link_id)
+            for o in orders
+            if o.order_link_id and o.order_link_id.startswith(BACKUP_PREFIX)
+        ]
 
     async def cancel_backup_stop(self, symbol: str, link_id: str) -> bool:
         try:

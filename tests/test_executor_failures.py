@@ -382,3 +382,57 @@ async def test_aggressive_mode_banks_a_trade_at_its_share_of_the_goal(db: None) 
             if after is not None:
                 after.aggressive = False
                 s.commit()
+
+
+@needs_db
+async def test_a_backup_stop_without_a_position_is_cancelled(db: None) -> None:
+    """A stop order left on the exchange with no open position behind it (2026-10-11: a buy
+    stop for a DOGE short closed hours before) is cancelled, on the second round it is seen
+    unowned; a stop an open position owns is left alone."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.db.session import new_session
+
+    ex = make(ScriptedGateway(opens=[]), quote("99.9", "100"))
+    cancelled: list[tuple[str, str]] = []
+
+    async def resting() -> list[tuple[str, str]]:
+        return [("DOGEUSDT", "bk-orphan"), ("BTCUSDT", "bk-owned")]
+
+    async def cancel(symbol: str, link: str) -> bool:
+        cancelled.append((symbol, link))
+        return True
+
+    ex.gateway.supports_backup_stop = True  # type: ignore
+    ex.gateway.resting_backup_stops = resting  # type: ignore
+    ex.gateway.cancel_backup_stop = cancel  # type: ignore
+    ex._alert = lambda *a, **k: None  # type: ignore
+    now = datetime.now(UTC)
+    with new_session() as s:
+        s.add(
+            Position(
+                mode="pilot",
+                track="pilot",
+                asset="BTC",
+                symbol="BTCUSDT",
+                direction="short",
+                status="open",
+                qty=D(1),
+                entry_price=D(100),
+                leverage=D(1),
+                margin=D(100),
+                notional=D(100),
+                stop=D(110),
+                target=D(90),
+                max_hold_hours=24,
+                opened_at=now,
+                backup_stop_link="bk-owned",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        s.commit()
+        assert await ex.cancel_orphan_backups(s, now) == 0  # first sighting: wait a round
+        assert await ex.cancel_orphan_backups(s, now + timedelta(seconds=5)) == 0  # throttled
+        assert await ex.cancel_orphan_backups(s, now + timedelta(seconds=61)) == 1
+    assert cancelled == [("DOGEUSDT", "bk-orphan")]

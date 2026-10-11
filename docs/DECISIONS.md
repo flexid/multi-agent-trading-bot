@@ -363,3 +363,7 @@ Owner: "1-2% net profit". The take-profit check now also subtracts the fee for c
 
 Owner asked to close every open trade (18:27 UTC: SPX on three paper ledgers, BNB on the inverse ledger and the pilot's real BNB short). The kill switch would also freeze the bot, so the positions were set to `closing` with the new exit reason `manual`; the executor then closes each through its normal exit path (cancel the backup stop, exit order, repay, book the result). Only the executor places the orders.
 
+## 2026-10-11 · The executor cancels backup stops that no position owns
+
+After the manual close, a buy stop for 431.6 DOGE was still resting on Bybit, trigger 0.09049, for a short the sleeve stop had closed at 16:06 UTC; the position's record held no link to it. A placement had landed on the exchange while the call reported a failure, so the bot never tracked it and placed another. Had price reached the trigger it would have bought DOGE with nothing to cover. Once a minute the executor now lists its backup stops on the exchange (`bk-` links) and cancels any that no open position owns, after seeing it unowned on two rounds in a row so a stop placed that minute is not hit; each cancel is logged and mailed.
+
