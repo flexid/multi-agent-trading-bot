@@ -108,6 +108,10 @@ Crew name Djaf. Sources: official project and alt-news accounts on X, Bybit anno
 6. **Open positions** are re-assessed every cycle: hold, adjust stop, or close.
 7. **Weight auto-tuning** every 2 weeks: only after at least 100 closed trades, at most ±5 percentage points per agent per step, then shrink halfway toward equal weights. Measure each agent and each model by the correlation of its score with forward returns over 4 hours, 1 day and 3 days (IC). An agent with IC ≤ 0 is never set to zero in one step: it loses at most 5 percentage points per tuning step, and only when its IC was negative in each of the last two consecutive 14-day windows; otherwise its weight stands (owner, 2026-10-09).
 
+### 7.x Three managers, two of three (logic v6, 2026-10-11)
+
+Three portfolio managers (Claude Fable, GPT Astra, Grok 4.7) get the same evidence pack in parallel and never see each other. A trade needs at least two calling the same direction and nobody calling the opposite one: all agreeing is a full-size trade, two with the third flat a half-size one. A manager without an answer is left out and the remaining two must agree; fewer than two answers means no trade. The third seat has a deadline so a slow model cannot stall a cycle. This replaces the two-manager rule above wherever they differ.
+
 ## 8. Leverage agent and risk engine
 
 Base leverage:

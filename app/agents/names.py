@@ -72,21 +72,21 @@ CREW: list[Member] = [
         "Dyne",
         "portfolio manager (Claude)",
         "Turns the readings into a trade plan with entry, stop and target. Never sees what "
-        "the other manager said.",
+        "the other managers said.",
     ),
     Member(
         "pm_2",
         "Dork",
         "portfolio manager (GPT)",
-        "The second opinion, same evidence, different brain. A trade needs both managers to "
-        "agree on the direction; one flat means no trade.",
+        "The second opinion, same evidence, different brain. The cautious one: it wants "
+        "confirmation before it calls a direction.",
     ),
     Member(
         "pm_3",
         "Daerm",
-        "portfolio manager (Grok), watching",
-        "The third opinion. Gets the same evidence as the other two and files its calls, "
-        "but only watches for now: nothing it says is traded.",
+        "portfolio manager (Grok)",
+        "The third opinion and the tie-breaker. With two of three agreeing and nobody "
+        "opposite, the trade goes ahead at half size; with all three, at full size.",
     ),
     Member(
         "leverage",

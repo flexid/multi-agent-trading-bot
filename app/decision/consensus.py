@@ -21,6 +21,7 @@ CLAMP = 0.4
 
 class Agreement(StrEnum):
     AGREE = "agree"  # same non-flat direction
+    MAJORITY = "majority"  # two of three call the same direction, the third is flat
     PARTIAL = "partial"  # one directional, one flat: no trade
     OPPOSITE = "opposite"  # long vs short
     FLAT = "flat"  # both flat
@@ -131,47 +132,74 @@ def _merge(a: Proposal, b: Proposal) -> Proposal:
     )
 
 
+def _merge_all(proposals: list[Proposal]) -> Proposal:
+    merged = proposals[0]
+    for other in proposals[1:]:
+        merged = _merge(merged, other)
+    return merged
+
+
 def consensus(
     outputs: list[AgentOutput],
     coupling: float | None,
     pm1: Proposal | None,
     pm2: Proposal | None,
     weights: dict[str, float] | None = None,
+    *,
+    pm3: Proposal | None = None,
+    seats: int = 2,
 ) -> Consensus:
+    """With two seats both managers must agree. With three seats (owner 2026-10-11, logic
+    v6) a trade needs at least two managers calling the same direction and nobody calling
+    the opposite one: all who answered agree → AGREE (full size); two agree and the third
+    is flat → MAJORITY (the risk engine halves the size). A manager that gave no answer is
+    left out, so two that agree still decide; one answer alone never does."""
     f_score, n_valid = formula_score(outputs, coupling, weights)
     flat = Direction.FLAT
+
+    def failed(reason: str) -> Consensus:
+        return Consensus(flat, Agreement.FAILED, f_score, None, None, n_valid, reason, None)
+
     if n_valid < MIN_VALID_AGENTS:
-        return Consensus(
-            flat, Agreement.FAILED, f_score, None, None, n_valid, "fewer than 3 valid agents", None
-        )
-    if pm1 is None or pm2 is None:
-        return Consensus(
-            flat,
-            Agreement.FAILED,
-            f_score,
-            None,
-            None,
-            n_valid,
-            "a PM gave no valid proposal",
-            None,
-        )
-    d1, d2 = pm1.direction, pm2.direction
-    if d1 is flat and d2 is flat:
-        return Consensus(flat, Agreement.FLAT, f_score, None, None, n_valid, "both PMs flat", None)
-    if d1 is not flat and d2 is not flat and d1 is not d2:
+        return failed("fewer than 3 valid agents")
+    if seats < 3:
+        if pm1 is None or pm2 is None:
+            return failed("a PM gave no valid proposal")
+        answers = [pm1, pm2]
+    else:
+        answers = [p for p in (pm1, pm2, pm3) if p is not None]
+        if len(answers) < 2:
+            return failed("fewer than two PMs answered")
+    called = [p for p in answers if p.direction is not flat]
+    if not called:
+        reason = "both PMs flat" if len(answers) == 2 else "all PMs flat"
+        return Consensus(flat, Agreement.FLAT, f_score, None, None, n_valid, reason, None)
+    if len({p.direction for p in called}) > 1:
         return Consensus(
             flat, Agreement.OPPOSITE, f_score, None, None, n_valid, "PMs opposite", None
         )
-
-    w1, w2 = pm1.conviction, pm2.conviction
-    raw = (pm1.score * w1 + pm2.score * w2) / (w1 + w2) if (w1 + w2) > 0 else 0.0
+    total = sum(p.conviction for p in answers)
+    raw = sum(p.score * p.conviction for p in answers) / total if total > 0 else 0.0
     assert f_score is not None
     clamped = max(f_score - CLAMP, min(f_score + CLAMP, raw))
-
-    if d1 is d2:
-        merged = _merge(pm1, pm2)
+    side = called[0].direction
+    if len(called) == len(answers):
+        merged = _merge_all(called)
         return Consensus(
-            d1, Agreement.AGREE, f_score, clamped, merged.conviction, n_valid, "PMs agree", merged
+            side, Agreement.AGREE, f_score, clamped, merged.conviction, n_valid, "PMs agree", merged
         )
-    # One PM flat, the other directional: no trade (owner, 2026-10-09).
-    return Consensus(flat, Agreement.PARTIAL, f_score, clamped, None, n_valid, "one PM flat", None)
+    if len(called) >= 2:
+        merged = _merge_all(called)
+        return Consensus(
+            side,
+            Agreement.MAJORITY,
+            f_score,
+            clamped,
+            merged.conviction,
+            n_valid,
+            "two of three PMs agree, one flat",
+            merged,
+        )
+    # Only one manager called a direction: no trade (owner, 2026-10-09).
+    reason = "one PM flat" if len(answers) == 2 else "only one PM called a direction"
+    return Consensus(flat, Agreement.PARTIAL, f_score, clamped, None, n_valid, reason, None)

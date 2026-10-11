@@ -148,7 +148,7 @@ x_sentiment = "claude-sonnet-5-5"
 post_writer = "claude-sonnet-5-5"
 post_auditor = "gpt-5.6-terra"
 catalysts = "jev-latest"         # TypeSafe Jev: the alt sleeve's catalyst classifier (owner 2026-10-10)
-pm_3_shadow = "grok-4.7"        # owner 2026-10-11: a third manager that only watches; its proposals are logged, never traded
+pm_3 = "grok-4.7"               # owner 2026-10-11 (logic v6): Daerm, the third seat; a trade needs two of three, nobody opposite
 
 [models.shadow_alt]             # the other provider per task, run alongside during shadow mode
 pm_1 = "gpt-6-astra"
@@ -165,7 +165,8 @@ post_auditor = "claude-sonnet-5-5"
 timeout_s = 120
 max_output_tokens = 8000        # ten assets of proposals: Fable used 3,792 of 4,000 and the alt seat got cut off (2026-10-10)
 effort = "medium"               # Anthropic output_config.effort / OpenAI reasoning effort
-timeout_s_by_provider = { xai = 240 }   # Grok 4.7 takes about two minutes at medium effort on the managers' input
+timeout_s_by_provider = { xai = 150 }   # Grok 4.7 takes 80 to 115 s at medium effort on the managers' input
+pm_3_deadline_s = 170           # past this the third seat counts as no answer and the other two decide
 
 [llm.pricing]                   # USD per 1M tokens: [input, output]. Anthropic from the API docs 2026-10-06.
 "claude-fable-5-1" = [10.0, 50.0]

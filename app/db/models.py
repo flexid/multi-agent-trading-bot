@@ -367,7 +367,10 @@ class DecisionRecord(Base):
     charts_first_score: Mapped[float | None]  # shadow: price leads, X confirms (logged only)
     pm1_direction: Mapped[str | None] = mapped_column(String(6))
     pm2_direction: Mapped[str | None] = mapped_column(String(6))
-    agreement: Mapped[str] = mapped_column(String(10))  # agree | partial | opposite | failed
+    pm3_direction: Mapped[str | None] = mapped_column(String(6))  # the third seat (v6)
+    agreement: Mapped[str] = mapped_column(
+        String(10)
+    )  # agree | majority | partial | opposite | flat | failed
     consensus_score: Mapped[float | None]
     direction: Mapped[str] = mapped_column(String(6))  # long | flat | short
     conviction: Mapped[float | None]

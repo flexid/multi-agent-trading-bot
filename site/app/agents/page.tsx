@@ -11,7 +11,7 @@ const lname = (s: Snapshot, l: { name: string; kind: string }): { label: string;
   const mm = l.name.match(/^(.*?) \((pm_[123])\/(main|alt|shadow)\)$/);
   if (!mm) return { label: l.name, note: "" };
   const [, model, , variant] = mm;
-  if (variant === "shadow") { const d = (s.crew ?? []).find((c) => c.id === "pm_3"); return { label: d ? d.name : model, note: `${model} · only watches; its calls are logged, never traded` }; }
+  if (mm[2] === "pm_3") { const d = (s.crew ?? []).find((c) => c.id === "pm_3"); return { label: d ? d.name : model, note: `${model} · its own seat` }; }
   const id = model.startsWith("claude") ? "pm_1" : model.startsWith("gpt") ? "pm_2" : null;
   const m = id ? (s.crew ?? []).find((c) => c.id === id) : null;
   return { label: m ? m.name : model, note: `${model} · ${variant === "main" ? "its own seat" : "shadow, the other seat"}` };
@@ -27,7 +27,7 @@ export default function Agents() {
     <>
       <h1>The crew <span className={`badge ${s.mode === "live" ? "neon" : ""}`}>{s.mode}</span></h1>
       <p className="muted"><b>dorkbot</b> trades ten coins on Bybit with its own money, long and short, in two sleeves: the bluechips (BTC, ETH, SOL, XRP, DOGE) carry most of the capital, the alts (PEPE, HBAR, PUMP, SPX, ENA) a smaller share with tighter limits. Every four hours each coin gets a set of readings, scored from −1 (very bearish) to +1 (very bullish): the tape, the charts, the prediction markets, the macro climate and X. The alts get one more from Djaf, who labels news, exchange notices and token unlocks the moment they land.</p>
-      <p className="muted crew-intro">Two portfolio managers (PMs), one on Claude and one on GPT, read the same evidence without seeing each other and each propose a trade or nothing. Only when both agree on the direction does a plan go further. A third, Daerm on Grok, only watches for now: its calls are logged to see whether two out of three would decide better. A deterministic rulebook then sets the size and can still say no: exposure caps, a daily loss lock, a drawdown pause. One process alone touches the exchange and runs the stops, targets and time limits in code, around the clock, with no model in the loop. Every fill is posted to X. On Monday, Optima checks what each reading costs against what it predicts, and Coach writes the week&apos;s review for the owner. Nobody on the crew changes the bot by itself.</p>
+      <p className="muted crew-intro">Three portfolio managers (PMs), Dyne on Claude, Dork on GPT and Daerm on Grok, read the same evidence without seeing each other and each propose a trade or nothing. A plan goes further when at least two of them call the same direction and none calls the opposite one. All three agreeing means a full-size trade; two with the third staying out means half size. A deterministic rulebook then sets the size and can still say no: exposure caps, a daily loss lock, a drawdown pause. One process alone touches the exchange and runs the stops, targets and time limits in code, around the clock, with no model in the loop. Every fill is posted to X. On Monday, Optima checks what each reading costs against what it predicts, and Coach writes the week&apos;s review for the owner. Nobody on the crew changes the bot by itself.</p>
       <div className="crew">
         {(s.crew ?? []).map((m) => <div key={m.id} className="tile"><div className="k">{m.role}</div><div className="v">{m.name}</div><div className="muted small">{m.blurb}</div></div>)}
       </div>
@@ -35,7 +35,7 @@ export default function Agents() {
       <p className="muted small">Tap a coin to open or close its readings.</p>
       {s.assets.map((a, i) => (
         <details key={a.asset} className="acc" open={i === 0}>
-          <summary><span className="t">{tick(a.cashtag)}</span><span className="muted">{a.consensus}</span><span className="badge">Dyne {a.pm_claude ?? "–"}</span><span className="badge">Dork {a.pm_gpt ?? "–"}</span></summary>
+          <summary><span className="t">{tick(a.cashtag)}</span><span className="muted">{a.consensus}</span><span className="badge">Dyne {a.pm_claude ?? "–"}</span><span className="badge">Dork {a.pm_gpt ?? "–"}</span><span className="badge">Daerm {a.pm_grok ?? "–"}</span></summary>
           <div className="acc-body">
           <p className="muted">{a.reason}. Formula {sc(a.formula_score)}, consensus {sc(a.consensus_score)}.
             {a.macro_regime && <> Macro regime {a.macro_regime}, tradfi coupling {a.coupling?.toFixed(2)}; macro parts tradfi {sc(a.macro_tradfi)} / crypto-native {sc(a.macro_native)}.</>}</p>

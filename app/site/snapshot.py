@@ -118,6 +118,7 @@ class AssetView(_Strict):
     agents: list[AgentScore]
     pm_claude: str | None
     pm_gpt: str | None
+    pm_grok: str | None = None
     consensus: str
     consensus_score: float | None
     formula_score: float | None
@@ -538,6 +539,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
                         ],
                         pm_claude=d.pm1_direction if d else None,
                         pm_gpt=d.pm2_direction if d else None,
+                        pm_grok=d.pm3_direction if d else None,
                         consensus=d.direction if d else "flat",
                         consensus_score=_f(d.consensus_score, 3)
                         if d and d.consensus_score is not None

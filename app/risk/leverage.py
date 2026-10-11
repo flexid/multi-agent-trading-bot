@@ -86,7 +86,8 @@ def compute(inp: LeverageInputs) -> LeverageResult:
     if inp.fng_extreme:
         caps.append(("fng_extreme", Decimal(2)))
     borrow_allowed = True
-    if inp.agreement is not Agreement.AGREE or inp.conviction < Decimal("0.5"):
+    agreed = inp.agreement in (Agreement.AGREE, Agreement.MAJORITY)  # v6: two of three counts
+    if not agreed or inp.conviction < Decimal("0.5"):
         caps.append(("disagree_or_low_conviction", ONE))
         borrow_allowed = False
     if inp.two_losing_days:

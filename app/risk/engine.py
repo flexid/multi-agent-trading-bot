@@ -219,10 +219,15 @@ def assess(
         hits.append(RuleHit("short_unavailable", "no margin borrow for this pair", "block"))
         return Assessment(asset, False, None, hits)
 
+    risk_per_trade = lim.risk_per_trade
+    if c.agreement is Agreement.MAJORITY:
+        # Two of three managers agree and the third is flat (owner 2026-10-11): half size.
+        risk_per_trade = risk_per_trade / 2
+        hits.append(RuleHit("majority_half_size", "two of three PMs agree: half the risk", "cap"))
     inputs = lev.LeverageInputs(
         asset=asset,
         stop_distance=stop_distance,
-        risk_per_trade=lim.risk_per_trade,
+        risk_per_trade=risk_per_trade,
         capital_share=lim.capital_share,
         leverage_max=lim.leverage_max,
         ceiling=acct.leverage_ceiling,

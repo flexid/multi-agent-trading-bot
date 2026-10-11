@@ -30,7 +30,7 @@ from app.db.models import AgentOutputRecord, Cycle, DecisionRecord, LLMCall, PMP
 from app.db.session import new_session
 from app.decision.consensus import Consensus, charts_first_score, consensus, weights_for
 from app.decision.evidence import build_pack
-from app.decision.pm import Proposal, ask_both, ask_pm
+from app.decision.pm import Proposal, ask_both, ask_three
 from app.decision.tuning import current_weights
 from app.llm import load_prompt
 from app.risk.apply import apply_risk
@@ -181,6 +181,7 @@ def store_decisions(
     pm1: dict[str, Proposal],
     pm2: dict[str, Proposal],
     charts_first: dict[str, float | None] | None = None,
+    pm3: dict[str, Proposal] | None = None,
 ) -> None:
     with new_session() as session:
         for asset, c in results.items():
@@ -198,6 +199,7 @@ def store_decisions(
                     charts_first_score=(charts_first or {}).get(asset),
                     pm1_direction=pm1[asset].direction.value if asset in pm1 else None,
                     pm2_direction=pm2[asset].direction.value if asset in pm2 else None,
+                    pm3_direction=(pm3[asset].direction.value if pm3 and asset in pm3 else None),
                     agreement=c.agreement.value,
                     consensus_score=c.consensus_score,
                     direction=c.direction.value,
@@ -292,7 +294,17 @@ async def run_cycle(
         spots = {a.asset: a.spot for a in pack.assets}
         prompt = load_prompt("pm")
         models = {"pm_1": cfg.models.pm_1, "pm_2": cfg.models.pm_2}
-        answers = await ask_both(pack, prompt, models=models, cycle_id=cycle_id)
+        if cfg.models.pm_3:  # three seats (logic v6): two of three decide
+            models["pm_3"] = cfg.models.pm_3
+            answers = await ask_three(
+                pack,
+                prompt,
+                models=models,
+                cycle_id=cycle_id,
+                deadline_s=cfg.llm.pm_3_deadline_s,
+            )
+        else:
+            answers = await ask_both(pack, prompt, models=models, cycle_id=cycle_id)
         for pm, (props, _, err) in answers.items():
             if err:
                 log.warning("%s failed: %s", pm, err)
@@ -303,6 +315,7 @@ async def run_cycle(
             for pm, (props, _, _) in alt_answers.items():
                 store_proposals(cycle_id, pm, "alt", alt_models[pm], props)
         pm1, pm2 = answers["pm_1"][0], answers["pm_2"][0]
+        pm3 = answers["pm_3"][0] if "pm_3" in answers else {}
         with new_session() as session:
             weights = current_weights(session)
         results = {
@@ -312,6 +325,8 @@ async def run_cycle(
                 pm1.get(asset),
                 pm2.get(asset),
                 weights_for(weights, asset_overrides(cfg, asset)),
+                pm3=pm3.get(asset),
+                seats=3 if cfg.models.pm_3 else 2,
             )
             for asset in cfg.trading.assets
         }
@@ -324,7 +339,7 @@ async def run_cycle(
             )
             for asset in cfg.trading.assets
         }
-        store_decisions(cycle_id, now, results, spots, pm1, pm2, shadow_scores)
+        store_decisions(cycle_id, now, results, spots, pm1, pm2, shadow_scores, pm3)
         with new_session() as session:
             assessments = apply_risk(session, cfg, cycle_id, mode, now)
         for asset, a in assessments.items():
@@ -341,18 +356,6 @@ async def run_cycle(
                 )
             else:
                 log.info("%s: no trade (%s)", asset, caps or "no consensus")
-        if cfg.models.pm_3_shadow:
-            # The shadow third seat, after the decisions are stored and sized so it can
-            # never delay or change a trade: same pack, proposals stored, nothing else.
-            try:
-                third, _, third_err = await ask_pm(
-                    "pm_3", pack, prompt, model=cfg.models.pm_3_shadow, cycle_id=cycle_id
-                )
-                if third_err:
-                    log.warning("pm_3 (shadow) failed: %s", third_err)
-                store_proposals(cycle_id, "pm_3", "shadow", cfg.models.pm_3_shadow, third)
-            except Exception as exc:
-                log.warning("pm_3 (shadow) skipped: %s", exc)
         status, error = "done", None
     except Exception as exc:
         log.exception("cycle %d failed", cycle_id)

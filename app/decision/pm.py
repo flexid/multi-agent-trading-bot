@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from app.decision.evidence import EvidencePack
 from app.llm import Completion, LLMError, Prompt, complete
 
-# pm_3 is the shadow third seat: logged under its own task name, model passed explicitly
+# pm_3 is the third seat (owner 2026-10-11): its own task name, model passed explicitly
 TASK_PM = {"pm_1": "pm_1", "pm_2": "pm_2", "pm_3": "pm_3"}
 AGENTS = {"indicators", "chart_patterns", "polymarket", "macro", "x_sentiment", "catalysts"}
 
@@ -121,3 +121,32 @@ async def ask_both(
         ask_pm("pm_2", pack, prompt, model=models["pm_2"], cycle_id=cycle_id),
     )
     return {"pm_1": results[0], "pm_2": results[1]}
+
+
+async def ask_three(
+    pack: EvidencePack,
+    prompt: Prompt,
+    *,
+    models: dict[str, str],
+    cycle_id: int | None = None,
+    deadline_s: float = 170.0,
+) -> dict[str, tuple[dict[str, Proposal], Completion[PMResponse] | None, str | None]]:
+    """All three managers in parallel; keys 'pm_1', 'pm_2', 'pm_3'. The third seat has a
+    deadline: past it, it counts as no answer and the other two decide (a slow model must
+    never stall a cycle)."""
+
+    async def third() -> tuple[dict[str, Proposal], Completion[PMResponse] | None, str | None]:
+        try:
+            return await asyncio.wait_for(
+                ask_pm("pm_3", pack, prompt, model=models["pm_3"], cycle_id=cycle_id),
+                timeout=deadline_s,
+            )
+        except TimeoutError:
+            return {}, None, f"no answer within {deadline_s:.0f} s"
+
+    results = await asyncio.gather(
+        ask_pm("pm_1", pack, prompt, model=models["pm_1"], cycle_id=cycle_id),
+        ask_pm("pm_2", pack, prompt, model=models["pm_2"], cycle_id=cycle_id),
+        third(),
+    )
+    return {"pm_1": results[0], "pm_2": results[1], "pm_3": results[2]}

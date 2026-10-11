@@ -159,9 +159,9 @@ class TaskModels(_Section):
 
 class ModelsConfig(TaskModels):
     shadow_alt: TaskModels | None = None
-    # A third manager that only watches (owner 2026-10-11): same input, proposals stored,
-    # never used for a decision. "" turns it off.
-    pm_3_shadow: str = ""
+    # The third manager seat (owner 2026-10-11, logic v6): a trade needs two of three with
+    # nobody opposite. "" runs the bot with two seats, where both must agree.
+    pm_3: str = ""
 
 
 class LLMConfig(_Section):
@@ -169,7 +169,8 @@ class LLMConfig(_Section):
     max_output_tokens: int = 4000
     effort: str = "medium"
     jev_timeout_s: float = 20  # Jev answers in well under a second; fail closed early
-    timeout_s_by_provider: dict[str, float] = Field(default_factory=dict)  # e.g. xai = 240
+    timeout_s_by_provider: dict[str, float] = Field(default_factory=dict)  # e.g. xai = 150
+    pm_3_deadline_s: float = 170  # the third seat's answer is dropped after this; two decide
     pricing: dict[str, tuple[Decimal, Decimal]] = Field(default_factory=dict)
 
 

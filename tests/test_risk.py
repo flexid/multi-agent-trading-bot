@@ -304,3 +304,15 @@ def test_correlation_cap_sizes_same_direction_trades_into_the_room_left() -> Non
     # at the cap, nothing fits: blocked
     full = engine.assess(cons(), account(net_beta_exposure=D(15000)), market(), limits())
     assert not full.allowed and any(h.rule == "no_room" for h in full.hits)
+
+
+def test_a_two_of_three_majority_trades_at_half_the_risk() -> None:
+    """Logic v6: two managers agree and the third is flat → half size; leverage and
+    borrowing are judged like a full agreement."""
+    full = engine.assess(cons(), account(), market(), limits())
+    half = engine.assess(cons(agreement=Agreement.MAJORITY), account(), market(), limits())
+    assert full.allowed and half.allowed and full.plan and half.plan
+    assert half.plan.notional == pytest.approx(full.plan.notional / 2, rel=0.02)
+    assert any(h.rule == "majority_half_size" for h in half.hits)
+    assert not any(h.rule == "majority_half_size" for h in full.hits)
+    assert not any(h.rule == "disagree_or_low_conviction" for h in half.hits)

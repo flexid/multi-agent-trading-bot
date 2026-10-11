@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.agents.schema import AgentOutput, Horizon
-from app.decision.consensus import CLAMP, Agreement, consensus, formula_score
+from app.decision.consensus import CLAMP, Agreement, Consensus, consensus, formula_score
 from app.decision.evidence import AssetPack, EvidencePack
 from app.decision.pm import Direction, PMResponse, Proposal, _check_against_pack
 
@@ -277,7 +277,7 @@ def test_three_ways_to_decide() -> None:
     assert summarize([])["flat_share"] == [None, None, None]
 
 
-def test_grok_models_route_to_xai_and_the_shadow_seat_is_configured() -> None:
+def test_grok_models_route_to_xai_and_the_third_seat_is_configured() -> None:
     from pathlib import Path
 
     from app import llm
@@ -285,7 +285,64 @@ def test_grok_models_route_to_xai_and_the_shadow_seat_is_configured() -> None:
     from app.decision.pm import TASK_PM
 
     cfg = get_config()
-    assert cfg.models.pm_3_shadow.startswith("grok-") and "pm_3" in TASK_PM
-    assert cfg.models.pm_3_shadow in cfg.llm.pricing
-    assert llm.provider_for(cfg.models.pm_3_shadow).name == "xai"
+    assert cfg.models.pm_3.startswith("grok-") and "pm_3" in TASK_PM
+    assert cfg.models.pm_3 in cfg.llm.pricing
+    assert llm.provider_for(cfg.models.pm_3).name == "xai"
     assert "X_AI" not in Path("scripts/admin_env.sh").read_text()
+
+
+def test_two_of_three_decides_and_nobody_may_be_opposite() -> None:
+    """Logic v6 (owner 2026-10-11): three seats, two of three with nobody opposite."""
+    short = prop(Direction.SHORT, -0.3, 0.6)
+    weak_short = prop(Direction.SHORT, -0.2, 0.5, stop=106.0)
+    flat = prop(Direction.FLAT, -0.1, 0.4)
+    long_ = prop(Direction.LONG, 0.3, 0.6)
+
+    def run(a: Proposal | None, b: Proposal | None, c: Proposal | None) -> Consensus:
+        return consensus(FIVE, 0.5, a, b, pm3=c, seats=3)
+
+    # all three agree: a full agreement
+    all3 = run(short, weak_short, short)
+    assert (all3.direction, all3.agreement) == (Direction.SHORT, Agreement.AGREE)
+    # two agree, the cautious one is flat: no veto any more, a majority
+    maj = run(short, flat, weak_short)
+    assert (maj.direction, maj.agreement) == (Direction.SHORT, Agreement.MAJORITY)
+    assert maj.proposal is not None and maj.proposal.stop == pytest.approx(105.45, abs=0.01)
+    assert maj.conviction == 0.5 and maj.reason == "two of three PMs agree, one flat"
+    # anyone opposite: nothing, even with two on one side
+    opp = run(short, weak_short, long_)
+    assert (opp.direction, opp.agreement) == (Direction.FLAT, Agreement.OPPOSITE)
+    # one call alone never trades
+    solo = run(short, flat, flat)
+    assert (solo.direction, solo.agreement) == (Direction.FLAT, Agreement.PARTIAL)
+    assert run(flat, flat, flat).agreement is Agreement.FLAT
+    # a missing manager is left out: the other two must agree, and then it is full agreement
+    assert run(short, None, weak_short).agreement is Agreement.AGREE
+    assert run(short, flat, None).agreement is Agreement.PARTIAL
+    assert run(None, None, short).agreement is Agreement.FAILED  # never one model alone
+    # with two seats the old rule stands, whatever a third argument says
+    old = consensus(FIVE, 0.5, short, flat, pm3=weak_short, seats=2)
+    assert old.agreement is Agreement.PARTIAL
+
+
+async def test_the_third_seat_has_a_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    from app.decision import pm as pm_mod
+
+    async def fake_ask(
+        seat: str, *a: object, **k: object
+    ) -> tuple[dict[str, Proposal], None, None]:
+        if seat == "pm_3":
+            await asyncio.sleep(5)
+        return {"BTC": prop(Direction.SHORT, -0.3, 0.6)}, None, None
+
+    monkeypatch.setattr(pm_mod, "ask_pm", fake_ask)
+    res = await pm_mod.ask_three(
+        None,  # type: ignore[arg-type]
+        None,  # type: ignore[arg-type]
+        models={"pm_1": "a", "pm_2": "b", "pm_3": "c"},
+        deadline_s=0.05,
+    )
+    assert "BTC" in res["pm_1"][0] and "BTC" in res["pm_2"][0]
+    assert res["pm_3"][0] == {} and "no answer within" in (res["pm_3"][2] or "")

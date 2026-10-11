@@ -104,8 +104,12 @@ class XAIProvider:
             raise LLMError(f"xai {model}: unparsable output: {str(exc)[:200]}") from exc
         usage = completion.usage
         details = usage.prompt_tokens_details if usage else None
+        # xAI reports reasoning tokens apart from the completion's; they are counted as
+        # output here so the logged cost does not understate the call.
+        out_details = usage.completion_tokens_details if usage else None
+        reasoning = (out_details.reasoning_tokens or 0) if out_details else 0
         return parsed, Usage(
             input_tokens=usage.prompt_tokens if usage else 0,
-            output_tokens=usage.completion_tokens if usage else 0,
+            output_tokens=(usage.completion_tokens + reasoning) if usage else 0,
             cached_input_tokens=(details.cached_tokens or 0) if details else 0,
         )

@@ -1,6 +1,12 @@
 """Logic version: bumped when the decision logic changes in a way that makes earlier
 decisions not comparable. Stored on every cycle row.
 
+6  2026-10-11  three managers, two of three decide: Daerm (Grok 4.7) takes a third seat.
+              A trade needs at least two managers calling the same direction and nobody
+              the opposite one; all agreeing = full size, two with the third flat = half
+              size. A manager without an answer (or the third past its deadline) is left
+              out and the other two must agree. Owner's decision during the freeze; the
+              old two-of-two rule is logged beside it for the review.
 5  2026-10-10  alt sleeve only: the Polymarket agent is replaced by the catalyst agent
               (Djaf, TypeSafe Jev): project and alt-news X accounts, Bybit announcements
               and the unlock calendar, classified by Jev, scored with time decay in code;
@@ -21,5 +27,5 @@ decisions not comparable. Stored on every cycle row.
 1  2026-10-08  initial logic (SPEC §6-§9).
 """
 
-LOGIC_VERSION = 5
+LOGIC_VERSION = 6
 FROZEN_UNTIL = "2026-11-07"  # the 4-week review; no logic change before then

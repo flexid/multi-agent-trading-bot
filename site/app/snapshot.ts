@@ -4,7 +4,7 @@ export type Snapshot = {
   stats: { trades: number; win_rate_pct: number | null; profit_factor: number | null; avg_holding: string | null };
   open_trades: { asset: string; cashtag: string; direction: string; entry: number; leverage: number; stop: number; target: number; time_in_trade: string; unrealized_price_pct: number; unrealized_margin_pct: number; paper: boolean }[];
   closed_trades: { asset: string; cashtag: string; direction: string; entry: number; exit: number; leverage: number; price_pct: number; margin_pct: number; holding: string; opened_at: string; closed_at: string; x_url: string | null; paper: boolean }[];
-  assets: { asset: string; cashtag: string; agents: { agent: string; score: number; confidence: number; valid: boolean; reasons: string[] }[]; pm_claude: string | null; pm_gpt: string | null; consensus: string; consensus_score: number | null; formula_score: number | null; reason: string; macro_regime: string | null; coupling: number | null; macro_tradfi: number | null; macro_native: number | null }[];
+  assets: { asset: string; cashtag: string; agents: { agent: string; score: number; confidence: number; valid: boolean; reasons: string[] }[]; pm_claude: string | null; pm_gpt: string | null; pm_grok?: string | null; consensus: string; consensus_score: number | null; formula_score: number | null; reason: string; macro_regime: string | null; coupling: number | null; macro_tradfi: number | null; macro_native: number | null }[];
   leaderboard: { name: string; kind: string; ic_1d: number | null; sample: number }[];
   by_asset: { asset: string; cashtag: string; trades: number; wins: number; pct: number }[];
   history: { ts: string; scores: Record<string, number | null>; directions: Record<string, string> }[];

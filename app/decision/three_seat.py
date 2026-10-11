@@ -1,12 +1,13 @@
 """Three ways to turn the managers' answers into a trade, compared on what followed
-(owner 2026-10-11). Logging only; the live rule stays two-of-two.
+(owner 2026-10-11). The live rule is two of three since logic v6; the other two are
+counterfactuals, kept to judge the switch at the review.
 
-For every decision where the two seated managers and the shadow third seat all answered:
-- **two of two** (live): both seated managers call the same direction;
-- **two of three**: at least two of the three call the same direction and nobody calls
-  the opposite one (three agreeing counts as a full-size trade, two as half size);
-- **score threshold**: both seated managers' own scores lie beyond ±``THRESHOLD`` on the
-  same side, whatever direction they wrote.
+For every decision where all three managers answered:
+- **two of two** (the rule until v5): the first two managers call the same direction;
+- **two of three** (live): at least two of the three call the same direction and nobody
+  calls the opposite one (three agreeing is a full-size trade, two a half-size one);
+- **score threshold**: the first two managers' own scores lie beyond ±``THRESHOLD`` on
+  the same side, whatever direction they wrote.
 
 Per rule: how many trades it would have opened, the mean move in that direction after
 4 hours and a day (before costs) and the share that went its way.
@@ -109,12 +110,12 @@ def summarize(rows: list[tuple[Seat, Seat, Seat, float | None, float | None]]) -
 
 
 def compare(session: Session, cfg: Config, since: datetime) -> dict[str, Any]:
-    third = cfg.models.pm_3_shadow
+    third = cfg.models.pm_3
     models = [cfg.models.pm_1, cfg.models.pm_2, third]
     if not third:
         return {"decisions": 0, "models": models, "rules": {}, "flat_share": []}
     props = session.scalars(
-        select(PMProposalRecord).where(PMProposalRecord.variant.in_(["main", "shadow"]))
+        select(PMProposalRecord).where(PMProposalRecord.variant == "main")
     ).all()
     by_key: dict[tuple[int, str], dict[str, PMProposalRecord]] = {}
     for p in props:
