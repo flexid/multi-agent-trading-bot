@@ -5,6 +5,8 @@ set -euo pipefail
 HOST="${1:-root@164.90.211.109}"
 DIR=/opt/dorkbot
 cd "$(dirname "$0")/.."
+# Before the restart the script waits for a running decision cycle to finish (and holds
+# back just before a scheduled one): a restart mid-cycle loses the cycle.
 # One SSH connection for the whole deploy (the server rate-limits new SSH connections).
 CTL="/tmp/dorkbot-deploy-$$"
 SSH="ssh -o ControlMaster=auto -o ControlPath=$CTL -o ControlPersist=120"
@@ -18,4 +20,4 @@ rsync -az --delete --exclude .git --exclude .venv --exclude pgdata --exclude log
 # the repo's only when the server has none. New keys are merged by hand.
 rsync -az --ignore-existing config.toml "$HOST:$DIR/"
 scripts/admin_env.sh && scp -q -o ControlPath=$CTL .env .env.admin "$HOST:$DIR/"
-$SSH "$HOST" "chmod 600 $DIR/.env $DIR/.env.admin && cd $DIR && docker compose --profile bot build -q && docker compose --profile bot up -d && (docker builder prune -f --keep-storage 4gb >/dev/null 2>&1 || true) && docker compose --profile bot ps"
+$SSH "$HOST" "chmod 600 $DIR/.env $DIR/.env.admin && cd $DIR && docker compose --profile bot build -q && (! docker compose ps --status running --services 2>/dev/null | grep -qx scheduler || ! docker compose exec -T scheduler python -c 'import app.decision.idle' 2>/dev/null || docker compose exec -T scheduler python -m app.decision.idle) && docker compose --profile bot up -d && (docker builder prune -f --keep-storage 4gb >/dev/null 2>&1 || true) && docker compose --profile bot ps"

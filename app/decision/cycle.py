@@ -260,7 +260,7 @@ async def run_cycle(
         cycle = Cycle(
             started_at=now,
             kind=kind,
-            trigger=trigger,
+            trigger=trigger[:80] if trigger else None,  # the column holds 80 characters
             mode=mode,
             status="running",
             logic_version=LOGIC_VERSION,

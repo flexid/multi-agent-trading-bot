@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -7,6 +7,7 @@ from app.agents.schema import AgentOutput, Horizon
 from app.decision.consensus import CLAMP, Agreement, Consensus, consensus, formula_score
 from app.decision.evidence import AssetPack, EvidencePack
 from app.decision.pm import Direction, PMResponse, Proposal, _check_against_pack
+from tests.test_data_layer import needs_db
 
 
 def out(agent: str, score: float, conf: float = 0.7, age: int = 5) -> AgentOutput:
@@ -346,3 +347,32 @@ async def test_the_third_seat_has_a_deadline(monkeypatch: pytest.MonkeyPatch) ->
     )
     assert "BTC" in res["pm_1"][0] and "BTC" in res["pm_2"][0]
     assert res["pm_3"][0] == {} and "no answer within" in (res["pm_3"][2] or "")
+
+
+@needs_db
+def test_a_restart_waits_for_a_running_cycle_and_before_a_scheduled_one() -> None:
+    from sqlalchemy import delete
+
+    from app.db.models import Cycle
+    from app.db.session import new_session
+    from app.decision.idle import busy
+
+    quiet = datetime(2026, 10, 11, 9, 30, tzinfo=UTC)
+    with new_session() as s:
+        s.execute(delete(Cycle).where(Cycle.status == "running"))
+        s.commit()
+        assert busy(quiet) is None
+        assert "scheduled cycle starts at 12:02" in (busy(quiet.replace(hour=12, minute=1)) or "")
+        s.add(
+            Cycle(
+                started_at=quiet - timedelta(minutes=2),
+                kind="scheduled",
+                mode="shadow",
+                status="running",
+            )
+        )
+        s.commit()
+        assert "is running" in (busy(quiet) or "")
+        assert busy(quiet + timedelta(minutes=40)) is None  # a dead row does not block for ever
+        s.execute(delete(Cycle).where(Cycle.status == "running"))
+        s.commit()

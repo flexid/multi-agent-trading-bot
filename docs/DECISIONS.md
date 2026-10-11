@@ -297,3 +297,7 @@ Measured on one evidence pack, Grok 4.7 through the API: low effort 47 to 52 s (
 
 Owner's choice after the effort test: `llm.effort_by_provider = { xai = "high" }`. At high Grok 4.7 needs about three minutes on the managers' input (about 14,000 reasoning tokens, roughly twelve cents a call), so its timeout is 300 s and the third seat's deadline 320 s; a cycle now waits up to about five minutes for the third answer before the other two decide. In the test, high made one more call than low (XRP short beside DOGE) with slightly better reward-to-risk.
 
+## 2026-10-11 · A deploy waits for a running cycle
+
+A deploy at 02:49 UTC restarted the scheduler one minute into triggered cycle 17 and the cycle was lost; it was rerun by hand. `scripts/deploy.sh` now runs `python -m app.decision.idle` on the server after the build and before the restart: it waits (up to 15 minutes) while a cycle is running and in the 90 seconds before a scheduled one, and the deploy stops rather than interrupt.
+
