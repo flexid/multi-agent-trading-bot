@@ -342,3 +342,42 @@ async def test_soft_stop_waits_for_the_fifteen_minute_close(db: None) -> None:
     ex._candle_ref[symbol] = (bucket - 1, D("97.55"))
     await ex.tick()
     assert positions()[0].status == "closed" and positions()[0].close_reason == "stop"
+
+
+@needs_db
+async def test_aggressive_mode_banks_a_trade_at_its_share_of_the_goal(db: None) -> None:
+    """Aggressive mode (owner 2026-10-11): a position is closed once its net profit reaches
+    1% of the ledger's equity, long before its target; with the mode off it stays open."""
+    from app.db.models import PaperAccount, RiskState
+    from app.db.session import new_session
+
+    seed_decision(stop="98", target="130")  # a far target: only the profit rule can close it
+    ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+    await ex.tick()
+    (pos,) = positions()
+    with new_session() as s:
+        equity = s.get(PaperAccount, 1).equity  # type: ignore[union-attr]
+    # the price move that makes the trade worth 1.2% of the ledger's equity, after its fees
+    move = (equity * D("0.012") + pos.fees) / pos.qty
+    symbol = get_config().symbol(ASSET)
+    assert pos.entry_price is not None
+    up = pos.entry_price + move
+    ex.quotes[symbol] = quote(str(up), str(up + D("0.1")))
+    await ex.tick()
+    assert positions()[0].status == "open"  # mode off: nothing happens
+    with new_session() as s:
+        state = s.get(RiskState, 1) or RiskState(id=1, leverage_ceiling=D(2))
+        state.aggressive = True
+        s.merge(state)
+        s.commit()
+    try:
+        await ex.tick()
+        closed = positions()[0]
+        assert closed.status == "closed" and closed.close_reason == "take_profit"
+        assert closed.pnl is not None and closed.pnl >= equity * D("0.01") * D("0.9")
+    finally:
+        with new_session() as s:
+            after = s.get(RiskState, 1)
+            if after is not None:
+                after.aggressive = False
+                s.commit()

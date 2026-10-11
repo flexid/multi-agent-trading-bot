@@ -335,3 +335,86 @@ def test_a_short_at_conviction_point_four_can_borrow_since_v7() -> None:
         cons(Direction.SHORT, conviction=0.39, stop=104.0), account(), market(), limits()
     )
     assert not low.allowed and any(h.rule == "short_needs_borrow" for h in low.hits)
+
+
+def test_aggressive_mode_pushes_risk_and_leverage_inside_hard_bounds() -> None:
+    from app.config import AggressiveConfig, get_config
+    from app.risk.apply import (
+        NEVER,
+        RISK_HARD_MAX,
+        aggressive_account,
+        aggressive_limits,
+        cap_hold,
+        sleeve_values,
+    )
+
+    cfg = get_config()
+    agg = cfg.aggressive
+    blue, alts = cfg.sleeves["bluechips"], cfg.sleeves["alts"]
+    assert sleeve_values(blue, None) == (
+        blue.risk_per_trade,
+        blue.day_loss_stop,
+        blue.net_beta_exposure_max,
+    )
+    risk, stop, beta = sleeve_values(blue, agg)
+    assert risk == D("0.025") and stop == NEVER and beta == D("3.0")
+    assert sleeve_values(alts, agg)[0] == D("0.0125")
+    # the hard bound on risk holds whatever the profile says
+    assert sleeve_values(blue, AggressiveConfig(risk_multiplier=D(50)))[0] == RISK_HARD_MAX
+    assert aggressive_limits(limits(), None) == limits()
+    pushed = aggressive_limits(limits(), agg)
+    assert pushed.risk_per_trade == limits().risk_per_trade * D("2.5")
+    assert pushed.net_beta_total_max == D("3.0")
+    # no trade is held longer than a day
+    long_hold = cons()
+    held = cap_hold(replace_hold(long_hold, 72), agg)
+    assert held.proposal is not None and held.proposal.max_hold_hours == 24
+    assert cap_hold(replace_hold(long_hold, 12), agg).proposal.max_hold_hours == 12  # type: ignore[union-attr]
+    assert cap_hold(replace_hold(long_hold, 72), None).proposal.max_hold_hours == 72  # type: ignore[union-attr]
+    # the bigger risk sizes a bigger trade at the same stop
+    normal = engine.assess(cons(), account(), market(), limits())
+    bigger = engine.assess(cons(), account(), market(), pushed)
+    assert normal.plan and bigger.plan and bigger.plan.notional > normal.plan.notional
+    assert agg.take_profit_equity_pct == D("0.01")
+    # live keeps the go-live leverage ramp; paper gets the full ceiling
+    assert (
+        aggressive_account(account(leverage_ceiling=D(2)), agg, live=False).leverage_ceiling == 10
+    )
+    assert aggressive_account(account(leverage_ceiling=D(2)), agg, live=True).leverage_ceiling == 2
+
+
+def test_aggressive_mode_has_no_locks() -> None:
+    """Owner 2026-10-11: while the switch is on nothing stops the bot for a loss. A day
+    that would close everything, a drawdown that would pause, a loss that would brake and
+    a coin already traded three times today all still trade. A brake set by hand stands."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.config import get_config
+    from app.risk.apply import aggressive_account, aggressive_limits
+
+    agg = get_config().aggressive
+    now = datetime.now(UTC)
+    bad = account(
+        equity=D(6000),  # -40% against 10,000 starting capital and its peak
+        day_pnl_pct=D("-0.15"),
+        paused_until=now + timedelta(hours=40),
+        pause_count_30d=2,
+        half_risk=True,
+        losing_days_in_row=5,
+        trades_today={"BTC": 7},
+    )
+    assert engine.account_rules(bad, limits(), now)  # normally: stopped
+    lim_a = aggressive_limits(limits(), agg)
+    acct_a = aggressive_account(bad, agg, live=False)
+    assert engine.account_rules(acct_a, lim_a, now) == []
+    a = engine.assess(cons(), acct_a, market(), lim_a)
+    assert a.allowed and not any(h.rule == "trades_per_day" for h in a.hits)
+    braked = aggressive_account(account(emergency_brake=True), agg, live=False)
+    assert [h.effect for h in engine.account_rules(braked, lim_a, now)] == ["brake"]
+
+
+def replace_hold(c: Consensus, hours: int) -> Consensus:
+    from dataclasses import replace
+
+    assert c.proposal is not None
+    return replace(c, proposal=c.proposal.model_copy(update={"max_hold_hours": hours}))

@@ -131,3 +131,10 @@ def test_liquidation_room_runs_from_one_at_entry_to_zero_at_the_level() -> None:
         maintenance_rate=D("0.03"),
     )
     assert sim.liquidation_room(flat, q("100", "100.1")) is None
+
+
+def test_take_profit_is_an_exit_reason_of_its_own() -> None:
+    from app.execution.simulator import ExitReason
+
+    assert ExitReason("take_profit") is ExitReason.TAKE_PROFIT
+    assert len(ExitReason.TAKE_PROFIT.value) <= 20  # fits positions.close_reason

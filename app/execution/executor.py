@@ -384,6 +384,8 @@ class Executor:
         ).all()
         closes = self._closes_15m(now)
         self._locked_cache = self._locked_sleeves(session, now)
+        take_profit = self._take_profit(session)
+        equity_of: dict[str, Decimal] = {}
         for row in rows:
             quote = self.quotes.get(row.symbol)
             if quote is None:
@@ -403,6 +405,14 @@ class Executor:
             )
             if reason is None and (close_all or self._sleeve_locked(row, now)):
                 reason = ExitReason.RISK
+            if reason is None and take_profit is not None:
+                # Aggressive mode: bank a trade once its net profit reaches its share of
+                # the goal, measured on the ledger's equity.
+                if row.track not in equity_of:
+                    equity_of[row.track] = self.ledger(session, now, row.track).equity
+                goal = equity_of[row.track] * take_profit
+                if goal > 0 and sim.unrealized(pos, quote) >= goal:
+                    reason = ExitReason.TAKE_PROFIT
             if reason is None and row.status == "closing":
                 reason = ExitReason(row.close_reason or "risk")  # retry a pending exit
             row.interest, row.trail_stop, row.updated_at = pos.interest, pos.trail_stop, now
@@ -536,12 +546,23 @@ class Executor:
 
     # --- exchange-side backup stop ---------------------------------------------------
 
+    def _take_profit(self, session: Session) -> Decimal | None:
+        """The aggressive profile's profit level (a share of equity), or None when the
+        mode is off."""
+        state = session.get(RiskState, 1)
+        if state is None or not state.aggressive:
+            return None
+        level = self.cfg.aggressive.take_profit_equity_pct
+        return level if level > 0 else None
+
     @staticmethod
     def _locked_sleeves(session: Session, now: datetime) -> dict[str, dict[str, Any]]:
         """Active day locks per sleeve: which directions are locked and since when."""
         from app.risk.sleeves import lock_info
 
         state = session.get(RiskState, 1)
+        if state is not None and state.aggressive:
+            return {}  # aggressive mode: no locks
         locks = (state.day_locked_sleeves or {}) if state else {}
         out = {}
         for name in locks:
@@ -1011,6 +1032,11 @@ class Executor:
         state = session.get(RiskState, 1)
         if state is None:
             return False
+        if state.aggressive:
+            # Aggressive mode (owner 2026-10-11): no locks. Only a brake still stops it,
+            # and that is now set by hand or by a reconcile mismatch, never by a loss.
+            self.frozen = bool(state.emergency_brake)
+            return bool(state.emergency_brake)
         alerted = self._alerted
         for flag, cond, subject in (
             ("brake", state.emergency_brake, "dorkbot: EMERGENCY BRAKE, waiting for you"),

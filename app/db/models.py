@@ -303,6 +303,7 @@ class Cycle(Base):
     error: Mapped[str | None] = mapped_column(Text)
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=0)
     logic_version: Mapped[int | None] = mapped_column(Integer)  # app/version.py at the time
+    aggressive: Mapped[bool | None] = mapped_column(Boolean)  # the switch at this cycle
     # the exact evidence pack both managers received (their user message), for audits
     evidence_pack: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     # Beta-weighted exposure at the time of the cycle: betas, per-track net and gross × equity
@@ -626,6 +627,9 @@ class RiskState(Base):
     # Sleeves (owner 2026-10-10): {sleeve: "shadow"|"live"} and {sleeve: iso-until} day locks
     sleeve_modes: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     day_locked_sleeves: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # the admin's aggressive-mode switch (owner 2026-10-11); profile in config [aggressive]
+    aggressive: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    aggressive_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     hard_stop_atr: Mapped[Decimal | None] = mapped_column(Numeric(3, 2))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

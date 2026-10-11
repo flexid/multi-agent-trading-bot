@@ -195,6 +195,7 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
         "week_ending": now.strftime("%Y-%m-%d"),
         "mode": cfg.trading.live_allowed and "live" or "shadow",
         "pilot_enabled": cfg.pilot.enabled,
+        "aggressive_mode": aggressive_fact(session),
         "cycles": {
             "scheduled": sum(1 for c in cycles if c.kind == "scheduled"),
             "triggered": sum(1 for c in cycles if c.kind == "triggered"),
@@ -254,6 +255,16 @@ def three_seat_facts(session: Session, cfg: Config, now: datetime) -> dict[str, 
     from app.decision.three_seat import compare
 
     return compare(session, cfg, now - timedelta(days=90))
+
+
+def aggressive_fact(session: Session) -> dict[str, Any]:
+    """Whether the owner's aggressive-mode switch is on, and since when."""
+    from app.db.models import RiskState
+
+    state = session.get(RiskState, 1)
+    on = bool(state and state.aggressive)
+    since = state.aggressive_since if state and on else None
+    return {"on": on, "since": since.strftime("%Y-%m-%d %H:%M UTC") if since else None}
 
 
 def optima_facts(session: Session) -> dict[str, Any] | None:
@@ -317,7 +328,13 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
     lines = [f"# dorkbot weekly memo, week ending {f['week_ending']}", ""]
     c = f["cycles"]
     lines += [
-        f"Mode {f['mode']}, pilot {'on' if f['pilot_enabled'] else 'off'}. "
+        f"Mode {f['mode']}, pilot {'on' if f['pilot_enabled'] else 'off'}"
+        + (
+            f", AGGRESSIVE MODE ON since {f['aggressive_mode']['since']}"
+            if (f.get("aggressive_mode") or {}).get("on")
+            else ""
+        )
+        + ". "
         f"{c['scheduled']} scheduled + {c['triggered']} triggered cycles, {c['failed']} failed, "
         f"LLM ${c['cost_usd']:.2f} this week (budget ${f['llm_budget_usd']:.0f}/month).",
         "",

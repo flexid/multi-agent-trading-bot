@@ -72,6 +72,7 @@ class EvidencePack(BaseModel):
     as_of: datetime
     mode: str
     day_pnl_pct: float
+    max_hold_hours: int = 168  # the longest a trade may be held; 24 in aggressive mode
     assets: list[AssetPack] = Field(min_length=1)
 
 
@@ -130,6 +131,7 @@ def build_pack(
     macro_regime: str | None,
     couplings: dict[str, float],
     now: datetime | None = None,
+    max_hold_hours: int = 168,
 ) -> EvidencePack:
     now = now or datetime.now(UTC)
     assets = []
@@ -162,7 +164,9 @@ def build_pack(
                 recent_decisions=recent_decisions(session, asset, now, spot),
             )
         )
-    return EvidencePack(as_of=now, mode=mode, day_pnl_pct=0.0, assets=assets)
+    return EvidencePack(
+        as_of=now, mode=mode, day_pnl_pct=0.0, max_hold_hours=max_hold_hours, assets=assets
+    )
 
 
 def as_of_window(now: datetime) -> datetime:

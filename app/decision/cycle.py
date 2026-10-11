@@ -238,6 +238,17 @@ def abort_stale_cycles(session: Session, now: datetime | None = None) -> int:
     return len(rows)
 
 
+def hold_limit(session: Session, cfg: Config) -> int:
+    """The longest holding time the managers may plan for: 168 hours, or the aggressive
+    profile's limit while that mode is on."""
+    from app.db.models import RiskState
+
+    state = session.get(RiskState, 1)
+    if state is not None and state.aggressive:
+        return max(1, cfg.aggressive.max_hold_hours)
+    return 168
+
+
 def asset_overrides(cfg: Config, asset: str) -> dict[str, float]:
     """Agent-weight overrides for an asset: its sleeve's first, then the per-asset ones."""
     sleeve = cfg.sleeve_cfg(asset)
@@ -285,6 +296,7 @@ async def run_cycle(
                 macro_regime=regime,
                 couplings=couplings,
                 now=now,
+                max_hold_hours=hold_limit(session, cfg),
             )
         with new_session() as session:  # the managers' exact input, kept for audits
             row = session.get(Cycle, cycle_id)

@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.agents.macro import event_today
-from app.config import Config
+from app.config import AggressiveConfig, Config, SleeveConfig
 from app.db.models import (
     AccountSnapshot,
     AgentOutputRecord,
@@ -75,6 +75,82 @@ def limits_for_max(lim: engine.Limits, cfg: Config) -> engine.Limits:
     """The max track's limits: the same rules, sized with ``risk_per_trade_max`` (never
     below the sleeve's own risk per trade)."""
     return replace(lim, risk_per_trade=max(lim.risk_per_trade, cfg.trading.risk_per_trade_max))
+
+
+LEVERAGE_HARD_MAX = Decimal(10)  # Bybit spot margin; never above, whatever the config says
+RISK_HARD_MAX = Decimal("0.05")  # risk per trade, aggressive mode included
+NEVER = Decimal(-1)  # a loss limit that cannot be reached: equity cannot fall by more than 100%
+
+
+def aggressive_profile(cfg: Config, state: RiskState) -> AggressiveConfig | None:
+    """The aggressive profile when the owner's switch is on, else None."""
+    return cfg.aggressive if getattr(state, "aggressive", False) else None
+
+
+def aggressive_limits(lim: engine.Limits, agg: AggressiveConfig | None) -> engine.Limits:
+    """The account-level limits under aggressive mode: more risk per trade, a wider
+    day-loss stop and exposure cap. Every value stays inside hard bounds in code."""
+    if agg is None:
+        return lim
+    return replace(
+        lim,
+        risk_per_trade=min(RISK_HARD_MAX, lim.risk_per_trade * agg.risk_multiplier),
+        net_beta_exposure_max=max(lim.net_beta_exposure_max, agg.net_beta_exposure_max),
+        net_beta_total_max=max(lim.net_beta_total_max, agg.net_beta_exposure_max),
+        # no locks (owner): the day-loss stop, the drawdown pause and the automatic brake
+        # can never be reached, and there is no daily limit on trades per asset
+        day_loss_stop=NEVER,
+        drawdown_pause=NEVER,
+        emergency_brake=NEVER,
+        max_trades_per_asset_day=10_000,
+    )
+
+
+def aggressive_account(
+    acct: engine.AccountState, agg: AggressiveConfig | None, live: bool
+) -> engine.AccountState:
+    """The account view under aggressive mode: the full leverage ceiling (not while live:
+    real money keeps the go-live ramp), and no memory of pauses, losing days or half risk.
+    A brake the owner or a reconcile mismatch engaged still stands."""
+    if agg is None:
+        return acct
+    ceiling = acct.leverage_ceiling
+    if not live:
+        ceiling = max(ceiling, min(Decimal(agg.leverage_ceiling), LEVERAGE_HARD_MAX))
+    return engine.AccountState(
+        **{
+            **acct.__dict__,
+            "leverage_ceiling": ceiling,
+            "paused_until": None,
+            "pause_count_30d": 0,
+            "half_risk": False,
+            "losing_days_in_row": 0,
+        }
+    )
+
+
+def sleeve_values(
+    s_cfg: SleeveConfig, agg: AggressiveConfig | None
+) -> tuple[Decimal, Decimal, Decimal]:
+    """(risk per trade, day-loss stop, exposure cap) for a sleeve, with the aggressive
+    profile applied when it is on."""
+    if agg is None:
+        return s_cfg.risk_per_trade, s_cfg.day_loss_stop, s_cfg.net_beta_exposure_max
+    return (
+        min(RISK_HARD_MAX, s_cfg.risk_per_trade * agg.risk_multiplier),
+        NEVER,  # no sleeve day-loss stop while the mode is on
+        max(s_cfg.net_beta_exposure_max, agg.net_beta_exposure_max),
+    )
+
+
+def cap_hold(c: Consensus, agg: AggressiveConfig | None) -> Consensus:
+    """Aggressive mode holds no trade longer than its limit (24 hours)."""
+    if agg is None or c.proposal is None or not c.proposal.max_hold_hours:
+        return c
+    cap = max(1, agg.max_hold_hours)
+    if c.proposal.max_hold_hours <= cap:
+        return c
+    return replace(c, proposal=c.proposal.model_copy(update={"max_hold_hours": cap}))
 
 
 def limits_from_config(cfg: Config) -> engine.Limits:
@@ -297,9 +373,11 @@ def apply_risk(
     session: Session, cfg: Config, cycle_id: int, mode: str, now: datetime | None = None
 ) -> dict[str, engine.Assessment]:
     now = now or datetime.now(UTC)
-    lim = limits_with_state(limits_from_config(cfg), risk_state(session))
+    agg = aggressive_profile(cfg, risk_state(session))  # None unless the owner switched it on
+    lim = aggressive_limits(limits_with_state(limits_from_config(cfg), risk_state(session)), agg)
     beta = betas(session, cfg, now)
     acct = account_state(session, cfg, mode, now, beta=beta)
+    acct = aggressive_account(acct, agg, live=mode == "live")
     # Comparison track (shadow only): same rules with the ceiling at leverage_max, its own
     # exposure.
     max_exp = track_exposure(session, "max", beta)
@@ -312,6 +390,8 @@ def apply_risk(
         }
     )
     cycle = session.get(Cycle, cycle_id)
+    if cycle is not None:
+        cycle.aggressive = agg is not None
     if cycle is not None and acct.equity:
         cycle.beta_exposure = {
             "betas": {a: str(b) for a, b in beta.items()},
@@ -342,12 +422,14 @@ def apply_risk(
     # the sleeve is closed, and new trades are locked until 00:00 UTC only in the direction
     # that lost; the bot may follow a changed view the other way. A further loss of the
     # same size after that locks the whole sleeve for the day.
-    locks: dict[str, Any] = dict(state.day_locked_sleeves or {})
+    locks: dict[str, Any] = {} if agg is not None else dict(state.day_locked_sleeves or {})
     for name, sa in sleeve_accts.items():
+        if agg is not None:
+            break  # aggressive mode: no day-loss stop, no lock
         s_cfg = cfg.sleeves[name]
         info = lock_info(locks, name, now)
         dirs = directions_to_lock(
-            info, sa.day_pnl_pct, s_cfg.day_loss_stop, sa.day_pnl_by_direction
+            info, sa.day_pnl_pct, sleeve_values(s_cfg, agg)[1], sa.day_pnl_by_direction
         )
         if dirs is not None:
             locks[name] = new_lock(now, dirs, sa.day_pnl_pct)
@@ -403,7 +485,7 @@ def apply_risk(
     out: dict[str, engine.Assessment] = {}
     rows = session.scalars(select(DecisionRecord).where(DecisionRecord.cycle_id == cycle_id)).all()
     for d in rows:
-        c = consensus_from_row(d)
+        c = cap_hold(consensus_from_row(d), agg)
         mkt = replace(
             market_state(session, cfg, d.asset, cycle_id, now, c.direction),
             beta=beta.get(d.asset, Decimal(1)),
@@ -412,12 +494,13 @@ def apply_risk(
         if sleeve_name is not None:
             s_cfg = cfg.sleeves[sleeve_name]
             sa = sleeve_accts[sleeve_name]
+            risk_s, stop_s, beta_s = sleeve_values(s_cfg, agg)
             lim_s = replace(
                 lim,
-                risk_per_trade=s_cfg.risk_per_trade,
+                risk_per_trade=risk_s,
                 leverage_max=Decimal(s_cfg.leverage_max),
-                net_beta_exposure_max=s_cfg.net_beta_exposure_max,
-                day_loss_stop=s_cfg.day_loss_stop,
+                net_beta_exposure_max=beta_s,
+                day_loss_stop=stop_s,
             )
             acct_s = engine.AccountState(
                 **{
@@ -435,7 +518,7 @@ def apply_risk(
                 }
             )
             hits_s = list(account_hits)
-            if day_locked(locks, sleeve_name, now, c.direction.value):
+            if agg is None and day_locked(locks, sleeve_name, now, c.direction.value):
                 hits_s.append(
                     engine.RuleHit(
                         f"day_loss_stop:{sleeve_name}",

@@ -1149,12 +1149,14 @@ def params(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
     with new_session() as s:
         history = s.scalars(select(ParamChange).order_by(ParamChange.id.desc()).limit(50)).all()
         audit_rows = s.scalars(select(AuditLog).order_by(AuditLog.id.desc()).limit(100)).all()
+        aggressive = aggressive_view(cfg, s.get(RiskState, 1))
     return render(
         request,
         "params.html",
         user=user,
         editable=EDITABLE,
         current=current,
+        aggressive=aggressive,
         history=history,
         audit=audit_rows,
         stepped=stepped_up(request),
@@ -1214,6 +1216,81 @@ def params_post(
         f"{user} set {key} = {v} (applied by the executor within bounds)",
     )
     return RedirectResponse("/params", status_code=303)
+
+
+@app.post("/params/aggressive")
+def aggressive_post(
+    request: Request,
+    on: str = Form(),
+    csrf: str = Form(),
+    user: str = Depends(current_user),
+) -> Response:
+    """The aggressive-mode switch (owner 2026-10-11). It only flips a flag in the risk
+    state; the profile itself is in config.toml and the risk engine applies it, inside
+    hard bounds, from the next cycle on. Needs the step-up code like every action."""
+    check_csrf(request, csrf)
+    _require_step_up(request)
+    want = on == "1"
+    now = datetime.now(UTC)
+    with new_session() as s:
+        state = s.get(RiskState, 1)
+        if state is None:
+            state = RiskState(id=1, leverage_ceiling=Decimal(2))
+            s.add(state)
+        before = bool(state.aggressive)
+        state.aggressive = want
+        state.aggressive_since = now if want else None
+        s.add(
+            ParamChange(
+                ts=now,
+                key="aggressive mode",
+                old_value="on" if before else "off",
+                new_value="on" if want else "off",
+                requested_by=user,
+                applied_at=now,
+                result="applied",
+            )
+        )
+        auth.audit(s, user, "aggressive_mode", _ip(request), {"on": want})
+        s.commit()
+    notify.send(
+        f"dorkbot admin: aggressive mode {'ON' if want else 'off'}",
+        f"{user} switched aggressive mode {'on' if want else 'off'}. It applies from the next "
+        "cycle. Open positions keep the terms they were opened with.",
+    )
+    return RedirectResponse("/params", status_code=303)
+
+
+def aggressive_view(cfg: Config, state: RiskState | None) -> dict[str, Any]:
+    """What the switch changes, normal next to aggressive, for the parameters page."""
+    from app.risk.apply import RISK_HARD_MAX, sleeve_values
+
+    agg = cfg.aggressive
+    rows = []
+    for name, s_cfg in cfg.sleeves.items():
+        risk, stop, beta = sleeve_values(s_cfg, agg)
+        rows.append(
+            {
+                "sleeve": name,
+                "risk": (s_cfg.risk_per_trade, risk),
+                "stop": (s_cfg.day_loss_stop, stop),
+                "beta": (s_cfg.net_beta_exposure_max, beta),
+                "lev": (
+                    min(
+                        Decimal(s_cfg.leverage_max), state.leverage_ceiling if state else Decimal(2)
+                    ),
+                    min(Decimal(s_cfg.leverage_max), Decimal(agg.leverage_ceiling)),
+                ),
+            }
+        )
+    return {
+        "on": bool(state and state.aggressive),
+        "since": state.aggressive_since if state else None,
+        "rows": rows,
+        "hold": agg.max_hold_hours,
+        "risk_cap": RISK_HARD_MAX,
+        "take_profit": agg.take_profit_equity_pct,
+    }
 
 
 @app.post("/control/{kind}")

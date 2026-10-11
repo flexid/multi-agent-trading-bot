@@ -72,6 +72,22 @@ class CatalystsConfig(_Section):
     unlock_horizon_days: int = 30  # how far ahead unlocks are loaded
 
 
+class AggressiveConfig(_Section):
+    """What the admin's "aggressive mode" switch changes (owner 2026-10-11): more risk per
+    trade and the full leverage ceiling in pursuit of the 1%-a-day goal, no locks of any
+    kind (no day-loss stop, no drawdown pause, no automatic brake, no daily trade limit),
+    a trade banked as soon as it has earned its share of the goal, and a short holding
+    limit. Each trade keeps its own stop. Code keeps hard bounds on risk and leverage."""
+
+    risk_multiplier: Decimal = Decimal("2.5")  # × each sleeve's risk per trade
+    leverage_ceiling: int = 10  # instead of the 2x start ceiling; sleeve caps still apply
+    net_beta_exposure_max: Decimal = Decimal("3.0")  # × equity, per sleeve and in total
+    max_hold_hours: int = 24
+    # Close a trade once its net profit reaches this share of the ledger's equity. Checked
+    # every ten seconds, so it fills at or a little above it ("between 1 and 2%").
+    take_profit_equity_pct: Decimal = Decimal("0.01")
+
+
 class PilotConfig(_Section):
     enabled: bool = False
     capital_usdt: Decimal = Decimal(200)
@@ -182,6 +198,7 @@ class Config(_Section):
     llm: LLMConfig = LLMConfig()
     trading: TradingConfig
     pilot: PilotConfig = PilotConfig()
+    aggressive: AggressiveConfig = AggressiveConfig()
     exchange: ExchangeConfig = ExchangeConfig()
     posting: PostingConfig
     risk: RiskConfig = RiskConfig()
