@@ -436,3 +436,16 @@ async def test_a_backup_stop_without_a_position_is_cancelled(db: None) -> None:
         assert await ex.cancel_orphan_backups(s, now + timedelta(seconds=5)) == 0  # throttled
         assert await ex.cancel_orphan_backups(s, now + timedelta(seconds=61)) == 1
     assert cancelled == [("DOGEUSDT", "bk-orphan")]
+
+
+def test_the_pilot_has_a_slot_for_every_asset() -> None:
+    """Ten positions sized per sleeve fit the pilot's capital together (owner 2026-10-11)."""
+    cfg = get_config()
+    ex = Executor(cfg, get_secrets(), ScriptedGateway(opens=[]), feed=False)
+    slots = {a: ex.pilot_slot(a) for a in cfg.trading.assets}
+    cap = cfg.pilot.capital_usdt
+    assert slots["BTC"] == cap * D("0.70") * D("0.20") and slots["PEPE"] == cap * D("0.30") * D(
+        "0.20"
+    )
+    assert sum(slots.values()) <= cap
+    assert ex.pilot_slot("BNB") == cap * D("0.20")  # outside the sleeves: the old share

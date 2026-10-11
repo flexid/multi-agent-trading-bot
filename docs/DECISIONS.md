@@ -371,3 +371,7 @@ After the manual close, a buy stop for 431.6 DOGE was still resting on Bybit, tr
 
 Owner: his own stops are mostly further away. In aggressive mode every stop is moved `stop_room` (1.5) times further from the middle of the entry zone before the risk engine sees the plan; the stop-hunt buffer and the hard stop are then applied as usual, and the trade is sized on the new distance, so the position is smaller and the loss at the stop is unchanged. Never more than three times further, and never past the distance at which the position would reach 1x leverage (a position cannot shrink below that, so more room there would mean a larger loss); a stop already that far away is left where it is. Context given to the owner: in this mode a winner banks about 1% of the book and a stopped bluechip trade loses about 1.75%, so it needs clearly more than six winners in ten; more room raises the share of winners and asks a larger move for the same 1%.
 
+## 2026-10-11 · The pilot has room for every trade
+
+The pilot followed every approved plan but sized each position at 20% of its 185 USDT, so five positions filled it and the rest were skipped as "out of funds". Its slot is now a share of the asset's sleeve, like the paper book: 14% of the pilot's capital for a bluechip (about 26 USDT) and 6% for an alt (about 11 USDT), so all ten can be open at once. Still 1x and still the pilot's own fixed capital, also in aggressive mode: its job is to test fills, slippage and borrowing with real money, not to chase the return.
+

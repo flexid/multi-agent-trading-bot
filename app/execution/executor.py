@@ -746,6 +746,16 @@ class Executor:
         for track, track_mode in TRACKS[self.mode].items():
             await self._open_track(session, now, track, track_mode)
 
+    def pilot_slot(self, asset: str) -> Decimal:
+        """The pilot's size for one position. Like the paper book, a position takes a share
+        of its sleeve (owner 2026-10-11: the pilot should be able to take every trade), so
+        all ten assets fit at once: 14% of the pilot's capital for a bluechip, 6% for an
+        alt. An asset outside the sleeves keeps the old share of the whole."""
+        share = self.cfg.trading.capital_share_per_asset
+        sleeve = self.cfg.sleeve_cfg(asset)
+        fraction = sleeve.capital_fraction if sleeve is not None else Decimal(1)
+        return self.cfg.pilot.capital_usdt * fraction * share
+
     @staticmethod
     def _note(d: DecisionRecord, track: str, text: str) -> None:
         """Why this track did not open the approved plan, for the decision log."""
@@ -809,11 +819,7 @@ class Executor:
             notional, leverage = Decimal(plan["notional"]), Decimal(plan["leverage"])
             if track == "pilot":  # owner: 200 USDT at 1x, to test fills, slippage, borrowing
                 leverage = Decimal(1)
-                notional = min(
-                    notional,
-                    acct.cash,
-                    self.cfg.pilot.capital_usdt * self.cfg.trading.capital_share_per_asset,
-                )
+                notional = min(notional, acct.cash, self.pilot_slot(d.asset))
             entry_mid = Decimal(plan["entry"])
             # Owner (2026-10-09): clamp the PMs' entry to spot ±1%. If the plan sits further
             # away, enter here and shift stop and target by the same amount, so the stop
