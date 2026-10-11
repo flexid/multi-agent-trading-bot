@@ -359,3 +359,7 @@ What still protects the account: each trade's own soft and hard stop (a plan can
 
 Owner: "1-2% net profit". The take-profit check now also subtracts the fee for closing, so the profit banked, after entry fee, exit fee and borrow interest, is at least 1% of the ledger's equity.
 
+## 2026-10-11 · Closing positions by hand without the kill switch
+
+Owner asked to close every open trade (18:27 UTC: SPX on three paper ledgers, BNB on the inverse ledger and the pilot's real BNB short). The kill switch would also freeze the bot, so the positions were set to `closing` with the new exit reason `manual`; the executor then closes each through its normal exit path (cancel the backup stop, exit order, repay, book the result). Only the executor places the orders.
+

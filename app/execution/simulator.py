@@ -36,6 +36,7 @@ class ExitReason(StrEnum):
     LIQUIDATION = "liquidation"
     RISK = "risk"  # day loss stop, drawdown pause, close-all
     TAKE_PROFIT = "take_profit"  # aggressive mode: the trade earned its share of the goal
+    MANUAL = "manual"  # the owner asked for it to be closed
 
 
 @dataclass(frozen=True)
