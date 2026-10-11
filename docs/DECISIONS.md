@@ -313,3 +313,7 @@ Fix: the half size for a two-of-three majority was applied to the risk-per-trade
 
 A new config format (three-part prices) was copied to the server before the code that reads it; the old code's idle check crashed on the config and the deploy skipped the restart, leaving the old containers with a config they could not reload for about two minutes (no errors were logged; the processes had loaded their config at start). Fixed by hand. From now on: code first, then the config, then the restart when a format changes; and the idle check exits 3 for "a cycle is running" (the deploy stops) while any other failure of the check lets the deploy proceed.
 
+## 2026-10-11 · Daerm's deadline 320 s → 480 s
+
+In cycle 19 Grok at high effort answered after 297 s, 23 s inside its deadline. The owner does not mind a cycle taking minutes, and a missed deadline silently turns two-of-three back into two-of-two, so the timeout is 450 s and the deadline 480 s.
+
