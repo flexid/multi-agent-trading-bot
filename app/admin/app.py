@@ -517,6 +517,7 @@ def _p_sentiment(s: Session, cfg: Config, now: datetime, risk: RiskState | None)
     """Market mood: Fear & Greed, BTC dominance, the macro regime, and per asset the X
     sentiment of the last 24 hours (labelled posts by stance) with the mention volume."""
     from app.agents.x_sentiment import WINDOW_H, mention_volume
+    from app.agents.x_sentiment import fresh_only as x_fresh_only
     from app.db.models import AgentOutputRecord, MacroObservation
 
     def series(name: str, days: int) -> tuple[float | None, float | None]:
@@ -556,6 +557,31 @@ def _p_sentiment(s: Session, cfg: Config, now: datetime, risk: RiskState | None)
     for asset, stance, n in stances:
         if asset:
             counts.setdefault(asset, {})[stance or "neutral"] = int(n)
+    recaps: dict[str, dict[str, int]] = {}  # asset -> stance -> posts labelled as recaps
+    for asset, stance, n in s.execute(
+        select(XPostRecord.asset, XPostRecord.stance, func.count())
+        .where(
+            XPostRecord.labeled_at.is_not(None),
+            XPostRecord.created_at >= since,
+            XPostRecord.fresh.is_(False),
+        )
+        .group_by(XPostRecord.asset, XPostRecord.stance)
+    ).all():
+        if asset:
+            recaps.setdefault(asset, {})[stance or "neutral"] = int(n)
+    judged = {
+        a_: int(n)
+        for a_, n in s.execute(
+            select(XPostRecord.asset, func.count())
+            .where(
+                XPostRecord.labeled_at.is_not(None),
+                XPostRecord.created_at >= since,
+                XPostRecord.fresh.is_not(None),
+            )
+            .group_by(XPostRecord.asset)
+        ).all()
+        if a_
+    }
     latest_x = {
         o.asset: o
         for o in s.scalars(
@@ -585,6 +611,12 @@ def _p_sentiment(s: Session, cfg: Config, now: datetime, risk: RiskState | None)
                 "mentions": mv[0] if mv else None,
                 "buzz": (mv[0] / mv[1]) if mv and mv[1] > 0 else None,
                 "flags": list(o.risk_flags or []) if o else [],
+                "judged": judged.get(asset, 0),
+                "recap_bullish": recaps.get(asset, {}).get("bullish", 0),
+                "recap_bearish": recaps.get(asset, {}).get("bearish", 0),
+                "fresh_score": (
+                    x_fresh_only(s, asset, 0, now).score if judged.get(asset, 0) else None
+                ),
             }
         )
     scored: list[float] = [float(r["score"]) for r in rows if r["score"] is not None]

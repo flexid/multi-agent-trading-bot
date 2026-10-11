@@ -154,6 +154,8 @@ class XPostRecord(Base):
     kind: Mapped[str | None] = mapped_column(String(10))  # news/analysis/shill/other
     credibility: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     shock: Mapped[bool | None] = mapped_column(Boolean)  # market-moving news
+    # new information (True) or a recap of something already known (False); logged only
+    fresh: Mapped[bool | None] = mapped_column(Boolean)
     labeled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
@@ -218,6 +220,7 @@ class XPostLabel(Base):
     kind: Mapped[str | None] = mapped_column(String(10))
     credibility: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     shock: Mapped[bool | None] = mapped_column(Boolean)
+    fresh: Mapped[bool | None] = mapped_column(Boolean)
     labeled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

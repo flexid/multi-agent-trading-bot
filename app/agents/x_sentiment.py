@@ -177,6 +177,9 @@ class PostLabel(BaseModel):
     kind: Kind
     credibility: float = Field(ge=0, le=1)
     shock: bool
+    # new information (true) or a recap of what was already known (false). Logged only
+    # (owner 2026-10-11): the score does not use it until the review has judged it.
+    fresh: bool = True
 
 
 class LabelBatch(BaseModel):
@@ -400,6 +403,7 @@ def _apply(rec: XPostRecord, label: PostLabel, assets: set[str], now: datetime) 
     rec.kind = label.kind.value
     rec.credibility = Decimal(str(round(label.credibility, 3)))
     rec.shock = label.shock
+    rec.fresh = label.fresh
     rec.labeled_at = now
 
 
@@ -415,6 +419,7 @@ def _shadow_row(
         kind=label.kind.value,
         credibility=Decimal(str(round(label.credibility, 3))),
         shock=label.shock,
+        fresh=label.fresh,
         labeled_at=now,
     )
 
@@ -463,6 +468,7 @@ JEV_BATCH = 10  # posts per Jev request (five questions each; a small state read
 
 def _post_label_from_answers(post_id: str, answers: dict[str, Any], i: int) -> PostLabel:
     a, s, k, c, sh = (answers[f"p{i}_{q}"] for q in ("asset", "stance", "kind", "cred", "shock"))
+    fr = answers.get(f"p{i}_fresh")
     # credibility: the probability-weighted level over four levels → 0..1
     cred = max(0.0, min(1.0, float(c["score"]) / (len(CREDIBILITY_LEVELS) - 1)))
     return PostLabel(
@@ -472,6 +478,7 @@ def _post_label_from_answers(post_id: str, answers: dict[str, Any], i: int) -> P
         kind=Kind(str(k["choice"])),
         credibility=cred,
         shock=float(sh["noul"]) >= 0.5,
+        fresh=float(fr["noul"]) >= 0.5 if fr else True,
     )
 
 
@@ -656,3 +663,20 @@ def aggregate(
         risk_flags=risk_flags,
         data_age_min=data_age_min,
     )
+
+
+def fresh_only(
+    session: Session, asset: str, data_age_min: int, now: datetime | None = None
+) -> AgentOutput:
+    """The same aggregation without the posts labelled as recaps (``fresh`` is False).
+    For the admin only: it shows how much of the reading rests on old news."""
+    now = now or datetime.now(UTC)
+    rows = session.scalars(
+        select(XPostRecord).where(
+            XPostRecord.asset == asset,
+            XPostRecord.labeled_at.is_not(None),
+            XPostRecord.created_at >= now - timedelta(hours=WINDOW_H),
+        )
+    ).all()
+    kept = [r for r in rows if r.fresh is not False]
+    return aggregate(kept, asset, data_age_min, now, mention_volume(session, asset, now))

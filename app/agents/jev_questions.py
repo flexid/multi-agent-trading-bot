@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-VERSION = 1
+VERSION = 2  # 2: a freshness question per post (2026-10-11)
 
 EVENT_TYPES: dict[str, str] = {
     "listing": "a new exchange listing or trading pair, new margin or borrow support, "
@@ -81,8 +81,8 @@ def event_questions(assets: dict[str, str]) -> dict[str, Any]:
 
 
 def post_questions(count: int, assets: dict[str, str]) -> dict[str, Any]:
-    """Five questions per post over ``{"posts": [{"text": ...}, ...]}``: asset, stance,
-    kind, credibility (4 ordered levels) and shock. ``count`` posts, keys ``p{i}_*``."""
+    """Six questions per post over ``{"posts": [{"text": ...}, ...]}``: asset, stance,
+    kind, credibility (4 ordered levels), shock and freshness. ``count`` posts, keys ``p{i}_*``."""
     from typesafe_sdk import Choice, Noul, Score
 
     questions: dict[str, Any] = {}
@@ -110,6 +110,15 @@ def post_questions(count: int, assets: dict[str, str]) -> dict[str, Any]:
             criteria={
                 "true": "it reports such news as happening or just announced",
                 "false": "routine news, analysis, opinion, hype, or no news at all",
+            },
+        )
+        questions[f"p{i}_fresh"] = Noul(
+            instructions=f"Does the post {ref} report something that happened or was announced "
+            "within about the last day, or give a new view on what comes next?",
+            criteria={
+                "true": "new information or a new forward-looking view",
+                "false": "a recap of older, already known information: last week's flows, a "
+                "past event, a summary of what already happened",
             },
         )
     return questions

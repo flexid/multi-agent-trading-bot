@@ -335,3 +335,7 @@ When the managers call a direction and nothing opens, the reason column now adds
 
 Found through the new notes in the decision log: `trades_per_day` (three per asset per day) counted decisions with an approved plan, whether or not anything opened. With the paper ledgers out of cash, three approvals without a single trade used up the day's limit for SOL, DOGE and ENA, and the extra cycle at 15:17 UTC was blocked by it. The count is now the positions actually opened today on the track being sized.
 
+## 2026-10-11 · Posts are labelled fresh or recap (logged only)
+
+Owner: a post such as "500M outflows last week" is labelled bearish, correctly for the text, while the market may have turned since. Every labelled post now also carries `fresh`: true for something that happened or was announced within about a day or a new forward-looking view, false for a recap of older, already known information. The Sonnet labeller gets the field in its prompt (v4), Jev a sixth question per post (question set v2). The score does **not** use it: `aggregate` is unchanged and the field never reaches the managers' evidence lines. The admin's market-sentiment table shows the recaps per asset (bullish / bearish) and "Ears, fresh only", the score without them, so the review can judge whether recaps should count less or posts should decay with age.
+

@@ -73,8 +73,8 @@ def test_jev_questions_cover_every_label_with_a_no_match_option() -> None:
     assert set(q) == {"asset", "type", "direction", "material"}
     assert "none" in q["asset"].criteria and set(q["type"].criteria) == set(cat.TYPE_WEIGHT)
     pq = post_questions(2, {"BTC": "Bitcoin"})
-    assert {k.split("_", 1)[1] for k in pq} == {"asset", "stance", "kind", "cred", "shock"}
-    assert len(pq) == 10
+    assert {k.split("_", 1)[1] for k in pq} == {"asset", "stance", "kind", "cred", "shock", "fresh"}
+    assert len(pq) == 12
 
 
 def test_text_events_decay_by_type_and_leave_the_window() -> None:
@@ -250,6 +250,11 @@ def test_jev_post_answers_become_a_post_label() -> None:
         "news",
     )
     assert label.credibility == pytest.approx(0.8) and label.shock is True
+    assert label.fresh is True  # no freshness answer (older question set): counted as fresh
+    recap = xs._post_label_from_answers(
+        "42", {**answers, "p0_fresh": {"type": "noul", "noul": 0.2}}, 0
+    )
+    assert recap.fresh is False
     with pytest.raises(KeyError):
         xs._post_label_from_answers("42", answers, 1)
 

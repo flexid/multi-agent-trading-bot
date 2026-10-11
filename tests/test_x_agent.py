@@ -160,3 +160,15 @@ def test_curated_handles_leave_out_the_projects_own_accounts() -> None:
         len(q) <= cfg.x.query_max_chars
         for q in xs.curated_queries(handles, cfg.trading.assets, cfg.x.query_max_chars)
     )
+
+
+def test_freshness_is_logged_and_does_not_change_the_score() -> None:
+    """A recap label is stored for the review; the live aggregation ignores it."""
+    rows = [post(i, "bearish", kind="news") for i in range(5)]
+    base = xs.aggregate(rows, "BTC", 1, NOW)
+    for r in rows:
+        r.fresh = False
+    assert xs.aggregate(rows, "BTC", 1, NOW).score == base.score
+    assert xs.PostLabel(
+        id="1", asset="BTC", stance="bearish", kind="news", credibility=0.5, shock=False
+    ).fresh
