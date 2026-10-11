@@ -27,6 +27,7 @@ leverage_ceiling = 10           # the full ceiling instead of 2x; a sleeve's own
 take_profit_equity_pct = 0.01   # a trade is closed once its net profit reaches 1% of the ledger's equity
 net_beta_exposure_max = 3.0     # × equity, per sleeve and across both
 max_hold_hours = 24             # no trade is held longer
+stop_room = 1.5                 # stops 1.5× further from the entry than the managers put them; size shrinks to match (1 to 3)
 
 [sleeves.bluechips]             # owner 2026-10-10 (logic v4): two sleeves, each its own budget and limits
 assets = ["BTC", "ETH", "SOL", "XRP", "DOGE"]

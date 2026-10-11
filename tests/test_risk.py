@@ -418,3 +418,38 @@ def replace_hold(c: Consensus, hours: int) -> Consensus:
 
     assert c.proposal is not None
     return replace(c, proposal=c.proposal.model_copy(update={"max_hold_hours": hours}))
+
+
+def test_aggressive_mode_gives_stops_more_room_at_the_same_risk() -> None:
+    from app.config import AggressiveConfig, get_config
+    from app.risk.apply import widen_stop
+
+    agg = get_config().aggressive
+    assert agg.stop_room == D("1.5")
+    long_ = cons(stop=98.0)  # entry zone 99-101, middle 100: the stop is 2 away
+    wide = widen_stop(long_, agg)
+    assert wide.proposal is not None and wide.proposal.stop == pytest.approx(97.0)  # 3 away
+    short = widen_stop(cons(Direction.SHORT, stop=103.0, target=94.0), agg)
+    assert short.proposal is not None and short.proposal.stop == pytest.approx(104.5)
+    assert widen_stop(long_, None) is long_  # mode off: untouched
+    assert widen_stop(long_, AggressiveConfig(stop_room=D(1))) is long_
+    capped = widen_stop(long_, AggressiveConfig(stop_room=D(50)))  # never more than 3×
+    assert capped.proposal is not None and capped.proposal.stop == pytest.approx(94.0)
+    # the engine sizes on the new distance: a smaller position, the same money at risk
+    lim = limits(risk_per_trade=D("0.025"), hard_stop_atr=D(0), stop_buffer_atr=D(0))
+    acct = account(leverage_ceiling=D(10))
+    tight = engine.assess(long_, acct, market(), lim)
+    roomy = engine.assess(wide, acct, market(), lim)
+    assert tight.plan and roomy.plan and roomy.plan.notional < tight.plan.notional
+    risk_tight = tight.plan.notional * (tight.plan.entry - tight.plan.stop) / tight.plan.entry
+    risk_roomy = roomy.plan.notional * (roomy.plan.entry - roomy.plan.stop) / roomy.plan.entry
+    assert risk_roomy == pytest.approx(risk_tight, rel=D("0.1"))
+    # a position cannot shrink below 1x, so the stop is not widened past that point
+    from app.risk.apply import one_x_distance
+
+    small = limits(risk_per_trade=D("0.005"))  # 1x is reached at 0.005 / 0.2 × 0.8 = 2%
+    assert one_x_distance(small) == D("0.02")
+    held = widen_stop(long_, agg, one_x_distance(small))
+    assert held is long_  # already 2% away: no more room to give
+    part = widen_stop(cons(stop=99.0), agg, one_x_distance(small))  # 1% away → 1.5%
+    assert part.proposal is not None and part.proposal.stop == pytest.approx(98.5)

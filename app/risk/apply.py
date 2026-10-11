@@ -77,6 +77,43 @@ def limits_for_max(lim: engine.Limits, cfg: Config) -> engine.Limits:
     return replace(lim, risk_per_trade=max(lim.risk_per_trade, cfg.trading.risk_per_trade_max))
 
 
+STOP_ROOM_MAX = Decimal(3)  # a stop is never moved more than three times further away
+
+
+def widen_stop(
+    c: Consensus, agg: AggressiveConfig | None, max_distance: Decimal | None = None
+) -> Consensus:
+    """Aggressive mode gives every stop more room (owner 2026-10-11): the stop moves
+    ``stop_room`` times further from the middle of the entry zone. The engine sizes the
+    trade on the new distance, so the position is smaller and the loss at the stop is the
+    same; what changes is how easily ordinary noise stops the trade out.
+
+    ``max_distance`` (a fraction of the entry) is where the position would reach 1x: a
+    position cannot shrink below that, so widening past it would raise the loss at the
+    stop. The stop is widened up to that point and never pulled closer than planned."""
+    p = c.proposal
+    if agg is None or p is None or not (p.stop and p.entry_low and p.entry_high):
+        return c
+    room = float(max(Decimal(1), min(STOP_ROOM_MAX, agg.stop_room)))
+    mid = (p.entry_low + p.entry_high) / 2
+    planned = abs(p.stop - mid)
+    wide = planned * room
+    if max_distance is not None:
+        wide = max(planned, min(wide, float(max_distance) * mid))
+    if wide <= planned:
+        return c
+    stop = mid - wide if p.stop < mid else mid + wide
+    if stop <= 0:
+        return c  # a long whose widened stop would fall to zero: leave it as planned
+    return replace(c, proposal=p.model_copy(update={"stop": stop}))
+
+
+def one_x_distance(lim: engine.Limits) -> Decimal:
+    """The stop distance at which the sizing formula reaches 1x leverage, with room left
+    for the hard stop that sits beyond the soft one."""
+    return lim.risk_per_trade / lim.capital_share * Decimal("0.8")
+
+
 LEVERAGE_HARD_MAX = Decimal(10)  # Bybit spot margin; never above, whatever the config says
 RISK_HARD_MAX = Decimal("0.05")  # risk per trade, aggressive mode included
 NEVER = Decimal(-1)  # a loss limit that cannot be reached: equity cannot fall by more than 100%
@@ -502,6 +539,7 @@ def apply_risk(
                 net_beta_exposure_max=beta_s,
                 day_loss_stop=stop_s,
             )
+            c = widen_stop(c, agg, one_x_distance(lim_s))
             acct_s = engine.AccountState(
                 **{
                     **acct.__dict__,
@@ -546,6 +584,7 @@ def apply_risk(
                 else None
             )
         else:
+            c = widen_stop(c, agg, one_x_distance(lim))
             a = engine.assess(c, acct, mkt, lim, account_hits=account_hits)
             a_max = (
                 engine.assess(c, acct_max, mkt, limits_for_max(lim, cfg), account_hits=account_hits)

@@ -83,6 +83,9 @@ class AggressiveConfig(_Section):
     leverage_ceiling: int = 10  # instead of the 2x start ceiling; sleeve caps still apply
     net_beta_exposure_max: Decimal = Decimal("3.0")  # × equity, per sleeve and in total
     max_hold_hours: int = 24
+    # Stops sit this many times further from the entry than the managers put them (owner:
+    # more room). The position shrinks to match, so the loss at the stop is unchanged.
+    stop_room: Decimal = Decimal("1.5")
     # Close a trade once its net profit, after both fees and the borrow interest, reaches
     # this share of the ledger's equity. Checked every ten seconds, so it fills at or a
     # little above it ("between 1 and 2% net").

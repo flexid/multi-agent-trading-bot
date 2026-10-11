@@ -1290,6 +1290,7 @@ def aggressive_view(cfg: Config, state: RiskState | None) -> dict[str, Any]:
         "hold": agg.max_hold_hours,
         "risk_cap": RISK_HARD_MAX,
         "take_profit": agg.take_profit_equity_pct,
+        "stop_room": agg.stop_room,
     }
 
 
