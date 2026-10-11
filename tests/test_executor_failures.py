@@ -403,7 +403,7 @@ async def test_a_backup_stop_without_a_position_is_cancelled(db: None) -> None:
         cancelled.append((symbol, link))
         return True
 
-    ex.gateway.supports_backup_stop = True  # type: ignore
+    ex.gateway.supports_backup_stop = True
     ex.gateway.resting_backup_stops = resting  # type: ignore
     ex.gateway.cancel_backup_stop = cancel  # type: ignore
     ex._alert = lambda *a, **k: None  # type: ignore
