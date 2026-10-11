@@ -105,14 +105,14 @@ export default function Page() {
       <h2>Closed trades <span className="muted small">last {Math.min(10, s.closed_trades.length)} of {s.closed_trades.length}</span>{allPaper(s.closed_trades) && <span className="badge right">paper</span>}</h2>
       {s.closed_trades.length === 0 ? <p className="muted">No closed trades yet.</p> : (
         <>
-          {s.closed_trades.length >= 5 && (
+          {s.closed_trades.length >= 5 && (<>
+            <div className="best-toggle"><span className="toggle"><button className={best === "wins" ? "on" : ""} onClick={() => setBest("wins")}>top 5 wins</button><button className={best === "losses" ? "on" : ""} onClick={() => setBest("losses")}>top 5 losses</button></span></div>
             <div className="best">
-              <span className="toggle"><button className={best === "wins" ? "on" : ""} onClick={() => setBest("wins")}>top 5 wins</button><button className={best === "losses" ? "on" : ""} onClick={() => setBest("losses")}>top 5 losses</button></span>
               {[...s.closed_trades].sort((a, b) => best === "wins" ? b.margin_pct - a.margin_pct : a.margin_pct - b.margin_pct).slice(0, 5).map((t, i) => (
                 <span key={i} className={`badge ${best === "wins" ? "neon" : "down"}`}>{tick(t.cashtag)} <Side d={t.direction} /> {pct(t.margin_pct)}{!allPaper(s.closed_trades) && t.paper ? " · paper" : ""}</span>
               ))}
             </div>
-          )}
+          </>)}
           <ClosedTable rows={s.closed_trades.slice(0, 10)} tagRows={!allPaper(s.closed_trades)} />
           {s.closed_trades.length > 10 && <button className="more" onClick={() => setAll(true)}>show all {s.closed_trades.length} trades</button>}
           {all && <AllTrades rows={s.closed_trades} onClose={() => setAll(false)} />}

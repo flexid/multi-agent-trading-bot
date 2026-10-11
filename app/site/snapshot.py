@@ -351,7 +351,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         closed = s.scalars(
             select(Position)
             .where(Position.track == _record_track(s), Position.status == "closed")
-            .order_by(Position.closed_at.desc())
+            .order_by(Position.closed_at.desc(), Position.id.desc())  # stable among ties
             .limit(500)
         ).all()
         wins = [p for p in closed if p.pnl and p.pnl > 0]

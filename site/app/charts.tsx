@@ -219,6 +219,27 @@ function windowOf(points: Pt[], ms: number | null): Range {
   return [Math.max(points[0][0], end - ms), end];
 }
 
+/** One dot per closing moment. Trades that closed together (a sleeve stop, a kill switch)
+    share one dot, green or red by their combined result, so the colour no longer depends
+    on which of them happens to be drawn on top. */
+function tradeMarkers(trades: Snapshot["closed_trades"], equity: Pt[]) {
+  const groups = new Map<number, Snapshot["closed_trades"]>();
+  for (const t of trades) {
+    const x = Math.round(Date.parse(t.closed_at) / 60000) * 60000;
+    groups.set(x, [...(groups.get(x) ?? []), t]);
+  }
+  return Array.from(groups.entries()).map(([x, ts]) => {
+    const sum = ts.reduce((a, t) => a + t.margin_pct, 0);
+    const lines = ts.map((t) => `${tick(t.cashtag)} ${t.direction} ${pct(t.margin_pct)}`);
+    return {
+      x,
+      y: nearest(equity, x)?.[1] ?? 0,
+      color: sum >= 0 ? "var(--up)" : "var(--down)",
+      label: ts.length === 1 ? lines[0] : `${ts.length} trades closed together (${pct(sum)} combined): ${lines.join(" · ")}`,
+    };
+  });
+}
+
 /** The orange curve on the front page: hover readout, trade dots, range picker, tap or button to expand. */
 export function EquityChart({ s, onExpand }: { s: Snapshot; onExpand: () => void }) {
   const p = s.performance;
@@ -226,11 +247,7 @@ export function EquityChart({ s, onExpand }: { s: Snapshot; onExpand: () => void
   const full = p.equity_curve as Pt[];
   const range = windowOf(full, ms);
   const equity = pickEquity(p, range);
-  const markers = s.closed_trades.map((t) => {
-    const x = Date.parse(t.closed_at);
-    const y = nearest(equity, x)?.[1] ?? 0;
-    return { x, y, color: t.margin_pct >= 0 ? "var(--up)" : "var(--down)", label: `${tick(t.cashtag)} ${t.direction} ${pct(t.margin_pct)}` };
-  });
+  const markers = tradeMarkers(s.closed_trades, equity);
   const visible = markers.filter((m) => !range || (m.x >= range[0] && m.x <= range[1]));
   const span = full.length > 1 ? full[full.length - 1][0] - full[0][0] : 0;
   return (
@@ -261,10 +278,7 @@ export function DetailOverlay({ s, onClose }: { s: Snapshot; onClose: () => void
     ...(p.btc_curve.length > 1 ? [{ name: "BTC hold", points: p.btc_curve as Pt[], color: "#8f958f" }] : []),
     ...(p.basket_curve.length > 1 ? [{ name: "basket", points: p.basket_curve as Pt[], color: "#4f8fe6" }] : []),
   ];
-  const markers = s.closed_trades.map((t) => {
-    const x = Date.parse(t.closed_at);
-    return { x, y: nearest(equity, x)?.[1] ?? 0, color: t.margin_pct >= 0 ? "var(--up)" : "var(--down)", label: `${tick(t.cashtag)} ${t.direction} ${pct(t.margin_pct)}` };
-  });
+  const markers = tradeMarkers(s.closed_trades, equity);
   const dd = drawdown(full);
   const inRange = (ms: string) => !range || (Date.parse(ms) >= range[0] && Date.parse(ms) <= range[1]);
   const trades = s.closed_trades.filter((t) => inRange(t.closed_at)).slice().reverse();

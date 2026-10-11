@@ -82,4 +82,7 @@ details.acc .scroll-x { margin: 0 -14px; padding: 0 14px; }
 .heat { min-width: 0; } .heat.wide { width: max-content; } .heat.wide .heat-cell { aspect-ratio: auto; height: 14px; }
 .heat-x { font-size: 10px; overflow: visible; }
 .heat-y { position: sticky; left: 0; background: var(--bg); z-index: 1; padding-right: 4px; }
+/* the top-5 toggle on its own line, the five pills together on the next */
+.best-toggle { margin: 2px 0 8px; }
+.best { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; } .best .badge { white-space: nowrap; flex: 0 0 auto; }
 
