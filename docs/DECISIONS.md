@@ -317,3 +317,7 @@ A new config format (three-part prices) was copied to the server before the code
 
 In cycle 19 Grok at high effort answered after 297 s, 23 s inside its deadline. The owner does not mind a cycle taking minutes, and a missed deadline silently turns two-of-three back into two-of-two, so the timeout is 450 s and the deadline 480 s.
 
+## 2026-10-11 · Daerm: one try at high effort, then a quick try at low
+
+Cycle 21 (12:02 UTC): Grok at high effort did not answer within 450 s and the cycle fell back to the other two managers; the earlier cycles took 175, 297 and 225 s. xAI itself was up. The seat now gets one try at high with a 320 s limit and, if that brings nothing, one try at low effort (`llm.pm_3_fallback_effort`, about 50 to 85 s; low and high made nearly the same calls in the effort test), all within the 480 s deadline. The decision log's manager calls show which effort answered. The first failed attempt used to vanish when the deadline cancelled it; each try is now logged as its own call.
+

@@ -375,3 +375,36 @@ def test_a_restart_waits_for_a_running_cycle_and_before_a_scheduled_one() -> Non
         assert busy(quiet + timedelta(minutes=40)) is None  # a dead row does not block for ever
         s.execute(delete(Cycle).where(Cycle.status == "running"))
         s.commit()
+
+
+async def test_the_third_seat_falls_back_to_a_lower_effort(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One try at the configured effort, then one quick try at the fallback effort."""
+    from app.decision import pm as pm_mod
+
+    calls: list[tuple[str, object, object]] = []
+
+    async def fake_ask(
+        seat: str, *a: object, **k: object
+    ) -> tuple[dict[str, Proposal], object | None, str | None]:
+        calls.append((seat, k.get("effort"), k.get("attempts_max")))
+        if seat == "pm_3" and k.get("effort") is None:
+            return {}, None, "LLMError: timed out"
+        return {"BTC": prop(Direction.SHORT, -0.3, 0.6)}, object(), None
+
+    monkeypatch.setattr(pm_mod, "ask_pm", fake_ask)
+    res = await pm_mod.ask_three(
+        None,  # type: ignore[arg-type]
+        None,  # type: ignore[arg-type]
+        models={"pm_1": "a", "pm_2": "b", "pm_3": "c"},
+        fallback_effort="low",
+    )
+    assert "BTC" in res["pm_3"][0] and res["pm_3"][2] is None
+    assert [c for c in calls if c[0] == "pm_3"] == [("pm_3", None, 1), ("pm_3", "low", 1)]
+    # without a fallback effort the first failure stands
+    calls.clear()
+    res = await pm_mod.ask_three(
+        None,  # type: ignore[arg-type]
+        None,  # type: ignore[arg-type]
+        models={"pm_1": "a", "pm_2": "b", "pm_3": "c"},
+    )
+    assert res["pm_3"][0] == {} and len([c for c in calls if c[0] == "pm_3"]) == 1

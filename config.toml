@@ -165,8 +165,10 @@ post_auditor = "claude-sonnet-5-5"
 timeout_s = 120
 max_output_tokens = 8000        # ten assets of proposals: Fable used 3,792 of 4,000 and the alt seat got cut off (2026-10-10)
 effort = "medium"               # Anthropic output_config.effort / OpenAI reasoning effort
-timeout_s_by_provider = { xai = 450 }   # Grok at high effort: 175 s and 297 s in the first two real cycles
+timeout_s_by_provider = { xai = 320 }   # one try at high effort (175, 297 and 225 s in the first real cycles)
 pm_3_deadline_s = 480           # past this the third seat counts as no answer and the other two decide
+pm_3_fallback_effort = "low"    # if the high-effort try brings nothing, one quick try at low (about 50 to 85 s) fills the seat
+pm_3_fallback_timeout_s = 150
 effort_by_provider = { xai = "high" }   # owner 2026-10-11. Measured on the managers' input: low 50-85 s, medium 95-150 s, high and xhigh about 180 s
 
 [llm.pricing]                   # USD per 1M tokens: [input, output, cached input]. Anthropic from the API docs 2026-10-06 (cache reads at a tenth of input).

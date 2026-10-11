@@ -302,6 +302,8 @@ async def run_cycle(
                 models=models,
                 cycle_id=cycle_id,
                 deadline_s=cfg.llm.pm_3_deadline_s,
+                fallback_effort=cfg.llm.pm_3_fallback_effort,
+                fallback_timeout_s=cfg.llm.pm_3_fallback_timeout_s,
             )
         else:
             answers = await ask_both(pack, prompt, models=models, cycle_id=cycle_id)

@@ -193,15 +193,23 @@ async def complete[SchemaT: BaseModel](
     model: str | None = None,
     cycle_id: int | None = None,
     asset: str | None = None,
+    effort: str | None = None,
+    timeout_s: float | None = None,
+    attempts_max: int = 2,
 ) -> Completion[SchemaT]:
+    """``effort``, ``timeout_s`` and ``attempts_max`` override the configured values for
+    one call (the third manager seat tries once at its own effort, then once lower)."""
     cfg = get_config()
     model = model or getattr(cfg.models, task)
     provider = provider_for(model)
-    timeout_s = cfg.llm.timeout_s_by_provider.get(provider.name, cfg.llm.timeout_s)
+    if timeout_s is None:
+        timeout_s = cfg.llm.timeout_s_by_provider.get(provider.name, cfg.llm.timeout_s)
+    if effort is None:
+        effort = cfg.llm.effort_by_provider.get(provider.name, cfg.llm.effort)
     started = time.monotonic()
     error: str | None = None
     attempts = 0
-    for attempts in (1, 2):
+    for attempts in range(1, max(1, attempts_max) + 1):
         try:
             parsed, usage = await asyncio.wait_for(
                 provider.complete(
@@ -212,7 +220,7 @@ async def complete[SchemaT: BaseModel](
                     images=images,
                     max_output_tokens=cfg.llm.max_output_tokens,
                     timeout_s=timeout_s,
-                    effort=cfg.llm.effort_by_provider.get(provider.name, cfg.llm.effort),
+                    effort=effort,
                 ),
                 timeout=timeout_s + 5,
             )

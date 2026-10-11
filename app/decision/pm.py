@@ -96,6 +96,9 @@ async def ask_pm(
     *,
     model: str | None = None,
     cycle_id: int | None = None,
+    effort: str | None = None,
+    timeout_s: float | None = None,
+    attempts_max: int = 2,
 ) -> tuple[dict[str, Proposal], Completion[PMResponse] | None, str | None]:
     """Returns (proposals by asset, completion, error). Any failure means no proposals."""
     try:
@@ -106,6 +109,9 @@ async def ask_pm(
             user_text=pack.model_dump_json(),
             model=model,
             cycle_id=cycle_id,
+            effort=effort,
+            timeout_s=timeout_s,
+            attempts_max=attempts_max,
         )
     except (LLMError, ValidationError, ValueError) as exc:  # one seat down: no proposals
         return {}, None, f"{type(exc).__name__}: {exc}"[:500]
@@ -129,18 +135,41 @@ async def ask_three(
     *,
     models: dict[str, str],
     cycle_id: int | None = None,
-    deadline_s: float = 170.0,
+    deadline_s: float = 480.0,
+    fallback_effort: str = "",
+    fallback_timeout_s: float = 150.0,
 ) -> dict[str, tuple[dict[str, Proposal], Completion[PMResponse] | None, str | None]]:
-    """All three managers in parallel; keys 'pm_1', 'pm_2', 'pm_3'. The third seat has a
-    deadline: past it, it counts as no answer and the other two decide (a slow model must
-    never stall a cycle)."""
+    """All three managers in parallel; keys 'pm_1', 'pm_2', 'pm_3'.
+
+    The third seat gets one try at its configured effort. If that brings no answer (Grok
+    at high effort took 175 to 297 s and once more than 450 s) and ``fallback_effort`` is
+    set, it gets one quick try at that lower effort, so the seat is filled rather than
+    left out. Past ``deadline_s`` in total it counts as no answer and the other two
+    decide: a slow model must never stall a cycle."""
+
+    async def third_tries() -> tuple[
+        dict[str, Proposal], Completion[PMResponse] | None, str | None
+    ]:
+        first = await ask_pm(
+            "pm_3", pack, prompt, model=models["pm_3"], cycle_id=cycle_id, attempts_max=1
+        )
+        if first[1] is not None or not fallback_effort:
+            return first
+        second = await ask_pm(
+            "pm_3",
+            pack,
+            prompt,
+            model=models["pm_3"],
+            cycle_id=cycle_id,
+            effort=fallback_effort,
+            timeout_s=fallback_timeout_s,
+            attempts_max=1,
+        )
+        return second if second[1] is not None else first
 
     async def third() -> tuple[dict[str, Proposal], Completion[PMResponse] | None, str | None]:
         try:
-            return await asyncio.wait_for(
-                ask_pm("pm_3", pack, prompt, model=models["pm_3"], cycle_id=cycle_id),
-                timeout=deadline_s,
-            )
+            return await asyncio.wait_for(third_tries(), timeout=deadline_s)
         except TimeoutError:
             return {}, None, f"no answer within {deadline_s:.0f} s"
 
