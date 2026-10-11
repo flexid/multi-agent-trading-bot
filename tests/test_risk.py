@@ -57,9 +57,9 @@ def test_caps_take_the_lowest() -> None:
 
 
 def test_disagreement_or_low_conviction_means_1x_no_borrow() -> None:
-    r = lev.compute(inputs(conviction=D("0.49")))
+    r = lev.compute(inputs(conviction=D("0.39")))
     assert r.leverage == D(1) and not r.borrow_allowed
-    assert lev.compute(inputs(conviction=D("0.5"))).borrow_allowed
+    assert lev.compute(inputs(conviction=D("0.4"))).borrow_allowed  # the bar since logic v7
 
 
 def test_llm_can_only_lower() -> None:
@@ -228,7 +228,7 @@ def test_capital_max_and_half_risk_bound_the_margin() -> None:
 
 
 def test_low_conviction_long_trades_at_1x_without_borrow() -> None:
-    a = engine.assess(cons(conviction=0.4), account(), market(), limits())
+    a = engine.assess(cons(conviction=0.3), account(), market(), limits())
     assert a.allowed and a.plan is not None
     assert a.plan.leverage == D("1.0") and not a.plan.borrow
 
@@ -324,3 +324,14 @@ def test_a_two_of_three_majority_trades_at_half_the_risk() -> None:
     assert any(h.rule == "majority_half_size" for h in half.hits)
     assert not any(h.rule == "majority_half_size" for h in full.hits)
     assert not any(h.rule == "disagree_or_low_conviction" for h in half.hits)
+
+
+def test_a_short_at_conviction_point_four_can_borrow_since_v7() -> None:
+    ok = engine.assess(
+        cons(Direction.SHORT, conviction=0.4, stop=104.0), account(), market(), limits()
+    )
+    assert ok.allowed and ok.plan is not None and ok.plan.borrow
+    low = engine.assess(
+        cons(Direction.SHORT, conviction=0.39, stop=104.0), account(), market(), limits()
+    )
+    assert not low.allowed and any(h.rule == "short_needs_borrow" for h in low.hits)

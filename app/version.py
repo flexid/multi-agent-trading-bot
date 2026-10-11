@@ -1,6 +1,9 @@
 """Logic version: bumped when the decision logic changes in a way that makes earlier
 decisions not comparable. Stored on every cycle row.
 
+7  2026-10-11  the conviction bar for borrowing (and so for every short) goes from 0.5
+              to 0.4: with the lowest conviction of the agreeing managers counting, 0.5
+              blocked nearly every short. Owner's decision.
 6  2026-10-11  three managers, two of three decide: Daerm (Grok 4.7) takes a third seat.
               A trade needs at least two managers calling the same direction and nobody
               the opposite one; all agreeing = full size, two with the third flat = half
@@ -27,5 +30,5 @@ decisions not comparable. Stored on every cycle row.
 1  2026-10-08  initial logic (SPEC §6-§9).
 """
 
-LOGIC_VERSION = 6
+LOGIC_VERSION = 7
 FROZEN_UNTIL = "2026-11-07"  # the 4-week review; no logic change before then

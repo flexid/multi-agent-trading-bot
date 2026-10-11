@@ -172,7 +172,8 @@ class LLMConfig(_Section):
     timeout_s_by_provider: dict[str, float] = Field(default_factory=dict)  # e.g. xai = 150
     pm_3_deadline_s: float = 170  # the third seat's answer is dropped after this; two decide
     effort_by_provider: dict[str, str] = Field(default_factory=dict)  # e.g. xai = "low"
-    pricing: dict[str, tuple[Decimal, Decimal]] = Field(default_factory=dict)
+    # USD per million tokens: [input, output] or [input, output, cached input]
+    pricing: dict[str, tuple[Decimal, ...]] = Field(default_factory=dict)
 
 
 class Config(_Section):

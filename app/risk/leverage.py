@@ -14,6 +14,11 @@ from decimal import Decimal
 
 from app.decision.consensus import Agreement
 
+# Below this conviction a trade runs at 1x without borrowing, so a short cannot open.
+# 0.5 until logic v6; lowered by the owner on 2026-10-11 (v7): the agreeing managers'
+# lowest conviction sat between 0.40 and 0.50 and blocked nearly every short.
+MIN_CONVICTION = Decimal("0.4")
+
 ONE = Decimal(1)
 
 
@@ -87,7 +92,7 @@ def compute(inp: LeverageInputs) -> LeverageResult:
         caps.append(("fng_extreme", Decimal(2)))
     borrow_allowed = True
     agreed = inp.agreement in (Agreement.AGREE, Agreement.MAJORITY)  # v6: two of three counts
-    if not agreed or inp.conviction < Decimal("0.5"):
+    if not agreed or inp.conviction < MIN_CONVICTION:
         caps.append(("disagree_or_low_conviction", ONE))
         borrow_allowed = False
     if inp.two_losing_days:

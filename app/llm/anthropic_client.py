@@ -56,9 +56,13 @@ class AnthropicProvider:
         parsed = response.parsed_output
         if parsed is None:
             raise LLMError(f"anthropic {model}: no parsed output (stop {response.stop_reason})")
+        # Anthropic reports the uncached input apart from cache reads and cache writes;
+        # Usage.input_tokens is the whole input, like the other providers report it.
+        read = response.usage.cache_read_input_tokens or 0
+        written = response.usage.cache_creation_input_tokens or 0
         usage = Usage(
-            input_tokens=response.usage.input_tokens,
+            input_tokens=response.usage.input_tokens + read + written,
             output_tokens=response.usage.output_tokens,
-            cached_input_tokens=response.usage.cache_read_input_tokens or 0,
+            cached_input_tokens=read,
         )
         return parsed, usage

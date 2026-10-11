@@ -265,7 +265,11 @@ def assess(
     borrow = result.borrow_allowed and (leverage > 1 or c.direction is Direction.SHORT)
     if c.direction is Direction.SHORT and not borrow:
         hits.append(
-            RuleHit("short_needs_borrow", "PMs disagree or conviction < 0.5: no borrowing", "block")
+            RuleHit(
+                "short_needs_borrow",
+                f"PMs disagree or conviction < {lev.MIN_CONVICTION}: no borrowing",
+                "block",
+            )
         )
         return Assessment(asset, False, None, hits)
 

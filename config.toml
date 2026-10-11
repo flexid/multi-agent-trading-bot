@@ -169,15 +169,15 @@ timeout_s_by_provider = { xai = 300 }   # Grok at high effort needs about three 
 pm_3_deadline_s = 320           # past this the third seat counts as no answer and the other two decide
 effort_by_provider = { xai = "high" }   # owner 2026-10-11. Measured on the managers' input: low 50-85 s, medium 95-150 s, high and xhigh about 180 s
 
-[llm.pricing]                   # USD per 1M tokens: [input, output]. Anthropic from the API docs 2026-10-06.
-"claude-fable-5-1" = [10.0, 50.0]
-"claude-opus-5-5" = [4.0, 20.0]
-"claude-sonnet-5-5" = [2.0, 10.0]
-"claude-haiku-5-5" = [0.10, 0.50]
+[llm.pricing]                   # USD per 1M tokens: [input, output, cached input]. Anthropic from the API docs 2026-10-06 (cache reads at a tenth of input).
+"claude-fable-5-1" = [10.0, 50.0, 1.0]
+"claude-opus-5-5" = [4.0, 20.0, 0.4]
+"claude-sonnet-5-5" = [2.0, 10.0, 0.2]
+"claude-haiku-5-5" = [0.10, 0.50, 0.01]
 "gpt-5.6-sol" = [5.0, 30.0]     # third-party trackers, 2026-10-10; not from openai.com
 "gpt-5.6-terra" = [2.0, 12.0]   # third-party trackers, 2026-10-10
 "gpt-5.6-luna" = [0.2, 1.2]     # third-party trackers, 2026-10-10
-"gpt-6-astra" = [10.0, 50.0]    # third-party trackers, 2026-10-10
+"gpt-6-astra" = [10.0, 50.0, 1.0]   # confirmed by the owner from his OpenAI account, 2026-10-11
 "jev-1.13.0" = [0.042, 0.0]     # TypeSafe, docs.typesafe.ai/models 2026-10-10: $0.042 per Mtok input, output free
 "jev-latest" = [0.042, 0.0]
-"grok-4.7" = [2.0, 6.0]         # xAI, docs.x.ai/developers/pricing 2026-10-11
+"grok-4.7" = [2.0, 6.0, 0.5]    # xAI, docs.x.ai/developers/pricing 2026-10-11

@@ -47,6 +47,12 @@ def test_cost_from_pricing_table() -> None:
     pricing = {"m": (Decimal("4.0"), Decimal("20.0"))}
     assert cost_usd(pricing, "m", Usage(1_000_000, 100_000)) == Decimal("6.0")
     assert cost_usd(pricing, "unknown", Usage(5, 5)) == 0
+    # a cached-input rate: the cached part of the input is billed at it
+    astra = {"a": (Decimal("10"), Decimal("50"), Decimal("1"))}
+    assert cost_usd(astra, "a", Usage(1_000_000, 100_000, cached_input_tokens=400_000)) == Decimal(
+        "11.4"
+    )  # 600k × 10 + 400k × 1 + 100k × 50
+    assert cost_usd(astra, "a", Usage(1_000_000, 0)) == Decimal("10")
 
 
 def test_provider_routing_by_model_prefix() -> None:

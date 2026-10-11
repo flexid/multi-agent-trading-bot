@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -66,9 +67,17 @@ class Provider(Protocol):
     ) -> tuple[SchemaT, Usage]: ...
 
 
-def cost_usd(pricing: dict[str, tuple[Decimal, Decimal]], model: str, usage: Usage) -> Decimal:
-    rate_in, rate_out = pricing.get(model, (Decimal(0), Decimal(0)))
+def cost_usd(pricing: Mapping[str, tuple[Decimal, ...]], model: str, usage: Usage) -> Decimal:
+    """USD for one call. ``pricing[model]`` is (input, output) or (input, output, cached
+    input) per million tokens. ``usage.input_tokens`` is the whole input, cached part
+    included; the cached part is billed at its own rate when one is given."""
+    rates = pricing.get(model) or (Decimal(0), Decimal(0))
+    rate_in, rate_out = rates[0], rates[1]
+    rate_cached = rates[2] if len(rates) > 2 else rate_in
+    cached = min(usage.cached_input_tokens, usage.input_tokens)
     million = Decimal(1_000_000)
     return (
-        Decimal(usage.input_tokens) * rate_in + Decimal(usage.output_tokens) * rate_out
+        Decimal(usage.input_tokens - cached) * rate_in
+        + Decimal(cached) * rate_cached
+        + Decimal(usage.output_tokens) * rate_out
     ) / million
