@@ -171,6 +171,7 @@ class LLMConfig(_Section):
     jev_timeout_s: float = 20  # Jev answers in well under a second; fail closed early
     timeout_s_by_provider: dict[str, float] = Field(default_factory=dict)  # e.g. xai = 150
     pm_3_deadline_s: float = 170  # the third seat's answer is dropped after this; two decide
+    effort_by_provider: dict[str, str] = Field(default_factory=dict)  # e.g. xai = "low"
     pricing: dict[str, tuple[Decimal, Decimal]] = Field(default_factory=dict)
 
 

@@ -212,7 +212,7 @@ async def complete[SchemaT: BaseModel](
                     images=images,
                     max_output_tokens=cfg.llm.max_output_tokens,
                     timeout_s=timeout_s,
-                    effort=cfg.llm.effort,
+                    effort=cfg.llm.effort_by_provider.get(provider.name, cfg.llm.effort),
                 ),
                 timeout=timeout_s + 5,
             )

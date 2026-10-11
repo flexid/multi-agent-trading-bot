@@ -165,8 +165,9 @@ post_auditor = "claude-sonnet-5-5"
 timeout_s = 120
 max_output_tokens = 8000        # ten assets of proposals: Fable used 3,792 of 4,000 and the alt seat got cut off (2026-10-10)
 effort = "medium"               # Anthropic output_config.effort / OpenAI reasoning effort
-timeout_s_by_provider = { xai = 150 }   # Grok 4.7 takes 80 to 115 s at medium effort on the managers' input
+timeout_s_by_provider = { xai = 150 }   # room for one slow answer inside the third seat's deadline
 pm_3_deadline_s = 170           # past this the third seat counts as no answer and the other two decide
+effort_by_provider = { xai = "low" }    # Grok 4.7 measured on the managers' input: low 50 s, medium 95 to 150+ s, high and xhigh about 180 s; same calls at low and medium
 
 [llm.pricing]                   # USD per 1M tokens: [input, output]. Anthropic from the API docs 2026-10-06.
 "claude-fable-5-1" = [10.0, 50.0]
