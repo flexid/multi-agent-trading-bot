@@ -18,7 +18,10 @@ NOW = datetime(2026, 10, 10, 12, tzinfo=UTC)
 
 def test_optima_is_the_fifteenth_crew_member_and_advisory_only() -> None:
     ids = [m.id for m in CREW]
-    assert "optima" in ids and len(CREW) == 15
+    assert "optima" in ids and len(CREW) == 16
+    assert sum(m.public for m in CREW) == 15  # Daerm joined the site, Pedant is left off
+    daerm = next(m for m in CREW if m.id == "pm_3")
+    assert daerm.name == "Daerm" and not any(ch.isdigit() for ch in daerm.blurb)
     m = next(m for m in CREW if m.id == "optima")
     assert m.name == "Optima" and "advis" in m.role
     assert not any(ch.isdigit() for ch in m.blurb)  # the site whitelist

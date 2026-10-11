@@ -146,6 +146,7 @@ Display names for the site, the admin and the docs (ids stay as they are in code
 | **Ears** | `x_sentiment` | who is loud, who is credible, how many are talking |
 | **Dyne** | `pm_1` (Claude) | portfolio manager: trade plan from the five readings |
 | **Dork** | `pm_2` (GPT) | the second manager; a trade needs both to agree |
+| **Daerm** | `pm_3` | a third manager on Grok that only watches: same input, calls logged, never traded |
 | **Dial** | leverage agent | size = risk ÷ stop distance, then the lowest cap |
 | **Bouncer** | risk engine | deterministic limits; the only one who can say no |
 | **Hands** | executor | the only process that touches the exchange |

@@ -169,6 +169,7 @@ class LLMConfig(_Section):
     max_output_tokens: int = 4000
     effort: str = "medium"
     jev_timeout_s: float = 20  # Jev answers in well under a second; fail closed early
+    timeout_s_by_provider: dict[str, float] = Field(default_factory=dict)  # e.g. xai = 240
     pricing: dict[str, tuple[Decimal, Decimal]] = Field(default_factory=dict)
 
 

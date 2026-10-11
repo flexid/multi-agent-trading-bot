@@ -581,7 +581,9 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         ),
         by_asset=by_asset,
         history=history,
-        crew=[CrewMember(id=m.id, name=m.name, role=m.role, blurb=m.blurb) for m in CREW],
+        crew=[
+            CrewMember(id=m.id, name=m.name, role=m.role, blurb=m.blurb) for m in CREW if m.public
+        ],
         sleeves=sleeve_views,
         stats=stats,
         open_trades=open_trades,

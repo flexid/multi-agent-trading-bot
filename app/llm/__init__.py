@@ -197,6 +197,7 @@ async def complete[SchemaT: BaseModel](
     cfg = get_config()
     model = model or getattr(cfg.models, task)
     provider = provider_for(model)
+    timeout_s = cfg.llm.timeout_s_by_provider.get(provider.name, cfg.llm.timeout_s)
     started = time.monotonic()
     error: str | None = None
     attempts = 0
@@ -210,10 +211,10 @@ async def complete[SchemaT: BaseModel](
                     schema=schema,
                     images=images,
                     max_output_tokens=cfg.llm.max_output_tokens,
-                    timeout_s=cfg.llm.timeout_s,
+                    timeout_s=timeout_s,
                     effort=cfg.llm.effort,
                 ),
-                timeout=cfg.llm.timeout_s + 5,
+                timeout=timeout_s + 5,
             )
         except (LLMError, TimeoutError) as exc:
             error = f"{type(exc).__name__}: {exc}"[:2000]

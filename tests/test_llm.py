@@ -103,3 +103,24 @@ async def test_unparsable_output_fails_closed_like_any_other_error(
     with pytest.raises(LLMError, match="unparsable"):
         await llm.complete("indicators", Out, prompt=Prompt("t", 1, "s"), user_text="q", model="x")
     assert cut.calls == 2
+
+
+def test_xai_schema_drops_numeric_bounds_and_keeps_the_shape() -> None:
+    """xAI's constrained decoding mangles bounded decimals, so the bounds leave the schema
+    it receives; pydantic still enforces them on the answer."""
+    from app.decision.pm import PMResponse
+    from app.llm.xai_client import response_format
+
+    fmt = response_format(PMResponse)
+    text = str(fmt)
+    assert fmt["type"] == "json_schema" and fmt["json_schema"]["strict"] is True
+    assert "minimum" not in text and "maximum" not in text and "exclusiveMinimum" not in text
+    proposal = fmt["json_schema"]["schema"]["$defs"]["Proposal"]
+    assert set(proposal["required"]) == set(proposal["properties"])
+    assert proposal["additionalProperties"] is False
+    assert "maxItems" in str(proposal["properties"]["reasons"])  # list limits stay
+    with pytest.raises(Exception, match="greater than or equal to -1"):
+        PMResponse.model_validate_json(
+            '{"proposals":[{"asset":"BTC","direction":"flat","score":-1.04,"conviction":0.2,'
+            '"reasons":["x"]}]}'
+        )

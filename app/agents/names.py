@@ -13,6 +13,7 @@ class Member:
     name: str
     role: str
     blurb: str
+    public: bool = True  # shown on the site's crew; False keeps it to the admin and docs
 
 
 CREW: list[Member] = [
@@ -81,6 +82,13 @@ CREW: list[Member] = [
         "agree on the direction; one flat means no trade.",
     ),
     Member(
+        "pm_3",
+        "Daerm",
+        "portfolio manager (Grok), watching",
+        "The third opinion. Gets the same evidence as the other two and files its calls, "
+        "but only watches for now: nothing it says is traded.",
+    ),
+    Member(
         "leverage",
         "Dial",
         "sets the size",
@@ -112,6 +120,7 @@ CREW: list[Member] = [
         "Pedant",
         "checks the posts",
         "Checks every post against the hard rules before code double-checks the numbers.",
+        public=False,  # owner 2026-10-11: left off the site's crew for now
     ),
     Member(
         "memo",

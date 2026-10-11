@@ -18,6 +18,36 @@ from app.llm.base import Image, LLMError, Usage
 XAI_BASE_URL = "https://api.x.ai/v1"
 
 
+BOUNDS = ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf")
+
+
+def _relax(node: Any) -> Any:
+    """The schema for xAI's constrained decoding: numeric bounds removed, every property
+    required, no extra properties. With bounds in the grammar Grok 4.7 mangles decimals
+    (-0.04 comes out as -1.04, a small positive as 0; seen 2026-10-11), so the bounds are
+    checked by pydantic after the call instead."""
+    if isinstance(node, list):
+        return [_relax(x) for x in node]
+    if not isinstance(node, dict):
+        return node
+    out = {k: _relax(v) for k, v in node.items() if k not in BOUNDS and k != "default"}
+    if out.get("type") == "object" and isinstance(out.get("properties"), dict):
+        out["required"] = list(out["properties"])
+        out["additionalProperties"] = False
+    return out
+
+
+def response_format(schema: type[BaseModel]) -> dict[str, Any]:
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": schema.__name__,
+            "schema": _relax(schema.model_json_schema()),
+            "strict": True,
+        },
+    }
+
+
 class XAIProvider:
     name = "xai"
 
@@ -47,9 +77,7 @@ class XAIProvider:
         ]
         content.append({"type": "text", "text": user_text})
         try:
-            completion = await self._client.with_options(
-                timeout=timeout_s
-            ).beta.chat.completions.parse(
+            completion = await self._client.with_options(timeout=timeout_s).chat.completions.create(
                 model=model,
                 messages=cast(
                     Any,
@@ -58,21 +86,22 @@ class XAIProvider:
                         {"role": "user", "content": content if images else user_text},
                     ],
                 ),
-                response_format=schema,
+                response_format=cast(Any, response_format(schema)),
                 max_completion_tokens=max_output_tokens,
+                # xAI defaults to "high"; the bot's own setting keeps the managers alike
+                reasoning_effort=cast(Any, effort),
             )
         except openai.APIError as exc:
             raise LLMError(f"xai {model}: {type(exc).__name__}: {exc}") from exc
-        except (ValidationError, ValueError) as exc:  # output cut off or not the schema
-            raise LLMError(f"xai {model}: unparsable output: {str(exc)[:200]}") from exc
         choice = completion.choices[0] if completion.choices else None
         if choice is None:
             raise LLMError(f"xai {model}: no choices returned")
         if choice.finish_reason == "length":
             raise LLMError(f"xai {model}: output cut at max_tokens={max_output_tokens}")
-        parsed = choice.message.parsed
-        if parsed is None:
-            raise LLMError(f"xai {model}: no parsed output (finish {choice.finish_reason})")
+        try:  # the full schema, bounds included, is enforced here
+            parsed = schema.model_validate_json(choice.message.content or "")
+        except (ValidationError, ValueError) as exc:
+            raise LLMError(f"xai {model}: unparsable output: {str(exc)[:200]}") from exc
         usage = completion.usage
         details = usage.prompt_tokens_details if usage else None
         return parsed, Usage(
