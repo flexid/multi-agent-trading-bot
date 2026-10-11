@@ -138,3 +138,32 @@ def test_every_dashboard_page_has_a_template_that_includes_exactly_its_panels() 
     nav = (root / "base.html").read_text()
     for page in PAGES:
         assert f'href="/{"" if page == "overview" else page}"' in nav
+
+
+def test_the_decision_log_says_why_an_agreed_call_did_not_trade() -> None:
+    from app.admin.app import why_no_trade
+    from app.db.models import DecisionRecord
+
+    def dec(**kw: object) -> DecisionRecord:
+        base: dict[str, object] = {"direction": "short", "action": "none", "risk_rule_hits": []}
+        return DecisionRecord(**{**base, **kw})
+
+    assert why_no_trade(dec(direction="flat"), []) == ""
+    blocked = dec(
+        risk_rule_hits=[
+            {"rule": "majority_half_size", "detail": "x", "effect": "cap"},
+            {"rule": "short_needs_borrow", "detail": "x", "effect": "block"},
+        ]
+    )
+    assert why_no_trade(blocked, []) == "blocked: conviction too low to borrow for a short"
+    assert why_no_trade(dec(), []) == "blocked by the risk rules"
+    capped = dec(
+        risk_rule_hits=[{"rule": "trades_per_day", "detail": "3 already today", "effect": "block"}]
+    )
+    assert why_no_trade(capped, []) == "blocked: daily trade limit for this coin reached"
+    funds = dec(action="open", exec_notes={"primary": "out of funds", "inverse": "out of funds"})
+    assert why_no_trade(funds, []) == "out of funds (primary, inverse)"
+    assert why_no_trade(funds, ["pilot"]) == "opened on pilot · out of funds (primary, inverse)"
+    assert why_no_trade(dec(action="open"), []) == "approved, not opened yet"
+    held = dec(action="open", exec_notes={"pilot": "already in a DOGE trade"})
+    assert why_no_trade(held, ["primary"]) == "opened on primary · already in a DOGE trade (pilot)"

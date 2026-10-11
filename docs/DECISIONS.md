@@ -327,3 +327,7 @@ The owner pasted xAI's console log of Daerm's failed call in cycle 21. It was lo
 
 The log also contained the full evidence pack, which showed two bugs. (1) **The macro reading was invalid in most scheduled cycles**: macro data was fetched hourly at :05, cycles start at :02, so the data was 56 minutes old against a 30-minute validity limit; 80 of 140 macro readings were excluded, and it only counted when a restart had happened to refetch it. The macro fetch now runs at :25 and :55. (2) **PEPE's ATR reached the managers as 0.0**: the pack rounded the ATR to six decimals, and PEPE's is about 8e-08; it is now rounded to six significant digits. Both are fixes to what the managers were meant to see, not rule changes.
 
+## 2026-10-11 · The decision log says why an agreed call did not trade
+
+When the managers call a direction and nothing opens, the reason column now adds a short note. Blocked by the risk engine (`action = none`): the blocking rule in plain words, such as "conviction too low to borrow for a short" or "exposure cap is full". Approved but not opened by a ledger's executor: the executor records why per track in `decisions.exec_notes` ("out of funds", "already in a DOGE trade", "sleeve closed for the day", "rejected by the exchange: ..."), and the log shows "opened on pilot · out of funds (primary, inverse)". Decisions from before this change show the risk-rule reason, or "approved, not opened yet" where the executor's reason was not recorded.
+

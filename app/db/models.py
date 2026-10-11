@@ -365,6 +365,8 @@ class DecisionRecord(Base):
     valid_agents: Mapped[int] = mapped_column(Integer)
     formula_score: Mapped[float | None]
     charts_first_score: Mapped[float | None]  # shadow: price leads, X confirms (logged only)
+    # why the executor did not open an approved plan, per track: {"primary": "out of funds"}
+    exec_notes: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     pm1_direction: Mapped[str | None] = mapped_column(String(6))
     pm2_direction: Mapped[str | None] = mapped_column(String(6))
     pm3_direction: Mapped[str | None] = mapped_column(String(6))  # the third seat (v6)

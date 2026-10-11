@@ -657,6 +657,14 @@ class Executor:
         for track, track_mode in TRACKS[self.mode].items():
             await self._open_track(session, now, track, track_mode)
 
+    @staticmethod
+    def _note(d: DecisionRecord, track: str, text: str) -> None:
+        """Why this track did not open the approved plan, for the decision log."""
+        notes = dict(d.exec_notes or {})
+        if notes.get(track) != text:
+            notes[track] = text
+            d.exec_notes = notes
+
     async def _open_track(
         self, session: Session, now: datetime, track: str, track_mode: str
     ) -> None:
@@ -681,20 +689,27 @@ class Executor:
         locked = self._locked_sleeves(session, now)
         live_sleeves = self._live_sleeves(session)
         for d in rows:
-            if d.asset in seen or d.asset in open_assets:
+            if d.asset in seen:
                 continue
             seen.add(d.asset)
-            sleeve = self.cfg.sleeve_of(d.asset)
-            if sleeve in locked:
-                continue  # the sleeve's day-loss stop: nothing new until 00:00 UTC
-            if track_mode == "live" and sleeve is not None and sleeve not in live_sleeves:
-                continue  # this sleeve has not passed its own go-live evaluation yet
             if session.scalar(
                 select(func.count())
                 .select_from(Position)
                 .where(Position.decision_id == d.id, Position.track == track)
             ):
                 continue  # already executed
+            if d.asset in open_assets:
+                self._note(d, track, f"already in a {d.asset} trade")
+                continue
+            sleeve = self.cfg.sleeve_of(d.asset)
+            if sleeve in locked:
+                # the sleeve's day-loss stop: nothing new until 00:00 UTC
+                self._note(d, track, "sleeve closed for the day (loss stop)")
+                continue
+            if track_mode == "live" and sleeve is not None and sleeve not in live_sleeves:
+                # this sleeve has not passed its own go-live evaluation yet
+                self._note(d, track, "sleeve not live yet")
+                continue
             plan = (d.proposal or {}).get(plan_key)
             symbol = self.cfg.symbol(d.asset)
             quote = self.quotes.get(symbol)
@@ -753,6 +768,7 @@ class Executor:
                             notional / leverage,
                             acct.cash,
                         )
+                    self._note(d, track, "out of funds")
                     continue
                 log.info("%s (%s): sized down to free cash: %s → %s", d.asset, track, notional, fit)
                 notional = fit
@@ -781,6 +797,8 @@ class Executor:
                 continue
             if result.outcome in (Outcome.REJECTED, Outcome.BORROW_FAILED):
                 d.action = result.outcome.value
+                why = "borrow failed" if result.outcome is Outcome.BORROW_FAILED else "rejected"
+                self._note(d, track, f"{why} by the exchange: {str(result.detail)[:70]}")
                 log.error("%s: entry %s: %s", d.asset, result.outcome.value, result.detail)
                 continue
             if result.outcome is Outcome.PARTIAL:

@@ -965,6 +965,21 @@ def decisions(
             else []
         )
     plans = {d.id: _plan_view(d) for d in decs}
+    with new_session() as s2:
+        pos_rows = (
+            s2.execute(
+                select(Position.decision_id, Position.track).where(
+                    Position.decision_id.in_([d.id for d in decs])
+                )
+            ).all()
+            if decs
+            else []
+        )
+    opened_by: dict[int, list[str]] = {}
+    for dec_id, track in pos_rows:
+        if dec_id is not None:
+            opened_by.setdefault(dec_id, []).append(track)
+    why = {d.id: why_no_trade(d, sorted(opened_by.get(d.id, []))) for d in decs}
     return render(
         request,
         "decisions.html",
@@ -978,7 +993,62 @@ def decisions(
         outs=outs,
         props=props,
         plans=plans,
+        why=why,
     )
+
+
+BLOCK_WORDS = {
+    "short_needs_borrow": "conviction too low to borrow for a short",
+    "short_unavailable": "this pair cannot be shorted",
+    "cost_rule": "target too close to cover the costs",
+    "no_room": "exposure cap is full",
+    "correlated_exposure": "exposure cap is full",
+    "correlated_exposure_total": "exposure cap is full",
+    "gross_exposure": "exposure cap is full",
+    "liquidation_buffer": "stop too close to the liquidation level",
+    "emergency_brake": "emergency brake is on",
+    "paused": "trading is paused",
+    "kill": "kill switch is on",
+    "trades_per_day": "daily trade limit for this coin reached",
+    "drawdown_pause": "paused after a drawdown",
+    "valid_agents": "too few valid readings",
+    "leverage_cap": "no margin available",
+}
+BLOCKING = ("block", "close_all", "brake", "pause")
+
+
+def why_no_trade(d: DecisionRecord, opened: list[str]) -> str:
+    """A short note for the decision log when the managers called a direction and no
+    trade (or not every ledger's trade) followed: the risk rule that blocked it, or what
+    each ledger's executor ran into."""
+    if d.direction == "flat":
+        return ""
+    if d.action == "none":
+        blocks = [
+            h
+            for h in (d.risk_rule_hits or [])
+            if h.get("effect") in BLOCKING and h.get("rule") != "no_consensus"
+        ]
+        words = []
+        for h in blocks:
+            rule = str(h.get("rule") or "")
+            word = BLOCK_WORDS.get(rule) or BLOCK_WORDS.get(rule.split(":")[0])
+            if rule.startswith("day_loss_stop"):
+                word = "sleeve closed for the day (loss stop)"
+            words.append(word or rule.replace("_", " "))
+        return (
+            "blocked: " + ", ".join(dict.fromkeys(words)) if words else "blocked by the risk rules"
+        )
+    notes = d.exec_notes or {}
+    by_reason: dict[str, list[str]] = {}
+    for track, text in notes.items():
+        if track not in opened:
+            by_reason.setdefault(str(text), []).append(track)
+    parts = [f"opened on {', '.join(opened)}"] if opened else []
+    parts += [f"{reason} ({', '.join(tracks)})" for reason, tracks in by_reason.items()]
+    if not parts and d.action == "open":
+        return "approved, not opened yet"
+    return " · ".join(parts)
 
 
 def _plan_view(d: DecisionRecord) -> list[dict[str, Any]]:
