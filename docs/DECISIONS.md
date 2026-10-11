@@ -293,3 +293,7 @@ Owner: "I want it for real." Dork (Astra) was flat in 96% of its proposals and, 
 
 Measured on one evidence pack, Grok 4.7 through the API: low effort 47 to 52 s (about 3,200 reasoning tokens), medium 94 to 115 s and once over 150 s (7,400), high 182 s (14,300), xhigh 173 s (13,300). The time is the model thinking before it writes; with or without schema enforcement made no difference. Low and medium gave the same calls (one short, DOGE); high and xhigh added a second (XRP) with slightly better reward-to-risk. In the first dry run of v6 at medium, Daerm missed its 170 s deadline and the other two decided. A third seat has to arrive, so `llm.effort_by_provider = { xai = "low" }`; Fable and Astra stay at medium. Reasoning tokens are counted as output in the logged cost (about six cents per call at low).
 
+## 2026-10-11 · Daerm at high reasoning effort (owner)
+
+Owner's choice after the effort test: `llm.effort_by_provider = { xai = "high" }`. At high Grok 4.7 needs about three minutes on the managers' input (about 14,000 reasoning tokens, roughly twelve cents a call), so its timeout is 300 s and the third seat's deadline 320 s; a cycle now waits up to about five minutes for the third answer before the other two decide. In the test, high made one more call than low (XRP short beside DOGE) with slightly better reward-to-risk.
+

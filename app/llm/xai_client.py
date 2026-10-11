@@ -16,6 +16,7 @@ from pydantic import BaseModel, SecretStr, ValidationError
 from app.llm.base import Image, LLMError, Usage
 
 XAI_BASE_URL = "https://api.x.ai/v1"
+REASONING_ROOM = 24_000
 
 
 BOUNDS = ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf")
@@ -87,7 +88,8 @@ class XAIProvider:
                     ],
                 ),
                 response_format=cast(Any, response_format(schema)),
-                max_completion_tokens=max_output_tokens,
+                # room for the reasoning tokens as well (about 14,000 at high effort)
+                max_completion_tokens=max_output_tokens + REASONING_ROOM,
                 # xAI defaults to "high"; the bot's own setting keeps the managers alike
                 reasoning_effort=cast(Any, effort),
             )
