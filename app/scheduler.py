@@ -118,7 +118,12 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
         # after the candle close.
         if name == "server":  # droplet usage: every 5 minutes (owner 2026-10-10)
             trigger = CronTrigger(minute="*/5", second="50")
-        elif name.startswith("macro.") or name == "catalysts.unlocks":
+        elif name.startswith("macro."):
+            # Twice an hour, shortly before the cycle minute: a reading older than 30
+            # minutes is invalid, and the old hourly fetch at :05 left the macro reading
+            # 56 minutes old at every scheduled cycle, so it never counted (2026-10-11).
+            trigger = CronTrigger(minute="25,55", second="0")
+        elif name == "catalysts.unlocks":
             trigger = CronTrigger(hour="*", minute="5", second="0")
         else:
             trigger = CronTrigger(minute="0,15,30,45", second="20")

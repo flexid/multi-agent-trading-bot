@@ -151,7 +151,9 @@ def build_pack(
             AssetPack(
                 asset=asset,
                 spot=spot,
-                atr_4h=round(atr, 6) if atr else None,
+                # six significant digits, not six decimals: PEPE's ATR is about 8e-08 and
+                # six decimals turned it into 0.0 for the managers
+                atr_4h=float(f"{atr:.6g}") if atr else None,
                 agents=views,
                 valid_agents=sum(v.valid for v in views),
                 macro_regime=macro_regime,

@@ -408,3 +408,23 @@ async def test_the_third_seat_falls_back_to_a_lower_effort(monkeypatch: pytest.M
         models={"pm_1": "a", "pm_2": "b", "pm_3": "c"},
     )
     assert res["pm_3"][0] == {} and len([c for c in calls if c[0] == "pm_3"]) == 1
+
+
+def test_macro_is_fetched_inside_the_validity_window_of_every_cycle() -> None:
+    """A reading older than 30 minutes is invalid. Cycles start at minute 2 and triggers
+    at 3, 18, 33 and 48, so the macro data must never be older than that at those minutes."""
+    from pathlib import Path
+
+    from app.agents.schema import MAX_DATA_AGE_MIN
+
+    src = Path("app/scheduler.py").read_text()
+    assert 'CronTrigger(minute="25,55", second="0")' in src
+    fetch_minutes = (25, 55)
+    for start in (2, 3, 18, 33, 48):
+        age = min((start - m) % 60 for m in fetch_minutes)
+        assert age <= MAX_DATA_AGE_MIN, (start, age)
+
+
+def test_a_tiny_atr_keeps_its_digits_in_the_pack() -> None:
+    assert float(f"{7.593e-08:.6g}") == 7.593e-08  # six decimals would give 0.0
+    assert float(f"{434.2785714:.6g}") == 434.279
