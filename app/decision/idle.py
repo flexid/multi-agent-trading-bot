@@ -1,8 +1,10 @@
 """Wait until no decision cycle is running (used by scripts/deploy.sh before a restart).
 
 A deploy on 2026-10-11 restarted the scheduler one minute into a triggered cycle and the
-cycle was lost. ``python -m app.decision.idle`` returns 0 once no cycle is running, or 1
-after ``--max-wait`` seconds (the deploy then stops instead of interrupting it). It also
+cycle was lost. ``python -m app.decision.idle`` returns 0 once no cycle is running, or 3
+after ``--max-wait`` seconds (the deploy then stops instead of interrupting it). Any other
+status means the check itself failed (for instance old code that cannot read a new config
+format); the deploy goes ahead then, because a broken checker must not block the fix. It also
 holds back when a scheduled cycle is about to start.
 """
 
@@ -19,6 +21,7 @@ from app.config import get_config
 from app.db.models import Cycle
 from app.db.session import new_session
 
+BUSY = 3  # exit status for "a cycle is running"; anything else means the check itself broke
 STALE = timedelta(minutes=20)  # a "running" row older than this is a dead cycle
 LEAD = timedelta(seconds=90)  # do not restart this close before a scheduled cycle
 
@@ -53,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if time.monotonic() >= deadline:
             print(f"still busy after {args.max_wait} s: {reason}")
-            return 1
+            return BUSY
         print(f"waiting: {reason}", flush=True)
         time.sleep(15)
 
