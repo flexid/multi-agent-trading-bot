@@ -9,7 +9,14 @@ from app.config import get_config
 from app.decision.pm import Direction
 from app.risk import engine
 from app.risk.exposure import beta_from_returns, correlation
-from app.risk.sleeves import day_locked, lock_until_midnight
+from app.risk.sleeves import (
+    day_locked,
+    directions_to_lock,
+    lock_info,
+    lock_until_midnight,
+    losing_directions,
+    new_lock,
+)
 from tests.test_data_layer import needs_db
 from tests.test_risk import account, cons, limits, market
 
@@ -223,3 +230,38 @@ def test_sleeve_account_and_costs_are_computed_per_sleeve() -> None:
         s.execute(delete(LLMCall))
         s.execute(delete(XPostRecord))
         s.commit()
+
+
+def test_the_day_stop_locks_only_the_direction_that_lost() -> None:
+    """Logic v8 (owner 2026-10-11): the sleeve is closed, new trades are locked only in the
+    losing direction, so the bot can follow a changed view the other way."""
+    assert losing_directions({"short": D(-158), "long": D(0)}) == {"short"}
+    assert losing_directions({"short": D(-90), "long": D(-70)}) == {"long", "short"}
+    assert losing_directions({}) == {"long", "short"}  # cannot tell: lock both
+    locks = {"bluechips": new_lock(NOW, {"short"}, D("-0.0221"))}
+    assert day_locked(locks, "bluechips", NOW)  # locked at all
+    assert day_locked(locks, "bluechips", NOW, "short")
+    assert not day_locked(locks, "bluechips", NOW, "long")  # the other way stays open
+    assert not day_locked(locks, "alts", NOW, "short")
+    info = lock_info(locks, "bluechips", NOW)
+    assert info is not None and info["since"] == NOW and info["pnl_at_lock"] == D("-0.0221")
+    assert lock_info(locks, "bluechips", NOW + timedelta(hours=12)) is None  # past midnight
+    # the first format, a bare "until" string, still means both directions
+    old = {"alts": lock_until_midnight(NOW)}
+    assert day_locked(old, "alts", NOW, "long") and day_locked(old, "alts", NOW, "short")
+    assert lock_info(old, "alts", NOW)["since"] is None  # type: ignore[index]
+
+
+def test_a_locked_sleeve_does_not_fire_again_on_the_same_loss() -> None:
+    stop = D("-0.02")
+    shorts_lost = {"short": D(-158)}
+    assert directions_to_lock(None, D("-0.019"), stop, shorts_lost) is None  # not at the stop
+    assert directions_to_lock(None, D("-0.0221"), stop, shorts_lost) == {"short"}
+    info = lock_info({"b": new_lock(NOW, {"short"}, D("-0.0221"))}, "b", NOW)
+    # the realized loss that set the lock is still there: it must not close the new longs
+    assert directions_to_lock(info, D("-0.0221"), stop, shorts_lost) is None
+    assert directions_to_lock(info, D("-0.035"), stop, shorts_lost) is None
+    # another full stop's worth of loss since the lock: everything locks
+    assert directions_to_lock(info, D("-0.0421"), stop, shorts_lost) == {"long", "short"}
+    both = lock_info({"b": new_lock(NOW, {"long", "short"}, D("-0.05"))}, "b", NOW)
+    assert directions_to_lock(both, D("-0.20"), stop, shorts_lost) is None  # nothing left to lock

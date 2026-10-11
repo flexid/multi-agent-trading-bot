@@ -31,6 +31,7 @@ import sys
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -118,7 +119,8 @@ class Executor:
         self.frozen = False  # after a kill switch: no new positions until resumed
         self.kill_real_only = False  # a self-test kill leaves the paper tracks alone
         self._candle_ref: dict[str, tuple[int, Decimal]] = {}  # 15-minute bucket, last mid
-        self._locked_cache: set[str] = set()  # sleeves under their day-loss lock, per pass
+        # sleeves under their day-loss lock (directions, since when), per pass
+        self._locked_cache: dict[str, dict[str, Any]] = {}
         self.style = style.load()
         self._alerted: set[str] = set()  # risk states already emailed this episode
 
@@ -535,18 +537,29 @@ class Executor:
     # --- exchange-side backup stop ---------------------------------------------------
 
     @staticmethod
-    def _locked_sleeves(session: Session, now: datetime) -> set[str]:
-        from app.risk.sleeves import day_locked
+    def _locked_sleeves(session: Session, now: datetime) -> dict[str, dict[str, Any]]:
+        """Active day locks per sleeve: which directions are locked and since when."""
+        from app.risk.sleeves import lock_info
 
         state = session.get(RiskState, 1)
         locks = (state.day_locked_sleeves or {}) if state else {}
-        return {name for name in locks if day_locked(locks, name, now)}
+        out = {}
+        for name in locks:
+            info = lock_info(locks, name, now)
+            if info is not None:
+                out[name] = info
+        return out
 
     def _sleeve_locked(self, row: Position, now: datetime) -> bool:
-        """A sleeve under its day-loss lock closes its positions (checked on the full pass
-        through the cached set the open loop refreshes)."""
+        """Should this position be closed by its sleeve's day-loss stop? Yes when it was
+        open at the moment the stop fired; a trade opened afterwards in the direction that
+        is still allowed stays."""
         sleeve = row.sleeve or self.cfg.sleeve_of(row.asset)
-        return sleeve is not None and sleeve in self._locked_cache
+        info = self._locked_cache.get(sleeve) if sleeve is not None else None
+        if info is None:
+            return False
+        since = info["since"]
+        return since is None or row.opened_at is None or row.opened_at <= since
 
     def _live_sleeves(self, session: Session) -> set[str]:
         """Sleeves allowed to open for real. Each sleeve passes its own go-live evaluation;
@@ -702,9 +715,10 @@ class Executor:
                 self._note(d, track, f"already in a {d.asset} trade")
                 continue
             sleeve = self.cfg.sleeve_of(d.asset)
-            if sleeve in locked:
-                # the sleeve's day-loss stop: nothing new until 00:00 UTC
-                self._note(d, track, "sleeve closed for the day (loss stop)")
+            lock = locked.get(sleeve) if sleeve is not None else None
+            if lock is not None and d.direction in lock["dirs"]:
+                # the sleeve's day-loss stop: nothing new in the direction that lost
+                self._note(d, track, f"new {d.direction}s locked for the day (loss stop)")
                 continue
             if track_mode == "live" and sleeve is not None and sleeve not in live_sleeves:
                 # this sleeve has not passed its own go-live evaluation yet

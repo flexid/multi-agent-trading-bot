@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -31,6 +32,7 @@ class SleeveAccount:
     gross_exposure: Decimal
     net_beta_exposure: Decimal
     open_positions: int
+    day_pnl_by_direction: dict[str, Decimal] | None = None  # today, quote, long/short
 
 
 def _last_close(session: Session, symbol: str, now: datetime) -> Decimal | None:
@@ -83,6 +85,14 @@ def sleeve_account(
     unreal = sum((unrealized(session, p, now) for p in open_rows), Decimal(0))
     equity = capital + realized + unreal
     day_pnl = (realized_today + unreal) / capital if capital else Decimal(0)
+    by_dir: dict[str, Decimal] = {}
+    for p in rows:
+        today = Decimal(0)
+        if p.status == "closed" and p.closed_at and p.closed_at >= day0:
+            today = p.pnl or Decimal(0)
+        elif p.status in ("open", "closing"):
+            today = unrealized(session, p, now)
+        by_dir[p.direction] = by_dir.get(p.direction, Decimal(0)) + today
     triples = [(p.direction, p.notional, p.asset) for p in open_rows]
     return SleeveAccount(
         name=name,
@@ -92,15 +102,78 @@ def sleeve_account(
         gross_exposure=sum((p.notional for p in open_rows), Decimal(0)),
         net_beta_exposure=net_beta_exposure(triples, beta),
         open_positions=len(open_rows),
+        day_pnl_by_direction=by_dir,
     )
 
 
-def day_locked(state_locks: dict[str, str] | None, name: str, now: datetime) -> bool:
-    """``risk_state.day_locked_sleeves`` holds {sleeve: iso-until}."""
-    if not state_locks or name not in state_locks:
+DIRECTIONS = ("long", "short")
+
+
+def lock_info(locks: dict[str, Any] | None, name: str, now: datetime) -> dict[str, Any] | None:
+    """The sleeve's active day lock, or None. ``risk_state.day_locked_sleeves`` holds
+    ``{sleeve: {"until", "dirs", "since", "pnl_at_lock"}}``; the first format, a bare
+    ``until`` string, means both directions with no start time."""
+    raw = (locks or {}).get(name)
+    if not raw:
+        return None
+    if isinstance(raw, str):
+        raw = {"until": raw}
+    until = datetime.fromisoformat(str(raw["until"]))
+    if until <= now:
+        return None
+    since = raw.get("since")
+    pnl = raw.get("pnl_at_lock")
+    return {
+        "until": until,
+        "dirs": set(raw.get("dirs") or DIRECTIONS),
+        "since": datetime.fromisoformat(str(since)) if since else None,
+        "pnl_at_lock": Decimal(str(pnl)) if pnl is not None else None,
+    }
+
+
+def day_locked(
+    locks: dict[str, Any] | None, name: str, now: datetime, direction: str | None = None
+) -> bool:
+    """Is the sleeve locked today, for ``direction`` when one is given? Since logic v8 a
+    day-loss stop closes the sleeve but only locks new trades in the direction that lost."""
+    info = lock_info(locks, name, now)
+    if info is None:
         return False
-    return datetime.fromisoformat(state_locks[name]) > now
+    return direction is None or direction in info["dirs"]
 
 
 def lock_until_midnight(now: datetime) -> str:
     return (now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).isoformat()
+
+
+def new_lock(now: datetime, dirs: set[str] | list[str], day_pnl_pct: Decimal) -> dict[str, Any]:
+    return {
+        "until": lock_until_midnight(now),
+        "dirs": sorted(dirs),
+        "since": now.isoformat(),
+        "pnl_at_lock": str(day_pnl_pct),
+    }
+
+
+def losing_directions(by_direction: dict[str, Decimal]) -> set[str]:
+    """The directions that lost money today; both when that cannot be told."""
+    lost = {d for d in DIRECTIONS if by_direction.get(d, Decimal(0)) < 0}
+    return lost or set(DIRECTIONS)
+
+
+def directions_to_lock(
+    info: dict[str, Any] | None,
+    day_pnl_pct: Decimal,
+    day_loss_stop: Decimal,
+    by_direction: dict[str, Decimal] | None,
+) -> set[str] | None:
+    """Which directions the day-loss stop locks now, or None when it does not fire.
+
+    No lock yet: it fires at the stop and locks the direction(s) that lost. Already locked
+    one way: the loss that set the lock must not fire it again, so it fires only when the
+    sleeve has lost the stop's size once more since then, and then locks everything."""
+    if info is None:
+        return losing_directions(by_direction or {}) if day_pnl_pct <= day_loss_stop else None
+    if len(info["dirs"]) >= 2 or info["pnl_at_lock"] is None:
+        return None
+    return set(DIRECTIONS) if day_pnl_pct <= info["pnl_at_lock"] + day_loss_stop else None

@@ -371,7 +371,17 @@ def _p_ledgers(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -
 
 def _p_sleeves(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
     from app.risk.exposure import betas
-    from app.risk.sleeves import day_locked, sleeve_account
+    from app.risk.sleeves import lock_info, sleeve_account
+
+    def lock_label(locks_: dict[str, Any], name_: str, now_: datetime) -> str:
+        info = lock_info(locks_, name_, now_)
+        if info is None:
+            return ""
+        return (
+            "all new trades locked"
+            if len(info["dirs"]) == 2
+            else f"new {next(iter(info['dirs']))}s locked"
+        )
 
     beta = betas(s, cfg, now)
     rows = []
@@ -383,7 +393,7 @@ def _p_sleeves(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -
                 "name": name,
                 "cfg": cfg.sleeves[name],
                 "acct": sleeve_account(s, cfg, name, "primary", now, beta, 1),
-                "locked": day_locked(locks, name, now),
+                "locked": lock_label(locks, name, now),
                 "mode": modes.get(name, "shadow"),
             }
         )
@@ -1069,7 +1079,7 @@ def why_no_trade(d: DecisionRecord, opened: list[str], expired: bool = False) ->
             rule = str(h.get("rule") or "")
             word = BLOCK_WORDS.get(rule) or BLOCK_WORDS.get(rule.split(":")[0])
             if rule.startswith("day_loss_stop"):
-                word = "sleeve closed for the day (loss stop)"
+                word = "this direction is locked for the day (sleeve loss stop)"
             words.append(word or rule.replace("_", " "))
         return (
             "blocked: " + ", ".join(dict.fromkeys(words)) if words else "blocked by the risk rules"

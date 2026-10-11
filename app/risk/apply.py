@@ -36,7 +36,13 @@ from app.decision.evidence import spot_and_atr
 from app.decision.pm import Direction, Proposal
 from app.risk import engine
 from app.risk.exposure import betas, track_exposure
-from app.risk.sleeves import day_locked, lock_until_midnight, sleeve_account
+from app.risk.sleeves import (
+    day_locked,
+    directions_to_lock,
+    lock_info,
+    new_lock,
+    sleeve_account,
+)
 
 
 def levels_for(session: Session, symbol: str, spot: Decimal) -> tuple[Decimal, ...]:
@@ -332,18 +338,28 @@ def apply_risk(
     sleeve_accts_max = {
         name: sleeve_account(session, cfg, name, "max", now, beta, 2) for name in cfg.sleeves
     }
-    locks: dict[str, str] = dict(state.day_locked_sleeves or {})
+    # The sleeve's day-loss stop (logic v8, owner 2026-10-11): at the limit every position in
+    # the sleeve is closed, and new trades are locked until 00:00 UTC only in the direction
+    # that lost; the bot may follow a changed view the other way. A further loss of the
+    # same size after that locks the whole sleeve for the day.
+    locks: dict[str, Any] = dict(state.day_locked_sleeves or {})
     for name, sa in sleeve_accts.items():
         s_cfg = cfg.sleeves[name]
-        if sa.day_pnl_pct <= s_cfg.day_loss_stop and not day_locked(locks, name, now):
-            locks[name] = lock_until_midnight(now)
+        info = lock_info(locks, name, now)
+        dirs = directions_to_lock(
+            info, sa.day_pnl_pct, s_cfg.day_loss_stop, sa.day_pnl_by_direction
+        )
+        if dirs is not None:
+            locks[name] = new_lock(now, dirs, sa.day_pnl_pct)
+            what = "new trades" if len(dirs) == 2 else f"new {next(iter(dirs))}s"
             session.add(
                 RiskRuleHit(
                     cycle_id=cycle_id,
                     ts=now,
                     asset=None,
                     rule=f"day_loss_stop:{name}",
-                    detail=f"{sa.day_pnl_pct:.2%} today in {name}: closed until 00:00 UTC",
+                    detail=f"{sa.day_pnl_pct:.2%} today in {name}: positions closed, "
+                    f"{what} locked until 00:00 UTC",
                     effect="close_sleeve",
                 )
             )
@@ -419,10 +435,12 @@ def apply_risk(
                 }
             )
             hits_s = list(account_hits)
-            if day_locked(locks, sleeve_name, now):
+            if day_locked(locks, sleeve_name, now, c.direction.value):
                 hits_s.append(
                     engine.RuleHit(
-                        f"day_loss_stop:{sleeve_name}", "sleeve closed until 00:00 UTC", "close_all"
+                        f"day_loss_stop:{sleeve_name}",
+                        f"new {c.direction.value}s locked until 00:00 UTC",
+                        "block",
                     )
                 )
             sm = sleeve_accts_max[sleeve_name]
