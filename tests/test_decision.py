@@ -225,28 +225,27 @@ def test_charts_first_comparison_counts_changed_calls_and_called_returns() -> No
     assert summarize([])["calls_differ_share"] is None
 
 
-def test_solo_calls_show_what_a_veto_cost_or_saved() -> None:
+def test_solo_calls_show_what_the_others_silence_cost_or_saved() -> None:
     from app.decision.solo_calls import summarize
 
-    f, a = "fable", "astra"
+    f, a, g = "fable", "astra", "grok"
     rows = [
-        (f, "short", a, "flat", -0.01, -0.03),  # solo short, price fell: the veto cost 3%
-        (f, "short", a, "flat", 0.00, 0.01),  # solo short, price rose: the veto saved 1%
-        (f, "flat", a, "long", None, None),  # solo by the other, no price yet
-        (f, "long", a, "long", 0.01, 0.02),  # agreed
-        (f, "long", a, "short", 0.01, 0.02),  # opposite: no call
-        (f, "flat", a, "flat", 0.01, 0.02),
+        ([(f, "short"), (a, "flat"), (g, "flat")], -0.01, -0.03),  # solo short, fell: cost 3%
+        ([(f, "short"), (a, "flat"), (g, "flat")], 0.00, 0.01),  # solo short, rose: saved 1%
+        ([(f, "flat"), (a, "flat"), (g, "long")], None, None),  # solo by another, no price yet
+        ([(f, "long"), (a, "flat"), (g, "long")], 0.01, 0.02),  # two of three: traded
+        ([(f, "long"), (a, "long"), (g, "short")], 0.01, 0.02),  # opposite: nothing
+        ([(f, "flat"), (a, "flat")], 0.01, 0.02),  # a two-manager decision from before v6
     ]
     s = summarize(rows)
     assert (s["decisions"], s["solo"], s["agreed"], s["opposite"]) == (6, 3, 1, 1)
-    by = {(p["caller"], p["flat"]): p for p in s["pairs"]}
-    fa = by[(f, a)]
-    assert fa["calls"] == 2 and fa["d1"]["n"] == 2
-    assert fa["d1"]["mean"] == pytest.approx(0.01) and fa["d1"]["won"] == 0.5
-    assert fa["h4"]["mean"] == pytest.approx(0.005)
-    assert by[(a, f)]["calls"] == 1 and by[(a, f)]["d1"]["mean"] is None
+    by = {p["caller"]: p for p in s["pairs"]}
+    assert by[f]["calls"] == 2 and by[f]["d1"]["n"] == 2
+    assert by[f]["d1"]["mean"] == pytest.approx(0.01) and by[f]["d1"]["won"] == 0.5
+    assert by[f]["h4"]["mean"] == pytest.approx(0.005)
+    assert by[g]["calls"] == 1 and by[g]["d1"]["mean"] is None
     assert s["agree"]["d1"]["mean"] == pytest.approx(0.02)
-    assert s["flat_share"] == {a: pytest.approx(3 / 6), f: pytest.approx(2 / 6)}
+    assert s["flat_share"][a] == pytest.approx(5 / 6) and s["flat_share"][g] == pytest.approx(2 / 5)
     assert summarize([])["pairs"] == []
 
 

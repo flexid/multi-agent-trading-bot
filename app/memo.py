@@ -362,12 +362,12 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
     lines.append(f"- weights: {f['agent_weights']}")
     solo = f.get("solo_calls") or {}
     if solo.get("decisions"):
-        lines += ["", "## Solo calls: one manager called, the other stayed flat (logged only)"]
+        lines += ["", "## Solo calls: one manager called, the others stayed flat (logged only)"]
         shares = ", ".join(
             f"{m} flat {s:.0%}" for m, s in solo["flat_share"].items() if s is not None
         )
         lines.append(
-            f"- {solo['decisions']} decisions: {solo['agreed']} agreed, {solo['solo']} solo, "
+            f"- {solo['decisions']} decisions: {solo['agreed']} traded, {solo['solo']} solo, "
             f"{solo['opposite']} opposite; {shares}"
         )
         for r in solo["pairs"]:
@@ -377,7 +377,7 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
                 if d1["mean"] is not None
                 else "no next-day price yet"
             )
-            lines.append(f"- {r['caller']} called, {r['flat']} flat: {r['calls']} calls, {after}")
+            lines.append(f"- {r['caller']} called alone: {r['calls']} calls, {after}")
     three = f.get("three_seat") or {}
     if three.get("decisions"):
         lines += ["", "## Three ways to decide (logged only; the live rule is two of two)"]
