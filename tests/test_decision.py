@@ -247,3 +247,45 @@ def test_solo_calls_show_what_a_veto_cost_or_saved() -> None:
     assert s["agree"]["d1"]["mean"] == pytest.approx(0.02)
     assert s["flat_share"] == {a: pytest.approx(3 / 6), f: pytest.approx(2 / 6)}
     assert summarize([])["pairs"] == []
+
+
+def test_three_ways_to_decide() -> None:
+    from app.decision.three_seat import Seat, by_threshold, summarize, two_of_three, two_of_two
+
+    short, flat, long_ = Seat("short", -0.2), Seat("flat", -0.2), Seat("long", 0.2)
+    assert two_of_two(short, short) == -1 and two_of_two(short, flat) == 0
+    assert two_of_three(short, flat, short) == (-1, 0.5)  # the cautious one no longer vetoes
+    assert two_of_three(short, short, short) == (-1, 1.0)
+    assert two_of_three(short, short, long_) == (0, 0.0)  # anyone opposite: nothing
+    assert two_of_three(short, flat, flat) == (0, 0.0)
+    assert by_threshold(short, flat) == -1  # scores decide, whatever direction was written
+    assert by_threshold(short, Seat("flat", -0.05)) == 0 and by_threshold(short, long_) == 0
+    quiet = Seat("flat", 0.0)
+    rows: list[tuple[Seat, Seat, Seat, float | None, float | None]] = [
+        (short, flat, short, -0.01, -0.02),  # only two-of-three and the threshold trade it
+        (short, short, short, 0.005, 0.01),  # everyone trades it, and it loses
+        (quiet, quiet, quiet, 0.0, 0.0),
+    ]
+    s = summarize(rows)
+    r = s["rules"]
+    assert (r["two_of_two"]["trades"], r["two_of_three"]["trades"]) == (1, 2)
+    assert r["three_of_three"]["trades"] == 1 and r["threshold"]["trades"] == 2
+    assert r["two_of_two"]["d1"]["mean"] == pytest.approx(-0.01)
+    assert r["two_of_three"]["d1"]["mean"] == pytest.approx(0.005)
+    assert r["two_of_three"]["d1"]["won"] == 0.5
+    assert s["flat_share"] == [pytest.approx(1 / 3), pytest.approx(2 / 3), pytest.approx(1 / 3)]
+    assert summarize([])["flat_share"] == [None, None, None]
+
+
+def test_grok_models_route_to_xai_and_the_shadow_seat_is_configured() -> None:
+    from pathlib import Path
+
+    from app import llm
+    from app.config import get_config
+    from app.decision.pm import TASK_PM
+
+    cfg = get_config()
+    assert cfg.models.pm_3_shadow.startswith("grok-") and "pm_3" in TASK_PM
+    assert cfg.models.pm_3_shadow in cfg.llm.pricing
+    assert llm.provider_for(cfg.models.pm_3_shadow).name == "xai"
+    assert "X_AI" not in Path("scripts/admin_env.sh").read_text()

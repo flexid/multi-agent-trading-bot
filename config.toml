@@ -148,6 +148,7 @@ x_sentiment = "claude-sonnet-5-5"
 post_writer = "claude-sonnet-5-5"
 post_auditor = "gpt-5.6-terra"
 catalysts = "jev-latest"         # TypeSafe Jev: the alt sleeve's catalyst classifier (owner 2026-10-10)
+pm_3_shadow = "grok-4.7"        # owner 2026-10-11: a third manager that only watches; its proposals are logged, never traded
 
 [models.shadow_alt]             # the other provider per task, run alongside during shadow mode
 pm_1 = "gpt-6-astra"
@@ -176,3 +177,4 @@ effort = "medium"               # Anthropic output_config.effort / OpenAI reason
 "gpt-6-astra" = [10.0, 50.0]    # third-party trackers, 2026-10-10
 "jev-1.13.0" = [0.042, 0.0]     # TypeSafe, docs.typesafe.ai/models 2026-10-10: $0.042 per Mtok input, output free
 "jev-latest" = [0.042, 0.0]
+"grok-4.7" = [2.0, 6.0]         # xAI, docs.x.ai/developers/pricing 2026-10-11

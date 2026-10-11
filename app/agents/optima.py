@@ -413,6 +413,12 @@ def _solo(session: Session, cfg: Config, now: datetime) -> dict[str, Any]:
     return compare(session, cfg, now - timedelta(days=IC_DAYS))
 
 
+def _three(session: Session, cfg: Config, now: datetime) -> dict[str, Any]:
+    from app.decision.three_seat import compare
+
+    return compare(session, cfg, now - timedelta(days=IC_DAYS))
+
+
 def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     return {
@@ -422,6 +428,7 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
         "budget": budget_facts(session, cfg, now),
         "charts_first": _charts_first(session, cfg, now),
         "solo_calls": _solo(session, cfg, now),
+        "three_seat": _three(session, cfg, now),
     }
 
 

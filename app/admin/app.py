@@ -784,6 +784,12 @@ def _p_solo(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> d
     return {"solo": compare(s, cfg, now - timedelta(days=90))}
 
 
+def _p_three(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    from app.decision.three_seat import compare
+
+    return {"three": compare(s, cfg, now - timedelta(days=90))}
+
+
 def _p_exposure(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
     from app.risk.exposure import betas, track_exposure
 
@@ -840,13 +846,14 @@ PANELS: dict[str, Any] = {
     "server": _p_server,
     "charts_first": _p_charts_first,
     "solo": _p_solo,
+    "three": _p_three,
 }
 # The pages of the dashboard and the panels each one shows (the templates include the same).
 PAGES: dict[str, tuple[str, ...]] = {
     "overview": ("money", "sleeves", "ledgers", "open", "controls"),
     "trades": ("open", "closed", "stops"),
     "risk": ("sleeves", "exposure", "betas", "stops"),
-    "readings": ("matrix", "sentiment", "charts_first", "solo"),
+    "readings": ("matrix", "sentiment", "charts_first", "solo", "three"),
     "sources": ("xposts", "djaf", "pmarkets", "polymarket", "macro_inputs"),
     "costs": ("costs", "optima"),
     "system": ("server", "freshness", "controls"),

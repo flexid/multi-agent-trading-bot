@@ -159,6 +159,9 @@ class TaskModels(_Section):
 
 class ModelsConfig(TaskModels):
     shadow_alt: TaskModels | None = None
+    # A third manager that only watches (owner 2026-10-11): same input, proposals stored,
+    # never used for a decision. "" turns it off.
+    pm_3_shadow: str = ""
 
 
 class LLMConfig(_Section):
@@ -228,6 +231,7 @@ class Secrets(BaseSettings):
 
     jev_api_key: SecretStr = SecretStr("")  # TypeSafe Jev; scheduler only, never the admin
     do_access_token: SecretStr = SecretStr("")  # DigitalOcean; scheduler only, never the admin
+    x_ai_api_key: SecretStr = SecretStr("")  # xAI (Grok): the shadow third manager seat
     fred_api_key: SecretStr = SecretStr("")
     coingecko_api_key: SecretStr = SecretStr("")
 

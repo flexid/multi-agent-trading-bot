@@ -231,6 +231,7 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
         "optima": optima_facts(session),
         "charts_first": charts_first_facts(session, cfg, now),
         "solo_calls": solo_facts(session, cfg, now),
+        "three_seat": three_seat_facts(session, cfg, now),
     }
 
 
@@ -244,6 +245,13 @@ def charts_first_facts(session: Session, cfg: Config, now: datetime) -> list[dic
 def solo_facts(session: Session, cfg: Config, now: datetime) -> dict[str, Any]:
     """What followed when one manager called and the other stayed flat (owner 2026-10-11)."""
     from app.decision.solo_calls import compare
+
+    return compare(session, cfg, now - timedelta(days=90))
+
+
+def three_seat_facts(session: Session, cfg: Config, now: datetime) -> dict[str, Any]:
+    """Two of two, two of three and a score threshold on the same decisions (logged)."""
+    from app.decision.three_seat import compare
 
     return compare(session, cfg, now - timedelta(days=90))
 
@@ -370,6 +378,28 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
                 else "no next-day price yet"
             )
             lines.append(f"- {r['caller']} called, {r['flat']} flat: {r['calls']} calls, {after}")
+    three = f.get("three_seat") or {}
+    if three.get("decisions"):
+        lines += ["", "## Three ways to decide (logged only; the live rule is two of two)"]
+        lines.append(
+            f"- {three['decisions']} decisions with all three managers "
+            f"({', '.join(str(m) for m in three['models'])}; the third only watches)"
+        )
+        labels = {
+            "two_of_two": "two of two (live)",
+            "two_of_three": "two of three, nobody opposite",
+            "three_of_three": "all three agree",
+            "threshold": f"both seated scores beyond ±{three['threshold']}",
+        }
+        for key, label in labels.items():
+            r = three["rules"][key]
+            d1 = r["d1"]
+            after = (
+                f"{d1['mean'] * 100:+.2f}% after a day, {d1['won']:.0%} right on {d1['n']}"
+                if d1["mean"] is not None
+                else "no next-day price yet"
+            )
+            lines.append(f"- {label}: {r['trades']} trades, {after}")
     cf = f.get("charts_first") or []
     if cf:
         lines += ["", "## Charts first vs the real score (logged only, for the review)"]

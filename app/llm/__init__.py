@@ -46,6 +46,8 @@ def provider_for(model: str) -> Provider:
         return _anthropic()
     if model.startswith("gpt-"):
         return _openai()
+    if model.startswith("grok-"):
+        return _xai()
     if is_jev(model):
         raise LLMError(f"{model} answers typed questions: use app.llm.judge, not complete")
     raise LLMError(f"no provider for model {model}")
@@ -63,6 +65,13 @@ def _openai() -> Provider:
     from app.llm.openai_client import OpenAIProvider
 
     return OpenAIProvider(get_secrets().openai_api_key)
+
+
+@lru_cache(maxsize=1)
+def _xai() -> Provider:
+    from app.llm.xai_client import XAIProvider
+
+    return XAIProvider(get_secrets().x_ai_api_key)
 
 
 @lru_cache(maxsize=1)

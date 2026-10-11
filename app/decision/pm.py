@@ -10,8 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from app.decision.evidence import EvidencePack
 from app.llm import Completion, LLMError, Prompt, complete
 
-TASK_PM = {"pm_1": "pm_1", "pm_2": "pm_2"}
-AGENTS = {"indicators", "chart_patterns", "polymarket", "macro", "x_sentiment"}
+# pm_3 is the shadow third seat: logged under its own task name, model passed explicitly
+TASK_PM = {"pm_1": "pm_1", "pm_2": "pm_2", "pm_3": "pm_3"}
+AGENTS = {"indicators", "chart_patterns", "polymarket", "macro", "x_sentiment", "catalysts"}
 
 
 class Direction(StrEnum):

@@ -30,7 +30,7 @@ from app.db.models import AgentOutputRecord, Cycle, DecisionRecord, LLMCall, PMP
 from app.db.session import new_session
 from app.decision.consensus import Consensus, charts_first_score, consensus, weights_for
 from app.decision.evidence import build_pack
-from app.decision.pm import Proposal, ask_both
+from app.decision.pm import Proposal, ask_both, ask_pm
 from app.decision.tuning import current_weights
 from app.llm import load_prompt
 from app.risk.apply import apply_risk
@@ -341,6 +341,18 @@ async def run_cycle(
                 )
             else:
                 log.info("%s: no trade (%s)", asset, caps or "no consensus")
+        if cfg.models.pm_3_shadow:
+            # The shadow third seat, after the decisions are stored and sized so it can
+            # never delay or change a trade: same pack, proposals stored, nothing else.
+            try:
+                third, _, third_err = await ask_pm(
+                    "pm_3", pack, prompt, model=cfg.models.pm_3_shadow, cycle_id=cycle_id
+                )
+                if third_err:
+                    log.warning("pm_3 (shadow) failed: %s", third_err)
+                store_proposals(cycle_id, "pm_3", "shadow", cfg.models.pm_3_shadow, third)
+            except Exception as exc:
+                log.warning("pm_3 (shadow) skipped: %s", exc)
         status, error = "done", None
     except Exception as exc:
         log.exception("cycle %d failed", cycle_id)

@@ -127,6 +127,8 @@ def score_models(session: Session, cfg: Config, since: datetime) -> list[Score]:
     seated = {cfg.models.pm_1, cfg.models.pm_2}
     if cfg.models.shadow_alt is not None:
         seated |= {cfg.models.shadow_alt.pm_1, cfg.models.shadow_alt.pm_2}
+    if cfg.models.pm_3_shadow:
+        seated.add(cfg.models.pm_3_shadow)
     by_model: dict[str, dict[str, list[tuple[float, float]]]] = {}
     for p, at in props:
         if p.model not in seated:

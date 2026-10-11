@@ -8,9 +8,10 @@ const name = (s: Snapshot, id: string) => { const m = (s.crew ?? []).find((c) =>
 // seat as the shadow comparison.
 const lname = (s: Snapshot, l: { name: string; kind: string }): { label: string; note: string } => {
   if (l.kind === "agent") { const m = (s.crew ?? []).find((c) => c.id === l.name); return { label: m ? m.name : l.name, note: l.name }; }
-  const mm = l.name.match(/^(.*?) \((pm_[12])\/(main|alt)\)$/);
+  const mm = l.name.match(/^(.*?) \((pm_[123])\/(main|alt|shadow)\)$/);
   if (!mm) return { label: l.name, note: "" };
   const [, model, , variant] = mm;
+  if (variant === "shadow") return { label: model, note: "a third manager that only watches; its calls are logged, never traded" };
   const id = model.startsWith("claude") ? "pm_1" : model.startsWith("gpt") ? "pm_2" : null;
   const m = id ? (s.crew ?? []).find((c) => c.id === id) : null;
   return { label: m ? m.name : model, note: `${model} · ${variant === "main" ? "its own seat" : "shadow, the other seat"}` };
