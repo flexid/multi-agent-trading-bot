@@ -113,7 +113,14 @@ def compare(session: Session, cfg: Config, since: datetime) -> dict[str, Any]:
     third = cfg.models.pm_3
     models = [cfg.models.pm_1, cfg.models.pm_2, third]
     if not third:
-        return {"decisions": 0, "models": models, "rules": {}, "flat_share": []}
+        return {
+            "decisions": 0,
+            "models": models,
+            "rules": {},
+            "flat_share": [],
+            "third_asked": 0,
+            "third_answered": 0,
+        }
     props = session.scalars(
         select(PMProposalRecord).where(PMProposalRecord.variant == "main")
     ).all()
@@ -123,9 +130,14 @@ def compare(session: Session, cfg: Config, since: datetime) -> dict[str, Any]:
     decs = session.scalars(select(DecisionRecord).where(DecisionRecord.ts >= since)).all()
     closes = {a: _closes(session, cfg, a, since) for a in cfg.trading.assets}
     rows: list[tuple[Seat, Seat, Seat, float | None, float | None]] = []
+    asked = answered = 0  # since the third seat exists: did it answer in time?
+    first_third = min((p.cycle_id for p in props if p.pm == "pm_3"), default=None)
     for d in decs:
         seats = by_key.get((d.cycle_id, d.asset)) or {}
         p1, p2, p3 = seats.get("pm_1"), seats.get("pm_2"), seats.get("pm_3")
+        if first_third is not None and d.cycle_id >= first_third and (p1 or p2):
+            asked += 1
+            answered += p3 is not None
         if p1 is None or p2 is None or p3 is None:
             continue
         if [p1.model, p2.model, p3.model] != models:
@@ -140,4 +152,9 @@ def compare(session: Session, cfg: Config, since: datetime) -> dict[str, Any]:
                 forward_return(series, d.ts, 24) if series is not None else None,
             )
         )
-    return {"models": models, **summarize(rows)}
+    return {
+        "models": models,
+        "third_asked": asked,
+        "third_answered": answered,
+        **summarize(rows),
+    }
