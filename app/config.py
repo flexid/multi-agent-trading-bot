@@ -82,7 +82,7 @@ class AggressiveConfig(_Section):
     risk_multiplier: Decimal = Decimal("2.5")  # × each sleeve's risk per trade
     leverage_ceiling: int = 10  # instead of the 2x start ceiling; sleeve caps still apply
     net_beta_exposure_max: Decimal = Decimal("3.0")  # × equity, per sleeve and in total
-    max_hold_hours: int = 24
+    max_hold_hours: int = 48  # 24 until 2026-10-12: too short for a 4-hour setup
     # After the day goal is banked, start a decision cycle at once instead of waiting for
     # the next regular one, unless that one starts within the gap anyway.
     goal_cycle: bool = True

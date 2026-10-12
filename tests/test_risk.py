@@ -365,10 +365,10 @@ def test_aggressive_mode_pushes_risk_and_leverage_inside_hard_bounds() -> None:
     pushed = aggressive_limits(limits(), agg)
     assert pushed.risk_per_trade == limits().risk_per_trade * D("2.5")
     assert pushed.net_beta_total_max == D("3.0")
-    # no trade is held longer than a day
+    # no trade is held longer than two days
     long_hold = cons()
     held = cap_hold(replace_hold(long_hold, 72), agg)
-    assert held.proposal is not None and held.proposal.max_hold_hours == 24
+    assert held.proposal is not None and held.proposal.max_hold_hours == 48
     assert cap_hold(replace_hold(long_hold, 12), agg).proposal.max_hold_hours == 12  # type: ignore[union-attr]
     assert cap_hold(replace_hold(long_hold, 72), None).proposal.max_hold_hours == 72  # type: ignore[union-attr]
     # the bigger risk sizes a bigger trade at the same stop

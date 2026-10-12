@@ -407,3 +407,7 @@ Owner: when the 1% is banked and the next cycle is hours away, keep going. Banki
 - The other ledgers (max, inverse, pilot) bank their own goal but do not start cycles: one set of decisions serves all of them, and the main ledger is the record.
 - Each extra cycle costs what a regular one does in model and X usage. It needs another 1% on top of the banked level before the next one, so it cannot loop.
 - `aggressive.goal_cycle = false` switches it off.
+
+## 2026-10-12 · Aggressive mode: holding limit 48 hours instead of 24
+
+Owner: the 24-hour limit was wishful thinking. Targets come off the 4-hour chart and stops have 1.5 times more room in this mode, so most trades would reach neither end within a day and be closed in the middle with both fees paid. The day goal (1% on the ledger) now banks profit, so the limit only has to cut trades that go nowhere. `aggressive.max_hold_hours` is 48. It applies to trades opened from now on: the limit is stored on each position at entry, and the four trades open at the change keep their 24 hours.

@@ -72,7 +72,7 @@ class EvidencePack(BaseModel):
     as_of: datetime
     mode: str
     day_pnl_pct: float
-    max_hold_hours: int = 168  # the longest a trade may be held; 24 in aggressive mode
+    max_hold_hours: int = 168  # the longest a trade may be held; 48 in aggressive mode
     assets: list[AssetPack] = Field(min_length=1)
 
 
