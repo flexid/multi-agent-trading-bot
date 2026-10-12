@@ -423,6 +423,26 @@ async def test_aggressive_mode_banks_the_whole_ledger_at_the_day_goal(db: None) 
             assert after is not None and after.goal_base is not None
             assert after.goal_base >= base * D("1.01")  # the next step counts from here
             assert after.cash >= base * D("1.01") - D("0.01")  # and that much is banked
+        # the scheduler is asked for a new decision cycle; the executor leaves that request
+        # alone on its next passes
+        from app.db.models import ControlRequest
+        from app.decision import goal_cycle
+
+        await ex.tick()
+        with new_session() as s:
+            (req,) = s.scalars(select(ControlRequest)).all()
+            assert req.kind == "cycle" and req.applied_at is None
+            cfg = get_config()
+            # two minutes before the regular cycle: not worth an extra one
+            near = goal_cycle.next_scheduled(NOW, cfg.trading.cycle_hours) - timedelta(minutes=2)
+            assert goal_cycle.claim(s, cfg, near) is None
+            assert req.result is not None and req.result.startswith("skipped: the regular")
+            # a new request two hours before it: the cycle starts
+            goal_cycle.request(s, NOW, "primary")
+            s.commit()
+            far = goal_cycle.next_scheduled(NOW, cfg.trading.cycle_hours) - timedelta(hours=2)
+            assert goal_cycle.claim(s, cfg, far) == "day goal banked on primary"
+            assert goal_cycle.claim(s, cfg, far) is None  # settled: it does not start twice
     finally:
         with new_session() as s:
             cur = s.get(RiskState, 1)

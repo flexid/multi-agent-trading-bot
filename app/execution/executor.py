@@ -48,6 +48,7 @@ from app.db.models import (
     RiskState,
 )
 from app.db.session import new_session
+from app.decision import goal_cycle
 from app.execution import simulator as sim
 from app.execution.bybit_client import BybitClient
 from app.execution.gateway import Gateway, OrderOutcome, Outcome, PaperGateway
@@ -62,6 +63,9 @@ FAST_S = 1  # exit checks between full passes, only on the WebSocket feed
 BACKUP_ATR_MULT = Decimal("0.5")  # backup stop sits this many ATR beyond the bot's stop
 EXIT_ALERT_AFTER = 3  # passes an exit may stay unfinished before the owner is emailed
 # Which tracks run in each process mode, and the mode their positions are stored with.
+# The ledgers whose banked day goal starts a new decision cycle: the record the site shows.
+STORY_TRACKS = ("primary", "live")
+
 TRACKS: dict[str, dict[str, str]] = {
     # "inverse" (owner, for fun, 2026-10-09): the opposite of every primary trade, on paper,
     # with the stop and target mirrored around the entry. Tells whether the bot's reasoning
@@ -295,7 +299,8 @@ class Executor:
         kill = False
         pending = session.scalars(
             select(ControlRequest)
-            .where(ControlRequest.applied_at.is_(None))
+            # kind "cycle" is for the scheduler (app/decision/goal_cycle.py)
+            .where(ControlRequest.applied_at.is_(None), ControlRequest.kind != "cycle")
             .order_by(ControlRequest.id)
         ).all()
         state = session.get(RiskState, 1)
@@ -595,6 +600,8 @@ class Executor:
             if banked >= base * (1 + take_profit):
                 reached.add(track)
                 acct.goal_base = banked
+                if track in STORY_TRACKS:
+                    goal_cycle.request(session, now, track)
                 log.info(
                     "%s: day goal reached, equity %.2f from base %.2f; closing %d trade(s)",
                     track,
@@ -620,6 +627,8 @@ class Executor:
             base = acct.goal_base or acct.day_start_equity
             if base > 0 and acct.cash >= base * (1 + take_profit):
                 acct.goal_base = acct.cash
+                if track in STORY_TRACKS:
+                    goal_cycle.request(session, now, track)
 
     def _take_profit(self, session: Session) -> Decimal | None:
         """The aggressive profile's profit level (a share of equity), or None when the

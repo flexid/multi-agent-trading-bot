@@ -396,3 +396,14 @@ Owner: "the goal is to let the bot generate 1% net profit per day on the entire 
 - The single-trade rule stays: one trade that makes the goal alone is closed. It is now a special case of the day goal.
 - Each ledger (main, max, inverse, pilot) has its own goal. Losses are not part of this rule: a ledger that is down 2% needs to come back to +1% on the day before anything is banked.
 - No logic version bump, like the rest of aggressive mode: it is an exit rule behind the owner's switch.
+
+## 2026-10-12 · Aggressive mode: a banked day goal starts a new decision cycle
+
+Owner: when the 1% is banked and the next cycle is hours away, keep going. Banking closes every trade on the ledger, so without this the book sat in cash until the next four-hour cycle.
+
+- When the main ledger (`primary`, or `live` once live) banks its goal, the executor leaves a request in `control_requests` (kind `cycle`). It places no orders for it and decides nothing: the request only asks the scheduler for a normal decision cycle.
+- The scheduler checks every 30 seconds and starts a full cycle (all agents, three managers, risk engine), recorded with kind `goal`. That kind does not count toward the two-a-day cap on market triggers.
+- No extra cycle when the regular one starts within `aggressive.goal_cycle_min_gap_minutes` (30), when a cycle is already running, or when aggressive mode has been switched off. A skipped request is closed with the reason, not carried over.
+- The other ledgers (max, inverse, pilot) bank their own goal but do not start cycles: one set of decisions serves all of them, and the main ledger is the record.
+- Each extra cycle costs what a regular one does in model and X usage. It needs another 1% on top of the banked level before the next one, so it cannot loop.
+- `aggressive.goal_cycle = false` switches it off.

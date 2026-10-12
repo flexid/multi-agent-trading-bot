@@ -83,6 +83,10 @@ class AggressiveConfig(_Section):
     leverage_ceiling: int = 10  # instead of the 2x start ceiling; sleeve caps still apply
     net_beta_exposure_max: Decimal = Decimal("3.0")  # × equity, per sleeve and in total
     max_hold_hours: int = 24
+    # After the day goal is banked, start a decision cycle at once instead of waiting for
+    # the next regular one, unless that one starts within the gap anyway.
+    goal_cycle: bool = True
+    goal_cycle_min_gap_minutes: int = Field(default=30, ge=5, le=240)
     # Stops sit this many times further from the entry than the managers put them (owner:
     # more room). The position shrinks to match, so the loss at the stop is unchanged.
     stop_room: Decimal = Decimal("1.5")

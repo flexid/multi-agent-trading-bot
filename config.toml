@@ -27,6 +27,8 @@ leverage_ceiling = 10           # the full ceiling instead of 2x; a sleeve's own
 take_profit_equity_pct = 0.01   # day goal: all trades are closed once the ledger is 1% up, net; so is one trade that makes it alone
 net_beta_exposure_max = 3.0     # × equity, per sleeve and across both
 max_hold_hours = 24             # no trade is held longer
+goal_cycle = true               # after the day goal is banked, start a new decision cycle at once
+goal_cycle_min_gap_minutes = 30 # ... unless the regular cycle starts within this many minutes
 stop_room = 1.5                 # stops 1.5× further from the entry than the managers put them; size shrinks to match (1 to 3)
 
 [sleeves.bluechips]             # owner 2026-10-10 (logic v4): two sleeves, each its own budget and limits

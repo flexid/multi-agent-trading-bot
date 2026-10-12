@@ -196,6 +196,15 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
         coalesce=True,
     )
     scheduler.add_job(
+        goal_cycle_job,
+        IntervalTrigger(seconds=30),
+        args=[cfg],
+        id="goal_cycle",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=20,
+    )
+    scheduler.add_job(
         live_job,
         IntervalTrigger(seconds=cfg.site.live_interval_seconds),
         id="site_live",
@@ -205,7 +214,10 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
     )
     # Four runs a minute would bury the log: keep only this job's warnings.
     logging.getLogger("apscheduler.executors.default").addFilter(
-        lambda r: r.levelno > logging.INFO or "live_job" not in r.getMessage()
+        lambda r: (
+            r.levelno > logging.INFO
+            or not any(j in r.getMessage() for j in ("live_job", "goal_cycle_job"))
+        )
     )
     scheduler.start()
     log.info("scheduler started with %d jobs", len(scheduler.get_jobs()))
@@ -220,6 +232,28 @@ async def publish_job() -> None:
         await asyncio.to_thread(publish)
     except Exception as exc:  # the site is never a reason to stop trading
         log.warning("site snapshot failed: %s", exc)
+
+
+_goal_cycles: set[asyncio.Task[None]] = set()
+
+
+async def goal_cycle_job(cfg: Config) -> None:
+    """Aggressive mode banked its day goal: start a decision cycle now. It runs as its own
+    task so this half-minute check is not held up for the length of a cycle."""
+    from app.db.session import new_session
+    from app.decision import goal_cycle
+
+    try:
+        with new_session() as session:
+            reason = goal_cycle.claim(session, cfg, datetime.now(UTC))
+    except Exception as exc:
+        log.warning("goal cycle check failed: %s", exc)
+        return
+    if reason:
+        log.info("goal cycle: %s", reason)
+        task = asyncio.create_task(cycle_job(cfg, kind=goal_cycle.CYCLE_KIND, trigger=reason))
+        _goal_cycles.add(task)
+        task.add_done_callback(_goal_cycles.discard)
 
 
 async def live_job() -> None:
