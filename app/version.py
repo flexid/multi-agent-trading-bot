@@ -1,6 +1,12 @@
 """Logic version: bumped when the decision logic changes in a way that makes earlier
 decisions not comparable. Stored on every cycle row.
 
+9  2026-10-12  no chasing: the risk engine blocks a call in the direction of a 24-hour move
+              larger than `risk.chase_max_atr` (2) ATR, and the managers see the 4h and
+              24h change and the day's move in ATR in the pack with an instruction not to
+              chase (pm prompt v9). Three days of record: 42 non-flat calls, a quarter
+              right on the 24h move, every one extending the move that had just happened.
+              Owner's decision.
 8  2026-10-11  a sleeve's day-loss stop still closes every position in the sleeve, but
               locks new trades until 00:00 UTC only in the direction that lost; a further
               loss of the same size locks the whole sleeve. Owner's decision.
@@ -33,5 +39,5 @@ decisions not comparable. Stored on every cycle row.
 1  2026-10-08  initial logic (SPEC §6-§9).
 """
 
-LOGIC_VERSION = 8
+LOGIC_VERSION = 9
 FROZEN_UNTIL = "2026-11-07"  # the 4-week review; no logic change before then

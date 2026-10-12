@@ -93,6 +93,7 @@ SPX6900 = "$SPX"                # history only
 # by the API; 0.03 is the documented spot-margin figure, to be confirmed in the live
 # self-test (M9). See DECISIONS.
 maintenance_margin_rate = 0.03
+chase_max_atr = 2.0             # no new trade in the direction of a 24h move larger than this many ATR (owner 2026-10-12, v9); 0 = off
 
 [agents.macro]                  # crypto-native weights, set from app/backtest_native.py (see DECISIONS)
 fng_weight = 0.25               # Fear & Greed, contrarian at extremes; also a risk flag

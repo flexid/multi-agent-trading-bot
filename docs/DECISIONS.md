@@ -415,3 +415,12 @@ Owner: the 24-hour limit was wishful thinking. Targets come off the 4-hour chart
 ## 2026-10-12 · A "hold" command lengthens the limit of open trades
 
 Owner: the four trades open when the limit went to 48 hours should get it too. The limit sits on each position and only the executor changes a running trade, so there is a new control request next to kill, pause and resume: `python -m app.control hold --hours 48`. The executor applies it on its next pass to every open position whose limit is shorter. It never shortens a limit and accepts 1 to 168 hours. Stops, targets and the day goal are untouched.
+
+## 2026-10-12 · Logic v9: no chasing
+
+Owner, after three days of record (main book -5.9%, the inverse book +3.2%, BTC +0.4%): "after a big pump always comes a dump". Every non-flat call extended the move that had just happened, and a quarter of them were right on the 24-hour move. Nothing in the bot could see a pump as a pump: the chart agent scores a close at the top of the range as a breakout, the indicators agent turns contrarian only above RSI 70, the X agent reads attention after a rise as bullish, and the managers were never given the day's change. One manager inferred "up 9% in 24h" from an evidence line and still went long on ENA, which then fell 7.5% to its stop.
+
+- The risk engine blocks a call in the direction of a 24-hour move larger than `risk.chase_max_atr` (2.0) ATR, rule `chasing`, in code where the managers cannot talk around it. The opposite direction is not blocked: fading a stretched move is allowed. 0 switches the rule off; the admin's Parameters page can change it between 0 and 10.
+- The evidence pack carries the 4-hour and 24-hour change in percent and the day's move in ATR for every asset, and the manager prompt (v9) says not to chase and to put the entry at a pullback when the move is already made.
+- On the record, the rule would have blocked the ENA long of 11 October and the SOL long of 12 October (together -188 USDT), five of the open longs of 12 October, and the SOL short of this afternoon. It would not have blocked the shorts of 9 October, which came after moves of under 2 ATR and lost on the bounce: that was a different error, and this rule is not a cure for the hit rate.
+- A threshold rather than a ban: in a trend the dump does not come, and a bot that fades every rise bleeds the other way. 2 ATR is a starting point for the owner to tune.

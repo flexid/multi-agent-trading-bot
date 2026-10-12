@@ -58,6 +58,9 @@ class AssetPack(BaseModel):
     asset: str
     spot: float
     atr_4h: float | None
+    change_4h_pct: float | None = None  # the move already made, in percent
+    change_24h_pct: float | None = None
+    move_24h_atr: float | None = None  # the same day's move in ATR, signed
     agents: list[AgentView]
     valid_agents: int
     macro_regime: str | None
@@ -74,6 +77,25 @@ class EvidencePack(BaseModel):
     day_pnl_pct: float
     max_hold_hours: int = 168  # the longest a trade may be held; 48 in aggressive mode
     assets: list[AssetPack] = Field(min_length=1)
+
+
+def price_change(
+    session: Session, symbol: str, spot: float, now: datetime, hours: int
+) -> float | None:
+    """Spot minus the 15-minute close ``hours`` ago, in price units; None without data."""
+    then = session.execute(
+        select(Candle.close)
+        .where(
+            Candle.symbol == symbol,
+            Candle.interval == "15",
+            Candle.open_time <= now - timedelta(hours=hours),
+        )
+        .order_by(Candle.open_time.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if then is None or float(then) <= 0 or spot <= 0:
+        return None
+    return spot - float(then)
 
 
 def spot_and_atr(session: Session, symbol: str) -> tuple[float, float | None]:
@@ -137,6 +159,8 @@ def build_pack(
     assets = []
     for asset, outs in outputs.items():
         spot, atr = spot_and_atr(session, symbols[asset])
+        d4 = price_change(session, symbols[asset], spot, now, 4)
+        d24 = price_change(session, symbols[asset], spot, now, 24)
         views = [
             AgentView(
                 agent=o.agent,
@@ -156,6 +180,9 @@ def build_pack(
                 # six significant digits, not six decimals: PEPE's ATR is about 8e-08 and
                 # six decimals turned it into 0.0 for the managers
                 atr_4h=float(f"{atr:.6g}") if atr else None,
+                change_4h_pct=round(d4 / spot * 100, 2) if d4 is not None else None,
+                change_24h_pct=round(d24 / spot * 100, 2) if d24 is not None else None,
+                move_24h_atr=round(d24 / atr, 2) if d24 is not None and atr else None,
                 agents=views,
                 valid_agents=sum(v.valid for v in views),
                 macro_regime=macro_regime,

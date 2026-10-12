@@ -32,7 +32,7 @@ from app.db.models import (
     RiskState,
 )
 from app.decision.consensus import Agreement, Consensus
-from app.decision.evidence import spot_and_atr
+from app.decision.evidence import price_change, spot_and_atr
 from app.decision.pm import Direction, Proposal
 from app.risk import engine
 from app.risk.exposure import betas, track_exposure
@@ -203,6 +203,7 @@ def limits_from_config(cfg: Config) -> engine.Limits:
         day_loss_stop=t.day_loss_stop,
         drawdown_pause=t.drawdown_pause,
         emergency_brake=t.emergency_brake,
+        chase_max_atr=cfg.risk.chase_max_atr,
     )
 
 
@@ -333,10 +334,13 @@ def market_state(
     borrow_rate, collateral_ratio = margin_terms(session, cfg.base_coin(asset))
     spot, atr = spot_and_atr(session, symbol)
     levels = levels_for(session, symbol, Decimal(str(spot))) if spot else ()
+    move = price_change(session, symbol, spot, now, 24)
+    move_atr = Decimal(str(round(move / atr, 2))) if move is not None and atr else None
     return engine.MarketState(
         depth_quote_2pct=depth,
         atr=Decimal(str(atr)) if atr else None,
         levels=levels,
+        move_24h_atr=move_atr,
         depth_truncated=truncated,
         atr_extreme=atr_extreme,
         event_today=event_today(now),

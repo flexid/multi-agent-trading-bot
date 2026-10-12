@@ -137,6 +137,7 @@ EDITABLE: dict[str, tuple[Decimal, Decimal]] = {
     "trading.net_beta_exposure_max": (Decimal("0.5"), Decimal(5)),  # beta-weighted, × equity
     "trading.day_loss_stop": (Decimal("-0.05"), Decimal("-0.005")),
     "trading.depth_cap": (Decimal("0.01"), Decimal("0.1")),
+    "risk.chase_max_atr": (Decimal(0), Decimal(10)),  # 0 = off (v9)
     "budget.api_usd_per_month": (Decimal(50), Decimal(5000)),
     "posting.max_posts_per_day": (Decimal(1), Decimal(100)),
 }

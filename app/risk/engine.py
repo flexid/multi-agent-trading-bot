@@ -59,6 +59,7 @@ class MarketState:
     atr: Decimal | None = None  # ATR(14, 4h); stop placement needs it
     beta: Decimal = Decimal(1)  # 30-day beta to BTC; the correlation cap weighs by it
     levels: tuple[Decimal, ...] = ()  # round numbers and recent swings near the price
+    move_24h_atr: Decimal | None = None  # the last day's move in ATR, signed (up = positive)
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,7 @@ class Limits:
     stop_buffer_atr: Decimal = Decimal("0.5")  # beyond a level, in ATR (tuned by wick-outs)
     hard_stop_atr: Decimal = Decimal(1)  # the touch stop sits this far beyond the soft one
     min_valid_agents: int = 3
+    chase_max_atr: Decimal = Decimal(0)  # block a call that extends a 24h move beyond this; 0 = off
 
 
 @dataclass(frozen=True)
@@ -194,6 +196,19 @@ def assess(
     if acct.trades_today.get(asset, 0) >= lim.max_trades_per_asset_day:
         hits.append(RuleHit("trades_per_day", f"{acct.trades_today[asset]} already today", "block"))
         return Assessment(asset, False, None, hits)
+    if lim.chase_max_atr > 0 and mkt.move_24h_atr is not None:
+        # Chasing (v9): the market already made the move the call is betting on. In a
+        # range that is the top or the bottom; in a trend the pullback gives a better entry.
+        along = mkt.move_24h_atr * (1 if c.direction is Direction.LONG else -1)
+        if along > lim.chase_max_atr:
+            hits.append(
+                RuleHit(
+                    "chasing",
+                    f"{mkt.move_24h_atr:+.1f} ATR in 24h, limit {lim.chase_max_atr:.1f}",
+                    "block",
+                )
+            )
+            return Assessment(asset, False, None, hits)
     p = c.proposal
     assert p.entry_low and p.entry_high and p.stop and p.target and p.max_hold_hours
     entry = Decimal(str((p.entry_low + p.entry_high) / 2))

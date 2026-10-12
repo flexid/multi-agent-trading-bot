@@ -127,6 +127,9 @@ class PostingConfig(_Section):
 
 class RiskConfig(_Section):
     maintenance_margin_rate: Decimal = Decimal("0.03")
+    # No new trade in the direction of a move already larger than this many ATR (14 × 4h)
+    # over the last 24 hours: that is chasing (owner 2026-10-12, logic v9). 0 switches it off.
+    chase_max_atr: Decimal = Field(default=Decimal("2"), ge=0, le=10)
 
 
 class MacroAgentConfig(_Section):

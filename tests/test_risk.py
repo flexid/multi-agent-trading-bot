@@ -383,6 +383,28 @@ def test_aggressive_mode_pushes_risk_and_leverage_inside_hard_bounds() -> None:
     assert aggressive_account(account(leverage_ceiling=D(2)), agg, live=True).leverage_ceiling == 2
 
 
+def test_a_call_that_chases_the_days_move_is_blocked() -> None:
+    """Logic v9 (owner 2026-10-12): no new trade in the direction of a 24-hour move beyond
+    the limit, in ATR. The opposite direction, a smaller move, or the rule switched off
+    (0) all pass; the hit names the move."""
+    lim = limits(chase_max_atr=D(2))
+    late = engine.assess(cons(Direction.LONG), account(), market(move_24h_atr=D("2.6")), lim)
+    assert (
+        not late.allowed and late.hits[-1].rule == "chasing" and "+2.6 ATR" in late.hits[-1].detail
+    )
+    assert engine.assess(
+        cons(Direction.SHORT), account(), market(move_24h_atr=D("2.6")), lim
+    ).allowed
+    assert engine.assess(
+        cons(Direction.LONG), account(), market(move_24h_atr=D("1.9")), lim
+    ).allowed
+    short_late = engine.assess(cons(Direction.SHORT), account(), market(move_24h_atr=D("-3")), lim)
+    assert not short_late.allowed and short_late.hits[-1].rule == "chasing"
+    assert engine.assess(cons(Direction.LONG), account(), market(move_24h_atr=None), lim).allowed
+    off = limits(chase_max_atr=D(0))
+    assert engine.assess(cons(Direction.LONG), account(), market(move_24h_atr=D(5)), off).allowed
+
+
 def test_aggressive_mode_has_no_locks() -> None:
     """Owner 2026-10-11: while the switch is on nothing stops the bot for a loss. A day
     that would close everything, a drawdown that would pause, a loss that would brake and
