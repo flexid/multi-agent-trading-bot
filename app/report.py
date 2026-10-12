@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 from app.config import get_config
 from app.db.models import LLMCall, PaperAccount, Position, SuppressedTrigger, XPostOut, XPostRecord
 from app.db.session import new_session
+from app.site.snapshot import spot_for
 from app.social.templates import holding_text
 
 BRUSSELS = ZoneInfo("Europe/Brussels")
@@ -61,6 +62,18 @@ def main(argv: list[str] | None = None) -> int:
             .where(XPostOut.posted_at >= day, XPostOut.dry_run.is_(False))
         ).scalar_one()
         open_count = sum(1 for r in rows if r.status != "closed")
+        # Open trades have no stored result yet: work it out from the price now (the
+        # executor's live quote, else the last 15-minute close), like the site does.
+        live: dict[int, tuple[Decimal, Decimal, Decimal]] = {}
+        for r in rows:
+            if r.status == "closed" or not r.entry_price:
+                continue
+            spot = spot_for(s, r.symbol, now)
+            if spot is None:
+                continue
+            price = Decimal(str(spot))
+            move = (price / r.entry_price - 1) * (1 if r.direction == "long" else -1)
+            live[r.id] = (price, move, move * r.leverage)
         suppressed = s.scalars(
             select(SuppressedTrigger)
             .where(SuppressedTrigger.ts >= since)
@@ -70,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     stamp = f"{now.astimezone(BRUSSELS):%Y-%m-%d %H:%M}"
     print(f"dorkbot · {stamp} Brussels · primary paper track · last {hours}h")
     print(
-        f"{'asset':8s} {'dir':5s} {'entry':>10s} {'exit':>10s} {'lev':>4s} {'stop':>10s} "
+        f"{'asset':8s} {'dir':5s} {'entry':>10s} {'now/exit':>10s} {'lev':>4s} {'stop':>10s} "
         f"{'target':>10s} {'price':>8s} {'margin':>8s}  {'held':10s} status"
     )
     for r in rows:
@@ -79,10 +92,13 @@ def main(argv: list[str] | None = None) -> int:
             end = r.closed_at or now
             held = holding_text((end - r.opened_at).total_seconds() / 3600)
         status = r.status if r.status != "closed" else f"closed:{r.close_reason}"
+        last, price_pct, margin_pct = live.get(
+            r.id, (r.exit_price, r.pnl_price_pct, r.pnl_margin_pct)
+        )
         print(
-            f"{r.asset:8s} {r.direction:5s} {fmt(r.entry_price):>10s} {fmt(r.exit_price):>10s} "
+            f"{r.asset:8s} {r.direction:5s} {fmt(r.entry_price):>10s} {fmt(last):>10s} "
             f"{r.leverage:>3.1f}x {fmt(r.stop):>10s} {fmt(r.target):>10s} "
-            f"{pct(r.pnl_price_pct):>8s} {pct(r.pnl_margin_pct):>8s}  {held:10s} {status}"
+            f"{pct(price_pct):>8s} {pct(margin_pct):>8s}  {held:10s} {status}"
         )
     if not rows:
         print("  no trades in the window")
