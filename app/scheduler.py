@@ -201,6 +201,11 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
         id="site_live",
         max_instances=1,
         coalesce=True,
+        misfire_grace_time=10,
+    )
+    # Four runs a minute would bury the log: keep only this job's warnings.
+    logging.getLogger("apscheduler.executors.default").addFilter(
+        lambda r: r.levelno > logging.INFO or "live_job" not in r.getMessage()
     )
     scheduler.start()
     log.info("scheduler started with %d jobs", len(scheduler.get_jobs()))
