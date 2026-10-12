@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from app.config import Config, Secrets, get_config, get_secrets
 from app.data import fetch
@@ -194,6 +195,13 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
         max_instances=1,
         coalesce=True,
     )
+    scheduler.add_job(
+        live_job,
+        IntervalTrigger(seconds=cfg.site.live_interval_seconds),
+        id="site_live",
+        max_instances=1,
+        coalesce=True,
+    )
     scheduler.start()
     log.info("scheduler started with %d jobs", len(scheduler.get_jobs()))
     await run_all(cfg, secrets)  # fill the tables right away
@@ -207,6 +215,15 @@ async def publish_job() -> None:
         await asyncio.to_thread(publish)
     except Exception as exc:  # the site is never a reason to stop trading
         log.warning("site snapshot failed: %s", exc)
+
+
+async def live_job() -> None:
+    from app.site.publish import publish_live
+
+    try:
+        await asyncio.to_thread(publish_live)
+    except Exception as exc:  # the site is never a reason to stop trading
+        log.warning("live feed failed: %s", exc)
 
 
 async def ops_job(kind: str, cfg: Config) -> None:

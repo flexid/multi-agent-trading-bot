@@ -155,6 +155,7 @@ class SiteConfig(_Section):
     public_domain: str = "dorkbot.dev"
     admin_domain: str = "admin.dorkbot.dev"
     snapshot_interval_minutes: int = 5
+    live_interval_seconds: int = Field(default=15, ge=5, le=300)  # open trades, price now
 
 
 class BudgetConfig(_Section):

@@ -412,7 +412,21 @@ def _p_open(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> d
         .where(Position.status.in_(["open", "closing"]))
         .order_by(Position.opened_at)
     ).all()
-    return {"open_pos": rows}
+    from app.site.snapshot import spot_for
+
+    live: dict[int, dict[str, Any]] = {}
+    for p in rows:
+        spot = spot_for(s, p.symbol, now)
+        if not spot or not p.entry_price:
+            continue
+        move = (spot / float(p.entry_price) - 1) * (1 if p.direction == "long" else -1)
+        live[p.id] = {
+            "price": spot,
+            "price_pct": move * 100,
+            "margin_pct": move * float(p.leverage) * 100,
+            "usdt": move * float(p.notional),
+        }
+    return {"open_pos": rows, "open_live": live}
 
 
 def _p_closed(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:

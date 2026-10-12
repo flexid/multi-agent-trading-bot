@@ -13,10 +13,12 @@ import io
 import json
 import logging
 import sys
+import time
 from pathlib import Path
+from typing import Any
 
 from app.config import get_secrets
-from app.site.snapshot import OUT, Snapshot, build, verify
+from app.site.snapshot import OUT, Snapshot, build, build_live, verify, verify_dict
 
 log = logging.getLogger("publish")
 
@@ -78,29 +80,70 @@ def og_image(snap: Snapshot) -> bytes:
     return buf.getvalue()
 
 
-def push_r2(objects: dict[str, tuple[bytes, str]], bucket: str | None = None) -> bool:
+_client: Any = None
+
+
+def _r2() -> Any:
+    """One client for the process: the live feed pushes every fifteen seconds."""
+    global _client
+    if _client is None:
+        import boto3
+
+        s = get_secrets()
+        _client = boto3.client(
+            "s3",
+            endpoint_url=f"https://{s.cloudflare_account_id}.r2.cloudflarestorage.com",
+            aws_access_key_id=s.r2_access_key_id.get_secret_value(),
+            aws_secret_access_key=s.r2_secret_access_key.get_secret_value(),
+            region_name="auto",
+        )
+    return _client
+
+
+def push_r2(
+    objects: dict[str, tuple[bytes, str]], bucket: str | None = None, max_age: int = 60
+) -> bool:
     s = get_secrets()
     bucket = bucket or s.r2_bucket
     if not (s.cloudflare_account_id and s.r2_access_key_id.get_secret_value() and bucket):
         return False
-    import boto3
-
-    client = boto3.client(
-        "s3",
-        endpoint_url=f"https://{s.cloudflare_account_id}.r2.cloudflarestorage.com",
-        aws_access_key_id=s.r2_access_key_id.get_secret_value(),
-        aws_secret_access_key=s.r2_secret_access_key.get_secret_value(),
-        region_name="auto",
-    )
+    client = _r2()
     for key, (body, ctype) in objects.items():
         client.put_object(
             Bucket=bucket,
             Key=key,
             Body=body,
             ContentType=ctype,
-            CacheControl="public, max-age=60",
+            CacheControl=f"public, max-age={max_age}",
         )
     return True
+
+
+LIVE_MAX_AGE_S = 5  # the page asks every fifteen seconds
+LIVE_IDLE_PUSH_S = 300  # with nothing changed, still refresh the file this often
+_last_live: tuple[str, float] = ("", 0.0)
+
+
+def publish_live(push: bool = True) -> bool:
+    """The fast feed: the open trades with the price now, as ``live.json``. Same
+    whitelist as the snapshot. Returns whether it was pushed."""
+    global _last_live
+    live = build_live()
+    payload = live.model_dump(mode="json")
+    problems = verify_dict(payload)
+    if problems:
+        raise RuntimeError("live feed failed the whitelist: " + "; ".join(problems[:5]))
+    data = json.dumps(payload).encode()
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.with_name("live.json").write_bytes(data)
+    content = json.dumps({k: v for k, v in payload.items() if k != "generated_at"})
+    stamp = time.monotonic()
+    if content == _last_live[0] and stamp - _last_live[1] < LIVE_IDLE_PUSH_S:
+        return False  # nothing open and nothing new: no write to R2
+    pushed = push and push_r2({"live.json": (data, "application/json")}, max_age=LIVE_MAX_AGE_S)
+    if pushed:
+        _last_live = (content, stamp)
+    return pushed
 
 
 def publish(push: bool = True) -> Snapshot:

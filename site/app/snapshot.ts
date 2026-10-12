@@ -2,7 +2,7 @@ export type Snapshot = {
   generated_at: string; mode: "shadow" | "live"; handle: string; heartbeat_ok: boolean;
   performance: { since: string; bot_pct: number; btc_hold_pct: number; basket_pct: number; drawdown_pct: number; equity_curve: number[][]; equity_recent: number[][]; btc_curve: number[][]; basket_curve: number[][] };
   stats: { trades: number; win_rate_pct: number | null; profit_factor: number | null; avg_holding: string | null };
-  open_trades: { asset: string; cashtag: string; direction: string; entry: number; leverage: number; stop: number; target: number; time_in_trade: string; unrealized_price_pct: number; unrealized_margin_pct: number; paper: boolean }[];
+  open_trades: { asset: string; cashtag: string; direction: string; entry: number; leverage: number; stop: number; target: number; time_in_trade: string; unrealized_price_pct: number; unrealized_margin_pct: number; paper: boolean; price?: number | null }[];
   closed_trades: { asset: string; cashtag: string; direction: string; entry: number; exit: number; leverage: number; price_pct: number; margin_pct: number; holding: string; opened_at: string; closed_at: string; x_url: string | null; paper: boolean }[];
   assets: { asset: string; cashtag: string; agents: { agent: string; score: number; confidence: number; valid: boolean; reasons: string[] }[]; pm_claude: string | null; pm_gpt: string | null; pm_grok?: string | null; consensus: string; consensus_score: number | null; formula_score: number | null; reason: string; macro_regime: string | null; coupling: number | null; macro_tradfi: number | null; macro_native: number | null }[];
   leaderboard: { name: string; kind: string; ic_1d: number | null; sample: number }[];
@@ -18,6 +18,19 @@ export async function loadSnapshot(): Promise<Snapshot | null> {
   try {
     const r = await fetch(`${SNAPSHOT_URL}?t=${Math.floor(Date.now() / 60000)}`, { cache: "no-store" });
     return r.ok ? ((await r.json()) as Snapshot) : null;
+  } catch {
+    return null;
+  }
+}
+
+export type Live = { generated_at: string; mode: string; open_trades: Snapshot["open_trades"] };
+export const LIVE_URL = SNAPSHOT_URL.replace(/snapshot\.json$/, "live.json");
+
+// The fast feed: open trades with the price now, refreshed by the backend every 15 seconds.
+export async function loadLive(): Promise<Live | null> {
+  try {
+    const r = await fetch(`${LIVE_URL}?t=${Math.floor(Date.now() / 5000)}`, { cache: "no-store" });
+    return r.ok ? ((await r.json()) as Live) : null;
   } catch {
     return null;
   }

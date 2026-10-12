@@ -86,6 +86,7 @@ class OpenTrade(_Strict):
     unrealized_price_pct: float
     unrealized_margin_pct: float
     paper: bool
+    price: float | None = None  # the price now
 
 
 class ClosedTrade(_Strict):
@@ -378,43 +379,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
                 )
             ).all()
         }
-        open_rows = s.scalars(
-            select(Position).where(
-                Position.track == _record_track(s), Position.status.in_(["open", "closing"])
-            )
-        ).all()
-        open_trades = []
-        for p in open_rows:
-            # The site is the record of every trade on the storyline track; the X post is
-            # the story and may lag or be blocked by the whitelist (owner, 2026-10-09).
-            spot = s.execute(
-                select(Candle.close)
-                .where(Candle.symbol == p.symbol, Candle.interval == "15")
-                .order_by(Candle.open_time.desc())
-                .limit(1)
-            ).scalar_one_or_none()
-            price_pct = (
-                ((float(spot) / float(p.entry_price) - 1) * (1 if p.direction == "long" else -1))
-                if spot and p.entry_price
-                else 0.0
-            )
-            open_trades.append(
-                OpenTrade(
-                    asset=p.asset,
-                    cashtag=tags.get(p.asset, f"${p.asset}"),
-                    direction=p.direction,
-                    entry=_f(p.entry_price),
-                    leverage=_f(p.leverage, 1),
-                    stop=_f(p.stop),
-                    target=_f(p.target),
-                    time_in_trade=holding_text((now - p.opened_at).total_seconds() / 3600)
-                    if p.opened_at
-                    else "",
-                    unrealized_price_pct=round(price_pct * 100, 2),
-                    unrealized_margin_pct=round(price_pct * float(p.leverage) * 100, 2),
-                    paper=p.mode == "paper",
-                )
-            )
+        open_trades = open_trades_view(s, cfg, now)
         base_capital = float(acct.starting_capital) if acct and acct.starting_capital else 0.0
         sleeve_views = []
         if cfg.sleeves:
@@ -595,6 +560,84 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         heartbeat_ok=bool(hb and now - hb < timedelta(minutes=5)),
         handle=cfg.posting.handle,
     )
+
+
+MARK_MAX_AGE_S = 120  # an older quote is not "now": fall back to the last candle
+
+
+def spot_for(s: Any, symbol: str, now: datetime) -> float | None:
+    """The price now: the executor's latest quote when it is fresh, else the last
+    15-minute close."""
+    from app.db.models import Mark
+
+    mark = s.get(Mark, symbol)
+    if mark is not None and (now - mark.ts).total_seconds() <= MARK_MAX_AGE_S:
+        return float((mark.bid + mark.ask) / 2)
+    close = s.execute(
+        select(Candle.close)
+        .where(Candle.symbol == symbol, Candle.interval == "15")
+        .order_by(Candle.open_time.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    return float(close) if close is not None else None
+
+
+def open_trades_view(s: Any, cfg: Config, now: datetime) -> list[OpenTrade]:
+    """The open trades of the storyline track with the price now and the result so far.
+    The site is the record of every trade on that track; the X post is the story and may
+    lag or be blocked by the whitelist (owner, 2026-10-09)."""
+    tags = cfg.posting.cashtags
+    rows = s.scalars(
+        select(Position)
+        .where(Position.track == _record_track(s), Position.status.in_(["open", "closing"]))
+        .order_by(Position.opened_at)
+    ).all()
+    out = []
+    for p in rows:
+        spot = spot_for(s, p.symbol, now)
+        price_pct = (
+            ((spot / float(p.entry_price) - 1) * (1 if p.direction == "long" else -1))
+            if spot and p.entry_price
+            else 0.0
+        )
+        out.append(
+            OpenTrade(
+                asset=p.asset,
+                cashtag=tags.get(p.asset, f"${p.asset}"),
+                direction=p.direction,
+                entry=_f(p.entry_price),
+                leverage=_f(p.leverage, 1),
+                stop=_f(p.stop),
+                target=_f(p.target),
+                time_in_trade=holding_text((now - p.opened_at).total_seconds() / 3600)
+                if p.opened_at
+                else "",
+                unrealized_price_pct=round(price_pct * 100, 2),
+                unrealized_margin_pct=round(price_pct * float(p.leverage) * 100, 2),
+                paper=p.mode == "paper",
+                price=spot,
+            )
+        )
+    return out
+
+
+class LiveView(_Strict):
+    """The fast part of the public data, published every fifteen seconds."""
+
+    generated_at: datetime
+    mode: str
+    open_trades: list[OpenTrade]
+
+
+def build_live(now: datetime | None = None) -> LiveView:
+    now = now or datetime.now(UTC)
+    cfg = get_config()
+    with new_session() as s:
+        return LiveView(
+            generated_at=now,
+            mode="live" if _is_live(s) else "shadow",
+            open_trades=open_trades_view(s, cfg, now),
+        )
 
 
 def verify(snapshot: Snapshot) -> list[str]:

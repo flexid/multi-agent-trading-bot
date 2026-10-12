@@ -657,6 +657,19 @@ class Executor:
                 "placed. The bot's own stop is active; the executor retries every pass.",
             )
 
+    def store_marks(self, session: Session, now: datetime) -> None:
+        """The latest quote per symbol into ``marks``, for the live feed. Never lets a
+        write problem reach the trading loop."""
+        from app.db.models import Mark
+
+        try:
+            for symbol, quote in self.quotes.items():
+                session.merge(Mark(symbol=symbol, bid=quote.bid, ask=quote.ask, ts=quote.ts))
+            session.commit()
+        except Exception:
+            session.rollback()
+            log.exception("could not store marks")
+
     async def cancel_orphan_backups(self, session: Session, now: datetime) -> int:
         """Cancel backup stops on the exchange that no open position owns.
 
@@ -1145,6 +1158,7 @@ class Executor:
             close_all = self.risk_close_all(session, now)
             await self.manage_open(session, now, kill, close_all)
             await self.cancel_orphan_backups(session, now)
+            self.store_marks(session, now)
             if not close_all:
                 await self.open_new(session, now)
             self.snapshot(session, now)

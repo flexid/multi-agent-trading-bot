@@ -375,3 +375,13 @@ Owner: his own stops are mostly further away. In aggressive mode every stop is m
 
 The pilot followed every approved plan but sized each position at 20% of its 185 USDT, so five positions filled it and the rest were skipped as "out of funds". Its slot is now a share of the asset's sleeve, like the paper book: 14% of the pilot's capital for a bluechip (about 26 USDT) and 6% for an alt (about 11 USDT), so all ten can be open at once. Still 1x and still the pilot's own fixed capital, also in aggressive mode: its job is to test fills, slippage and borrowing with real money, not to chase the return.
 
+
+## 2026-10-12 · Live actuals: open trades with the price now, every 15 seconds
+
+Owner: the site should show the live figures from the backend, not a five-minute-old picture. Until now an open trade's result was computed from the last 15-minute candle close and published with the five-minute snapshot, so it could be twenty minutes behind.
+
+- The executor writes its latest quote per symbol to a new `marks` table on every pass (about ten seconds), stamped with the quote's own time. Nothing decides on this table; it only feeds displays.
+- "Price now" is the mid of that quote when it is at most two minutes old, else the last 15-minute close (the executor is down or the feed is stale).
+- A scheduler job publishes `live.json` to R2 every `site.live_interval_seconds` (15): mode plus the open trades of the storyline track with price now and the result in price and on margin. It passes the same whitelist as the snapshot (no sizes, no amounts) and is cached for five seconds. With nothing open and nothing changed it writes at most once per five minutes.
+- The site polls it every 15 seconds while the tab is visible and uses it for the open-trades table whenever it is newer than the snapshot; the table gained a "now" column. Everything else on the site stays on the five-minute snapshot.
+- The admin's open-positions table shows price now, result in price and on margin, and the result in USDT before fees, for all tracks, and refreshes itself every 15 seconds.

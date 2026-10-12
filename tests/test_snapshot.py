@@ -130,3 +130,78 @@ def test_only_the_soft_stop_is_public() -> None:
     from app.social.templates import TradeFacts
 
     assert "hard_stop" not in TradeFacts.__dataclass_fields__
+
+
+class _FakeSession:
+    """Stands in for a session: ``get`` returns the mark, ``execute`` the last candle close."""
+
+    def __init__(self, mark: object | None, close: float | None) -> None:
+        self.mark, self.close = mark, close
+
+    def get(self, _model: object, _key: str) -> object | None:
+        return self.mark
+
+    def execute(self, _stmt: object) -> "_FakeSession":
+        return self
+
+    def scalar_one_or_none(self) -> float | None:
+        return self.close
+
+
+def test_price_now_prefers_a_fresh_quote_over_the_candle() -> None:
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from app.db.models import Mark
+
+    now = datetime(2026, 10, 12, 1, 0, tzinfo=UTC)
+    fresh = Mark(symbol="BTCUSDT", bid=Decimal("100"), ask=Decimal("102"), ts=now)
+    assert snap.spot_for(_FakeSession(fresh, 90.0), "BTCUSDT", now) == 101.0
+    # A quote older than two minutes is not "now": the executor is down, use the candle.
+    stale = Mark(
+        symbol="BTCUSDT",
+        bid=Decimal("100"),
+        ask=Decimal("102"),
+        ts=now - timedelta(seconds=snap.MARK_MAX_AGE_S + 1),
+    )
+    assert snap.spot_for(_FakeSession(stale, 90.0), "BTCUSDT", now) == 90.0
+    assert snap.spot_for(_FakeSession(None, None), "BTCUSDT", now) is None
+
+
+def test_live_feed_passes_the_whitelist() -> None:
+    trade = minimal().open_trades[0].model_copy(update={"price": 74.4})
+    live = snap.LiveView(
+        generated_at=datetime(2026, 10, 12, tzinfo=UTC), mode="shadow", open_trades=[trade]
+    )
+    assert snap.verify_dict(live.model_dump(mode="json")) == []
+    with pytest.raises(ValidationError):
+        snap.LiveView.model_validate({**live.model_dump(), "margin": 5})
+
+
+def test_live_feed_is_not_pushed_when_nothing_changed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    from pathlib import Path
+
+    from app.site import publish
+
+    pushes: list[int] = []
+    views = iter(
+        snap.LiveView(
+            generated_at=datetime(2026, 10, 12, 0, 0, i, tzinfo=UTC), mode="shadow", open_trades=[]
+        )
+        for i in range(3)
+    )
+    monkeypatch.setattr(publish, "build_live", lambda: next(views))
+    monkeypatch.setattr(publish, "OUT", Path(str(tmp_path)) / "snapshot.json")
+    monkeypatch.setattr(publish, "_last_live", ("", 0.0))
+
+    def fake_push(objects: dict[str, tuple[bytes, str]], max_age: int = 60) -> bool:
+        assert list(objects) == ["live.json"] and max_age == publish.LIVE_MAX_AGE_S
+        pushes.append(1)
+        return True
+
+    monkeypatch.setattr(publish, "push_r2", fake_push)
+    assert publish.publish_live() is True
+    assert publish.publish_live() is False  # same content, only the timestamp moved
+    assert len(pushes) == 1

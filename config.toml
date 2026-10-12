@@ -137,6 +137,7 @@ reads_per_cycle_max = 130       # cap per 4h cycle; with Djaf's 30, six cycles â
 public_domain = "dorkbot.dev"
 admin_domain = "admin.dorkbot.dev"
 snapshot_interval_minutes = 5   # sanitized JSON pushed to Cloudflare for the public site
+live_interval_seconds = 15      # open trades with the price now (live.json)
 
 [server]                        # the DigitalOcean droplet (owner 2026-10-10); metrics on the admin's System page
 droplet_id = 607481266

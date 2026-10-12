@@ -244,6 +244,18 @@ class ServerMetric(Base):
     info: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # droplet facts, newest row
 
 
+class Mark(Base):
+    """The executor's latest quote per symbol, refreshed on every pass (about ten seconds).
+    The live feed for the site and the admin reads it; nothing decides on it."""
+
+    __tablename__ = "marks"
+
+    symbol: Mapped[str] = mapped_column(String(20), primary_key=True)
+    bid: Mapped[Decimal]
+    ask: Mapped[Decimal]
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class OptimaRun(Base):
     """One run of Optima, the read-only cost and execution adviser (owner 2026-10-10):
     the facts computed in code, the model's validated report, its cost. Admin and memo

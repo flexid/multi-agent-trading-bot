@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { DetailOverlay, EquityChart } from "./charts";
-import { cls, loadSnapshot, monthYear, num, pct, tick, type Snapshot } from "./snapshot";
+import { cls, loadLive, loadSnapshot, monthYear, num, pct, tick, type Live, type Snapshot } from "./snapshot";
 
 /** "long" in green, "short" in red, everywhere they appear. */
 function Side({ d }: { d: string }) {
@@ -56,9 +56,16 @@ export default function Page() {
   const [all, setAll] = useState(false);
   const [best, setBest] = useState<"wins" | "losses">("wins");
   useEffect(() => { loadSnapshot().then(setS); const t = setInterval(() => loadSnapshot().then(setS), 300000); return () => clearInterval(t); }, []);
+  const [live, setLive] = useState<Live | null>(null);
+  useEffect(() => {
+    const pull = () => { if (!document.hidden) loadLive().then((l) => l && setLive(l)); };
+    pull(); const t = setInterval(pull, 15000); return () => clearInterval(t);
+  }, []);
   if (s === undefined) return <p className="muted">Loading…</p>;
   if (s === null) return <p className="muted">No data right now. The bot pushes a snapshot every five minutes; this one hasn&apos;t arrived.</p>;
   const p = s.performance, st = s.stats;
+  // The live feed is newer than the five-minute snapshot whenever the backend is up.
+  const openTrades = live && Date.parse(live.generated_at) > Date.parse(s.generated_at) ? live.open_trades : s.open_trades;
   return (
     <>
       <h1><span className={`badge ${s.mode === "live" ? "neon" : ""}`}>{s.mode}</span>{!s.heartbeat_ok && <span className="badge">stale</span>}</h1>
@@ -94,10 +101,10 @@ export default function Page() {
         <div className="tile"><div className="k">avg holding</div><div className="v">{st.avg_holding ?? "–"}</div></div>
       </div>
       <section className="panel">
-      <h2>Open trades{allPaper(s.open_trades) && <span className="badge right">paper</span>}</h2>
-      {s.open_trades.length === 0 ? <p className="muted">Nothing open right now.</p> : (
-        <div className="scroll-x"><table className="trades"><thead><tr><th>asset</th><th>side</th><th>entry</th><th>lev</th><th>stop</th><th>target</th><th>in trade</th><th>price</th><th>margin</th></tr></thead><tbody>
-          {s.open_trades.map((t, i) => <tr key={i}><td>{tick(t.cashtag)}{!allPaper(s.open_trades) && t.paper && <span className="badge">paper</span>}</td><td><Side d={t.direction} /></td><td className="mono">{num(t.entry)}</td><td>{t.leverage}x</td><td className="mono">{num(t.stop)}</td><td className="mono">{num(t.target)}</td><td>{t.time_in_trade}</td><td className={cls(t.unrealized_price_pct)}>{pct(t.unrealized_price_pct)}</td><td className={cls(t.unrealized_margin_pct)}>{pct(t.unrealized_margin_pct)}</td></tr>)}
+      <h2>Open trades{allPaper(openTrades) && <span className="badge right">paper</span>}</h2>
+      {openTrades.length === 0 ? <p className="muted">Nothing open right now.</p> : (
+        <div className="scroll-x"><table className="trades"><thead><tr><th>asset</th><th>side</th><th>entry</th><th>lev</th><th>stop</th><th>target</th><th>in trade</th><th>now</th><th>price</th><th>margin</th></tr></thead><tbody>
+          {openTrades.map((t, i) => <tr key={i}><td>{tick(t.cashtag)}{!allPaper(openTrades) && t.paper && <span className="badge">paper</span>}</td><td><Side d={t.direction} /></td><td className="mono">{num(t.entry)}</td><td>{t.leverage}x</td><td className="mono">{num(t.stop)}</td><td className="mono">{num(t.target)}</td><td>{t.time_in_trade}</td><td className="mono">{t.price == null ? "–" : num(t.price)}</td><td className={cls(t.unrealized_price_pct)}>{pct(t.unrealized_price_pct)}</td><td className={cls(t.unrealized_margin_pct)}>{pct(t.unrealized_margin_pct)}</td></tr>)}
         </tbody></table></div>
       )}
       </section>
