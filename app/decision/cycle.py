@@ -466,6 +466,7 @@ def main(argv: list[str] | None = None) -> int:
             trigger=args.trigger,
             x_fetch=not args.no_x_fetch,
             vision=not args.no_vision,
+            light=args.light,
             alt=not args.no_alt,
         )
     )
