@@ -411,3 +411,7 @@ Owner: when the 1% is banked and the next cycle is hours away, keep going. Banki
 ## 2026-10-12 · Aggressive mode: holding limit 48 hours instead of 24
 
 Owner: the 24-hour limit was wishful thinking. Targets come off the 4-hour chart and stops have 1.5 times more room in this mode, so most trades would reach neither end within a day and be closed in the middle with both fees paid. The day goal (1% on the ledger) now banks profit, so the limit only has to cut trades that go nowhere. `aggressive.max_hold_hours` is 48. It applies to trades opened from now on: the limit is stored on each position at entry, and the four trades open at the change keep their 24 hours.
+
+## 2026-10-12 · A "hold" command lengthens the limit of open trades
+
+Owner: the four trades open when the limit went to 48 hours should get it too. The limit sits on each position and only the executor changes a running trade, so there is a new control request next to kill, pause and resume: `python -m app.control hold --hours 48`. The executor applies it on its next pass to every open position whose limit is shorter. It never shortens a limit and accepts 1 to 168 hours. Stops, targets and the day goal are untouched.

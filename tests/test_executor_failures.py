@@ -385,6 +385,36 @@ async def test_aggressive_mode_banks_a_trade_at_its_share_of_the_goal(db: None) 
 
 
 @needs_db
+async def test_hold_command_lengthens_open_trades_and_never_shortens(db: None) -> None:
+    """The owner's "hold" command (2026-10-12): the executor itself raises the holding limit
+    of the open trades; a smaller number changes nothing and nonsense is rejected."""
+    from app.db.session import new_session
+
+    seed_decision()
+    ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+    await ex.tick()
+    before = positions()[0].max_hold_hours
+
+    async def hold(hours: str) -> str | None:
+        with new_session() as s:
+            s.add(ControlRequest(ts=NOW, kind="hold", source="cli", reason=hours))
+            s.commit()
+        await ex.tick()
+        with new_session() as s:
+            last = s.scalars(select(ControlRequest).order_by(ControlRequest.id.desc())).first()
+            return last.result if last else None
+
+    result = await hold(str(before + 24))
+    assert result is not None and result.endswith(f"held {before + 24} hours")
+    assert {p.max_hold_hours for p in positions() + positions("max")} == {before + 24}
+    await hold("1")  # shorter: nothing changes
+    assert positions()[0].max_hold_hours == before + 24
+    assert (await hold("999") or "").startswith("rejected")
+    assert (await hold("soon") or "").startswith("rejected")
+    assert positions()[0].status == "open" and not ex.frozen
+
+
+@needs_db
 async def test_aggressive_mode_banks_the_whole_ledger_at_the_day_goal(db: None) -> None:
     """The day goal (owner 2026-10-12): the 1% is measured on the ledger for the day, not on
     one trade. A ledger already up most of the way closes its open trade as soon as the

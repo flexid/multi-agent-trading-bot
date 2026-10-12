@@ -521,7 +521,7 @@ class ControlRequest(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    kind: Mapped[str] = mapped_column(String(12))  # kill | pause | resume
+    kind: Mapped[str] = mapped_column(String(12))  # kill | pause | resume | hold | cycle
     source: Mapped[str] = mapped_column(String(20))
     reason: Mapped[str | None] = mapped_column(Text)
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

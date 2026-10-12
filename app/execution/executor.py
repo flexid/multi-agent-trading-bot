@@ -329,9 +329,29 @@ class Executor:
                     state.emergency_brake, state.brake_reason = False, None
                     state.paused_until = None
                 req.result = "resumed"
+            elif req.kind == "hold":
+                req.result = self._extend_holds(session, req.reason)
             req.applied_at = now
         session.commit()
         return kill
+
+    @staticmethod
+    def _extend_holds(session: Session, hours_text: str | None) -> str:
+        """The owner's "hold" command: open trades may be held up to this many hours from
+        their entry. It only ever lengthens a limit, and never past a week (the bound the
+        managers' proposals have)."""
+        try:
+            hours = int(hours_text or "")
+        except ValueError:
+            return "rejected: hours must be a whole number"
+        if not 1 <= hours <= 168:
+            return "rejected: hours must be between 1 and 168"
+        rows = session.scalars(
+            select(Position).where(Position.status == "open", Position.max_hold_hours < hours)
+        ).all()
+        for row in rows:
+            row.max_hold_hours = hours
+        return f"{len(rows)} open position(s) may now be held {hours} hours"
 
     def apply_param_changes(self, session: Session, now: datetime) -> None:
         """Parameter changes requested from the admin, re-checked against the hard bounds
