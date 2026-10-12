@@ -424,3 +424,9 @@ Owner, after three days of record (main book -5.9%, the inverse book +3.2%, BTC 
 - The evidence pack carries the 4-hour and 24-hour change in percent and the day's move in ATR for every asset, and the manager prompt (v9) says not to chase and to put the entry at a pullback when the move is already made.
 - On the record, the rule would have blocked the ENA long of 11 October and the SOL long of 12 October (together -188 USDT), five of the open longs of 12 October, and the SOL short of this afternoon. It would not have blocked the shorts of 9 October, which came after moves of under 2 ATR and lost on the bounce: that was a different error, and this rule is not a cure for the hit rate.
 - A threshold rather than a ban: in a trend the dump does not come, and a bot that fades every rise bleeds the other way. 2 ATR is a starting point for the owner to tune.
+
+## 2026-10-12 · Aggressive mode: a single trade is banked at 2% on its margin
+
+Owner: SOL and DOGE shorts were up 2.5% and 1.1% on margin and nothing would close them before their targets (12% on margin), the day goal (the book was down on the day) or the 48-hour limit. "Look at 1-3% based on a single trade and then close it." `aggressive.take_profit_trade_pct` (0.02): a trade is closed once its net profit, the closing fee taken off, is 2% of the margin put in. Checked every ten seconds, so it fills at or a little above. The day goal and the one-trade share of it stay; whichever comes first. Editable on the admin's Parameters page; 0 switches it off.
+
+Said once: with the stops where the managers put them (SOL's is 9.5% below the entry on margin) a 2% take wins a quarter of what a stop loses, so the rule needs about four wins in five to break even. The record so far is one in four. The stops are the other half of that sum and are unchanged.

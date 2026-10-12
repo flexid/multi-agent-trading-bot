@@ -448,7 +448,18 @@ class Executor:
                 exit_fee = (
                     quote.mid * pos.qty * TAKER_FEE.get(self.cfg.exchange.quote, Decimal("0.001"))
                 )
-                if goal > 0 and sim.unrealized(pos, quote) - exit_fee >= goal:
+                net = sim.unrealized(pos, quote) - exit_fee
+                if goal > 0 and net >= goal:
+                    reason = ExitReason.TAKE_PROFIT
+                # ... or once the trade alone is up its share of the margin put in (owner
+                # 2026-10-12: "1-3% on a single trade, then close it").
+                per_trade = self.cfg.aggressive.take_profit_trade_pct
+                if (
+                    reason is None
+                    and per_trade > 0
+                    and row.margin > 0
+                    and net / row.margin >= per_trade
+                ):
                     reason = ExitReason.TAKE_PROFIT
             if reason is None and row.status == "closing":
                 reason = ExitReason(row.close_reason or "risk")  # retry a pending exit

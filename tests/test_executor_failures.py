@@ -415,6 +415,50 @@ async def test_hold_command_lengthens_open_trades_and_never_shortens(db: None) -
 
 
 @needs_db
+async def test_aggressive_mode_banks_a_single_trade_at_its_margin_return(db: None) -> None:
+    """Owner 2026-10-12: a trade is closed on its own once it is 2% up on its margin, net
+    of the closing fee; at 1.5% it stays open. The book as a whole is nowhere near its goal."""
+    from app.config import get_config as cfg_
+    from app.db.models import RiskState
+    from app.db.session import new_session
+
+    seed_decision(stop="98", target="130")
+    ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+    await ex.tick()
+    (pos,) = [p for p in positions() if p.track == "primary"]
+    assert pos.entry_price is not None and pos.leverage >= 1
+    level = cfg_().aggressive.take_profit_trade_pct
+    assert level == D("0.02")
+    with new_session() as s:
+        state = s.get(RiskState, 1) or RiskState(id=1, leverage_ceiling=D(2))
+        state.aggressive = True
+        s.merge(state)
+        s.commit()
+    try:
+        symbol = get_config().symbol(ASSET)
+        fees_pct = pos.fees * 2 / pos.notional  # entry fee paid, exit fee to come
+        # the return on margin is the price move times the leverage, after both fees
+        moves = (
+            (D("0.015") / pos.leverage + fees_pct, "open"),
+            (D("0.021") / pos.leverage + fees_pct, "closed"),
+        )
+        for move, expect in moves:
+            up = pos.entry_price * (1 + move)
+            ex.quotes[symbol] = quote(str(up), str(up + D("0.01")))
+            await ex.tick()
+            (cur,) = [p for p in positions() if p.track == "primary"]
+            assert cur.status == expect, move
+        assert cur.close_reason == "take_profit"
+        assert cur.pnl is not None and cur.pnl / pos.margin >= level
+    finally:
+        with new_session() as s:
+            cur_state = s.get(RiskState, 1)
+            if cur_state is not None:
+                cur_state.aggressive = False
+                s.commit()
+
+
+@needs_db
 async def test_aggressive_mode_banks_the_whole_ledger_at_the_day_goal(db: None) -> None:
     """The day goal (owner 2026-10-12): the 1% is measured on the ledger for the day, not on
     one trade. A ledger already up most of the way closes its open trade as soon as the

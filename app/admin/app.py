@@ -138,6 +138,7 @@ EDITABLE: dict[str, tuple[Decimal, Decimal]] = {
     "trading.day_loss_stop": (Decimal("-0.05"), Decimal("-0.005")),
     "trading.depth_cap": (Decimal("0.01"), Decimal("0.1")),
     "risk.chase_max_atr": (Decimal(0), Decimal(10)),  # 0 = off (v9)
+    "aggressive.take_profit_trade_pct": (Decimal(0), Decimal("0.5")),  # on margin, net; 0 = off
     "budget.api_usd_per_month": (Decimal(50), Decimal(5000)),
     "posting.max_posts_per_day": (Decimal(1), Decimal(100)),
 }
@@ -1308,6 +1309,7 @@ def aggressive_view(cfg: Config, state: RiskState | None) -> dict[str, Any]:
         "risk_cap": RISK_HARD_MAX,
         "take_profit": agg.take_profit_equity_pct,
         "goal_gap": agg.goal_cycle_min_gap_minutes,
+        "take_trade": agg.take_profit_trade_pct,
         "stop_room": agg.stop_room,
     }
 

@@ -94,6 +94,9 @@ class AggressiveConfig(_Section):
     # this share of the ledger's equity. Checked every ten seconds, so it fills at or a
     # little above it ("between 1 and 2% net").
     take_profit_equity_pct: Decimal = Decimal("0.01")
+    # Close a single trade once its net profit, the closing fee taken off, reaches this
+    # share of the margin put in (owner 2026-10-12: "1-3% on a single trade"). 0 = off.
+    take_profit_trade_pct: Decimal = Field(default=Decimal("0.02"), ge=0, le=Decimal("0.5"))
 
 
 class PilotConfig(_Section):
