@@ -39,6 +39,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Config, Secrets, get_config, get_secrets
 from app.db.models import (
+    Candle,
     ControlRequest,
     DecisionRecord,
     EquitySnapshot,
@@ -435,6 +436,8 @@ class Executor:
             )
             if reason is None and (close_all or self._sleeve_locked(row, now)):
                 reason = ExitReason.RISK
+            if reason is None and not fast and self._shock_against(session, row, quote, now):
+                reason = ExitReason.SHOCK
             if reason is None and row.track in goal_reached:
                 reason = ExitReason.TAKE_PROFIT  # the ledger made its day goal: bank it all
             if reason is None and take_profit is not None:
@@ -648,6 +651,60 @@ class Executor:
                     len(mine),
                 )
         return reached
+
+    SHOCK_WINDOW = timedelta(minutes=15)
+    SHOCK_CREDIBILITY = Decimal("0.6")
+    SHOCK_ATR = Decimal(1)
+
+    def _shock_against(self, session: Session, row: Position, quote: Quote, now: datetime) -> bool:
+        """v10 (owner 2026-10-12): a credible, fresh news shock against the position in the
+        last fifteen minutes, labelled by Jev, and the price has moved at least one ATR
+        the same way since the post. Two independent facts, a label and a move, so no
+        single model's word closes anything; the executor does, in code."""
+        from app.db.models import XPostRecord
+
+        if not row.atr or row.atr <= 0:
+            return False
+        against = "bearish" if row.direction == "long" else "bullish"
+        post = session.execute(
+            select(XPostRecord.created_at)
+            .where(
+                XPostRecord.asset == row.asset,
+                XPostRecord.shock.is_(True),
+                XPostRecord.fresh.is_not(False),
+                XPostRecord.stance == against,
+                XPostRecord.credibility >= self.SHOCK_CREDIBILITY,
+                XPostRecord.created_at >= now - self.SHOCK_WINDOW,
+            )
+            .order_by(XPostRecord.created_at)
+            .limit(1)
+        ).scalar_one_or_none()
+        if post is None:
+            return False
+        then = session.execute(
+            select(Candle.close)
+            .where(
+                Candle.symbol == row.symbol,
+                Candle.interval == "15",
+                Candle.open_time <= post,
+            )
+            .order_by(Candle.open_time.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if then is None:
+            return False
+        moved = (then - quote.mid) if row.direction == "long" else (quote.mid - then)
+        if moved >= self.SHOCK_ATR * row.atr:
+            log.warning(
+                "%s %s: news shock against the position, price %.4g -> %.4g (%.1f ATR): closing",
+                row.mode,
+                row.asset,
+                then,
+                quote.mid,
+                moved / row.atr,
+            )
+            return True
+        return False
 
     def _rebase_flat_ledgers(self, session: Session, now: datetime, take_profit: Decimal) -> None:
         """A ledger with nothing open that already stands a goal above its base (a target

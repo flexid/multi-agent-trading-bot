@@ -27,6 +27,7 @@ leverage_ceiling = 10           # the full ceiling instead of 2x; a sleeve's own
 take_profit_equity_pct = 0.01   # day goal: all trades are closed once the ledger is 1% up, net; so is one trade that makes it alone
 take_profit_trade_pct = 0.02    # a single trade is banked once it is 2% up on its margin, net of the closing fee (owner 2026-10-12); 0 = off
 take_profit_giveback = 0.25     # past that level the take trails: closed after giving back this share of its best return, never below the level
+stop_max_margin_pct = 0.04      # v10: the loss at the stop is at most 4% of the margin; the leverage and the size come down until it fits. 0 = off
 net_beta_exposure_max = 3.0     # × equity, per sleeve and across both
 max_hold_hours = 48             # no trade is held longer (24 until 2026-10-12)
 goal_cycle = true               # after the day goal is banked, start a new decision cycle at once
@@ -97,6 +98,9 @@ SPX6900 = "$SPX"                # history only
 maintenance_margin_rate = 0.03
 chase_max_atr = 2.0             # no new trade in the direction of a 24h move larger than this many ATR (owner 2026-10-12, v9); 0 = off
 
+[agents]
+chart_vision = false            # v10: the chart agent runs on code alone; the vision read confirmed it at a third of the agent budget
+
 [agents.macro]                  # crypto-native weights, set from app/backtest_native.py (see DECISIONS)
 fng_weight = 0.25               # Fear & Greed, contrarian at extremes; also a risk flag
 dominance_weight = 0.0          # BTC dominance tilt: logged only until real dominance history exists
@@ -136,7 +140,15 @@ accounts = [
   "spencernoon", "santiagoroel", "BittelJulien", "EmberCN", "Morecryptoonl", "punk9059",
 ]
 search_per_asset = 20           # posts per asset per cycle from recent search
-reads_per_cycle_max = 130       # cap per 4h cycle; with Djaf's 30, six cycles ≈ 960 of the 1,000/day budget
+reads_per_cycle_max = 60        # cap per 4h cycle (v10: the poll keeps the curated accounts fresh between cycles)
+
+[triggers]                      # v10 (owner 2026-10-12): react to the market between the four-hour cycles. All code; the managers run only when something happened
+price_atr_1h = 1.5              # a move of this many ATR within an hour starts a full cycle (was 2.0 and checked every 15 min; now every 5)
+max_per_day = 4                 # triggered cycles per day, all sources together (was 2)
+min_gap_minutes = 30            # no trigger this soon after any cycle
+x_poll_minutes = 3              # the curated X accounts are read and labelled by Jev this often; a credible fresh shock starts a cycle
+light_cycle = true              # every hour a code-only check (no managers, cents): a formula flip on an asset starts a full cycle
+formula_flip = 0.3              # the formula score that counts as a call for that check
 
 [site]                          # M8a public site and M8b admin (SPEC §12)
 public_domain = "dorkbot.dev"
@@ -149,7 +161,7 @@ droplet_id = 607481266
 
 [budget]
 api_usd_per_month = 250         # owner 2026-10-09; above this, downgrade models; never stop
-x_reads_per_day = 1000          # owner 2026-10-10: room for the curated search over all accounts (≈ $5/day at most)
+x_reads_per_day = 500           # v10 (owner 2026-10-12): halved; the value is in the labelled stance, not the volume. The 3-minute poll reads only new posts
 
 [models]                        # all nine IDs verified against both providers on 2026-10-09
 pm_1 = "claude-fable-5-1"
@@ -176,6 +188,7 @@ post_writer = "gpt-5.6-terra"
 post_auditor = "claude-sonnet-5-5"
 
 [llm]
+shadow_managers = false         # v10: no second run of the managers on the other provider (it cost more than the three seats)
 timeout_s = 120
 max_output_tokens = 8000        # ten assets of proposals: Fable used 3,792 of 4,000 and the alt seat got cut off (2026-10-10)
 effort = "medium"               # Anthropic output_config.effort / OpenAI reasoning effort

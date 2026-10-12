@@ -79,3 +79,45 @@ def test_frames_without_enough_bars_are_skipped_in_combine() -> None:
     assert out.score == 0 and out.confidence == 0
     assert isinstance(out.evidence, list)
     assert pd.isna(out.score) is False
+
+
+def _range_frame(n: int = 200, top: bool = True) -> "pd.DataFrame":
+    """A sideways market: a slow oscillation with noise, the last bars at the top (or the
+    bottom) of the range without closing beyond the prior high."""
+    import numpy as np
+    import pandas as pd
+
+    rng = np.random.default_rng(7)
+    t = np.arange(n)
+    close = 100 + 3 * np.sin(2 * np.pi * t / 10) + 0.6 * rng.standard_normal(n)
+    if top:
+        close[-3:] = 102.7  # inside the range, at its top
+    else:
+        close[-3:] = 97.3
+    high = close + 0.3 * rng.random(n)
+    low = close - 0.3 * rng.random(n)
+    vol = 1000 + 100 * rng.random(n)
+    idx = pd.date_range("2026-01-01", periods=n, freq="4h", tz="UTC")
+    return pd.DataFrame(
+        {"open": np.roll(close, 1), "high": high, "low": low, "close": close, "volume": vol},
+        index=idx,
+    )
+
+
+def test_a_range_scores_against_its_edges_and_a_trend_follows_them() -> None:
+    """Logic v10: in a range (ADX below 25) a close at the top of the range is a reason to
+    be short, not long; at the bottom the reverse. In a trend the old breakout logic holds."""
+    import pandas as pd  # noqa: F401
+
+    top = cp.code_track(_range_frame(top=True), "240")
+    assert top.regime == "range" and top.adx < cp.ADX_TREND
+    assert top.range_position > 0.8 and top.score < -0.2
+    bottom = cp.code_track(_range_frame(top=False), "240")
+    assert bottom.regime == "range" and bottom.score > 0.2
+    trend = synthetic(n=200, drift=0.004, seed=2)
+    read = cp.code_track(trend, "240")
+    assert read.regime == "trend" and read.adx >= cp.ADX_TREND
+    out = cp.combine("BTC", {"240": top}, {}, 1)
+    assert out.components["range_4h"] == 1.0 and out.evidence[0].startswith("regime range")
+    # code only (vision off since v10) carries full weight, not half
+    assert abs(out.score - 0.5 * top.score) < 1e-9

@@ -69,6 +69,30 @@ async def suppressed_moves_job(cfg: Config) -> None:
         log.info("suppressed triggers: %d move(s) filled", n)
 
 
+async def x_poll_job(cfg: Config) -> None:
+    """Read the curated accounts, label with Jev, start a cycle on a credible fresh shock."""
+    from app.agents.x_poll import poll
+
+    try:
+        reason = await poll(cfg)
+    except Exception as exc:  # the poll must never stop the scheduler
+        log.warning("x poll failed: %s", exc)
+        return
+    if reason:
+        log.info("triggered cycle: %s", reason)
+        await cycle_job(cfg, kind="triggered", trigger=reason)
+
+
+async def light_cycle_job(cfg: Config) -> None:
+    """The hourly code-only check; it starts a full cycle itself when the formula flipped."""
+    from app.decision.cycle import run_cycle
+    from app.decision.idle import busy
+
+    if busy() is not None:
+        return  # a cycle is running or about to: its decisions are fresher than this check
+    await run_cycle(cfg, light=True)
+
+
 async def trigger_job(cfg: Config) -> None:
     from app import triggers
     from app.db.session import new_session
@@ -108,12 +132,31 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
     )
     scheduler.add_job(
         trigger_job,
-        CronTrigger(minute="3,18,33,48"),
+        CronTrigger(minute="*/5", second="30"),  # v10: every 5 minutes on the live quote
         args=[cfg],
         id="triggers",
         max_instances=1,
         coalesce=True,
     )
+    scheduler.add_job(
+        x_poll_job,
+        IntervalTrigger(minutes=cfg.triggers.x_poll_minutes),  # v10: the news tripwire
+        args=[cfg],
+        id="x_poll",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=60,
+    )
+    if cfg.triggers.light_cycle:
+        scheduler.add_job(
+            light_cycle_job,
+            CronTrigger(minute="32"),  # v10: hourly, half an hour off the full cycles
+            args=[cfg],
+            id="light_cycle",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=300,
+        )
     for name, fetcher in jobs(cfg, secrets).items():
         # Macro data and the unlock calendar move daily; the rest every 15 minutes, 20 s
         # after the candle close.
@@ -216,7 +259,7 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
     logging.getLogger("apscheduler.executors.default").addFilter(
         lambda r: (
             r.levelno > logging.INFO
-            or not any(j in r.getMessage() for j in ("live_job", "goal_cycle_job"))
+            or not any(j in r.getMessage() for j in ("live_job", "goal_cycle_job", "x_poll_job"))
         )
     )
     scheduler.start()

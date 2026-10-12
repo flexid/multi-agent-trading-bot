@@ -101,6 +101,10 @@ class AggressiveConfig(_Section):
     # and is closed when it has given back this share of its best return, never below the
     # level itself (owner: "if it's suddenly 4% it can close on 4% as well").
     take_profit_giveback: Decimal = Field(default=Decimal("0.25"), ge=0, le=Decimal("0.9"))
+    # The loss at the stop may be at most this share of the margin: the leverage, and so
+    # the size, comes down until it fits (v10, owner: a 2% take needs a stop of about 4%
+    # on margin, not 9%). 0 = off.
+    stop_max_margin_pct: Decimal = Field(default=Decimal("0.04"), ge=0, le=Decimal("0.5"))
 
 
 class PilotConfig(_Section):
@@ -146,6 +150,9 @@ class MacroAgentConfig(_Section):
 
 class AgentsConfig(_Section):
     macro: MacroAgentConfig = MacroAgentConfig()
+    # The chart agent's vision read (Opus, Sonnet for alts). Off since v10: it confirmed
+    # the code's reading at a third of the agent budget. The code track runs regardless.
+    chart_vision: bool = False
     # Per-asset overrides on the tuned agent weights, e.g. DOGE leans on X sentiment.
     weights_by_asset: dict[str, dict[str, float]] = Field(default_factory=dict)
 
@@ -163,6 +170,18 @@ class ServerConfig(_Section):
 
     droplet_id: int | None = None
     keep_days: int = 14  # how long the 2-minute samples are kept
+
+
+class TriggersConfig(_Section):
+    """Cycles outside the four-hour clock (v10: the bot reacts to the market, not to the
+    hour). All in code; the managers are only called when something happened."""
+
+    price_atr_1h: Decimal = Field(default=Decimal("1.5"), ge=Decimal("0.5"), le=10)
+    max_per_day: int = Field(default=4, ge=0, le=24)  # triggered cycles, all sources
+    min_gap_minutes: int = Field(default=30, ge=5, le=240)  # after any cycle
+    x_poll_minutes: int = Field(default=3, ge=1, le=60)  # the curated accounts, Jev labels
+    light_cycle: bool = True  # the hourly code-only check that can trigger a full cycle
+    formula_flip: float = Field(default=0.3, ge=0.1, le=1.0)  # |score| that counts as a call
 
 
 class SiteConfig(_Section):
@@ -200,6 +219,10 @@ class ModelsConfig(TaskModels):
 
 
 class LLMConfig(_Section):
+    # The managers' shadow swap (each seat once more on the other provider, logged as
+    # variant "alt"). Off since v10: it cost more than the three real seats and answered
+    # its question (both providers scored the same).
+    shadow_managers: bool = False
     timeout_s: float = 120
     max_output_tokens: int = 4000
     effort: str = "medium"
@@ -225,6 +248,7 @@ class Config(_Section):
     x: XConfig = XConfig()
     catalysts: CatalystsConfig = CatalystsConfig()
     site: SiteConfig = SiteConfig()
+    triggers: TriggersConfig = TriggersConfig()
     server: ServerConfig = ServerConfig()
     budget: BudgetConfig
     models: ModelsConfig

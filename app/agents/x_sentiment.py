@@ -227,9 +227,49 @@ async def fetch_posts(session: Session, cfg: Config, client: XClient, now: datet
             new += 1
         return new
 
-    # The curated accounts first, through a search X filters by ticker (owner 2026-10-10:
-    # the timelines covered 8 of 63 accounts). Only matching posts come back, and a
-    # since-marker keeps the next cycle from paying for the same posts again.
+    stored_c, allowance = await fetch_curated(session, cfg, client, now, allowance)
+    stored += stored_c
+
+    per_asset = max(10, min(cfg.x.search_per_asset, allowance // len(cfg.trading.assets)))
+    for asset in search_order(cfg.trading.assets, now, cfg.trading.cycle_hours):
+        if allowance < 10:
+            break
+        posts = await client.search_recent(SEARCH_QUERY[asset], max_results=per_asset)
+        allowance -= max(len(posts), 10)  # the API bills the minimum page even when fewer return
+        stored += store(posts, asset, None)
+    await count_mentions(session, cfg, client, now)
+    session.commit()
+    return stored
+
+
+async def fetch_curated(
+    session: Session, cfg: Config, client: XClient, now: datetime, allowance: int
+) -> tuple[int, int]:
+    """The curated accounts, through a search X filters by ticker (owner 2026-10-10: the
+    timelines covered 8 of 63 accounts). Only matching posts come back, and a since-marker
+    keeps the next run from paying for the same posts again, so polling this every few
+    minutes (v10) costs no more than once a cycle. Returns (posts stored, allowance left)."""
+    stored = 0
+
+    def store(posts: list[XPost], author: str) -> int:
+        new = 0
+        for p in posts:
+            if session.get(XPostRecord, p.id) is not None:
+                continue
+            session.add(
+                XPostRecord(
+                    id=p.id,
+                    author_id=p.author_id,
+                    author=author,
+                    created_at=p.created_at,
+                    fetched_at=now,
+                    query_asset=None,
+                    text=p.text,
+                )
+            )
+            new += 1
+        return new
+
     handles = curated_handles(cfg)
     canonical = {h.lower(): h for h in handles}
     for n, query in enumerate(curated_queries(handles, cfg.trading.assets, cfg.x.query_max_chars)):
@@ -264,18 +304,9 @@ async def fetch_posts(session: Session, cfg: Config, client: XClient, now: datet
             if handle:
                 by_author.setdefault(handle, []).append(p)
         for handle, mine in by_author.items():
-            stored += store(mine, None, handle)
-
-    per_asset = max(10, min(cfg.x.search_per_asset, allowance // len(cfg.trading.assets)))
-    for asset in search_order(cfg.trading.assets, now, cfg.trading.cycle_hours):
-        if allowance < 10:
-            break
-        posts = await client.search_recent(SEARCH_QUERY[asset], max_results=per_asset)
-        allowance -= max(len(posts), 10)  # the API bills the minimum page even when fewer return
-        stored += store(posts, asset, None)
-    await count_mentions(session, cfg, client, now)
+            stored += store(mine, handle)
     session.commit()
-    return stored
+    return stored, allowance
 
 
 def search_order(assets: list[str], now: datetime, cycle_hours: int) -> list[str]:
@@ -377,8 +408,15 @@ def _shadow_on(session: Session, cfg: Config) -> bool:
 
 
 async def label_unlabeled(
-    session: Session, cfg: Config, prompt: Prompt, cycle_id: int | None = None
+    session: Session,
+    cfg: Config,
+    prompt: Prompt,
+    cycle_id: int | None = None,
+    *,
+    force_model: str | None = None,
 ) -> int:
+    """``force_model``: label everything with this one (the X poll uses Jev for every
+    sleeve: 0.3 s and pennies, and the cycle's own labeller never sees a post twice)."""
     rows = session.scalars(
         select(XPostRecord)
         .where(XPostRecord.labeled_at.is_(None))
@@ -387,7 +425,7 @@ async def label_unlabeled(
     ).all()
     by_model: dict[str, list[XPostRecord]] = {}
     for rec in rows:
-        by_model.setdefault(labeler_for(cfg, rec), []).append(rec)
+        by_model.setdefault(force_model or labeler_for(cfg, rec), []).append(rec)
     done = 0
     for model, group in by_model.items():
         if is_jev(model):

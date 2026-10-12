@@ -22,13 +22,20 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import triggers
 from app.agents import run_catalysts, run_chart, run_indicators, run_macro, run_polymarket, run_x
 from app.agents.indicators_summary import summarize
 from app.agents.schema import AgentOutput
 from app.config import Config, get_config
 from app.db.models import AgentOutputRecord, Cycle, DecisionRecord, LLMCall, PMProposalRecord
 from app.db.session import new_session
-from app.decision.consensus import Consensus, charts_first_score, consensus, weights_for
+from app.decision.consensus import (
+    Consensus,
+    charts_first_score,
+    consensus,
+    formula_score,
+    weights_for,
+)
 from app.decision.evidence import build_pack
 from app.decision.pm import Proposal, ask_both, ask_three
 from app.decision.tuning import current_weights
@@ -263,7 +270,13 @@ async def run_cycle(
     x_fetch: bool = True,
     vision: bool = True,
     alt: bool = True,
+    light: bool = False,
 ) -> dict[str, Consensus]:
+    """``light`` (v10): the agents and the formula only, no managers, no decisions, no
+    orders. Cents per run. When the formula flipped on an asset since the last full cycle,
+    a full triggered cycle follows at once."""
+    if light:
+        kind, x_fetch, vision, alt = "light", False, False, False
     now = datetime.now(UTC)
     mode = "live" if cfg.trading.live_allowed else "shadow"  # the go-live checker (M9) refines this
     with new_session() as session:
@@ -282,9 +295,21 @@ async def run_cycle(
     results: dict[str, Consensus] = {}
     try:
         by_asset, regime, couplings = await run_agents(
-            cfg, cycle_id, x_fetch=x_fetch, vision=vision
+            cfg, cycle_id, x_fetch=x_fetch, vision=vision and cfg.agents.chart_vision
         )
         store_outputs(cycle_id, by_asset)
+        if light:
+            with new_session() as session:
+                weights = current_weights(session)
+                flip = formula_flips(session, cfg, by_asset, couplings, weights)
+            _finish(cycle_id, now, "done", None)
+            if flip:
+                with new_session() as session:
+                    go = triggers.check(session, cfg, datetime.now(UTC), reason=flip)
+                if go:
+                    log.info("light cycle: %s; full cycle follows", go)
+                    return await run_cycle(cfg, kind="triggered", trigger=go)
+            return {}
         store_shadow_outputs(cfg, cycle_id)
         symbols = {a: cfg.symbol(a) for a in cfg.trading.assets}
         with new_session() as session:
@@ -323,7 +348,7 @@ async def run_cycle(
             if err:
                 log.warning("%s failed: %s", pm, err)
             store_proposals(cycle_id, pm, "main", models[pm], props)
-        if alt and cfg.models.shadow_alt is not None:
+        if alt and cfg.llm.shadow_managers and cfg.models.shadow_alt is not None:
             alt_models = {"pm_1": cfg.models.shadow_alt.pm_1, "pm_2": cfg.models.shadow_alt.pm_2}
             alt_answers = await ask_both(pack, prompt, models=alt_models, cycle_id=cycle_id)
             for pm, (props, _, _) in alt_answers.items():
@@ -374,6 +399,11 @@ async def run_cycle(
     except Exception as exc:
         log.exception("cycle %d failed", cycle_id)
         status, error = "failed", f"{type(exc).__name__}: {exc}"[:2000]
+    _finish(cycle_id, now, status, error)
+    return results
+
+
+def _finish(cycle_id: int, started: datetime, status: str, error: str | None) -> None:
     with new_session() as session:
         done = session.get(Cycle, cycle_id)
         assert done is not None
@@ -381,15 +411,47 @@ async def run_cycle(
         done.status, done.error = status, error
         done.cost_usd = cycle_cost(cycle_id)
         session.commit()
-        elapsed = (done.finished_at - now).total_seconds()
+        elapsed = (done.finished_at - started).total_seconds()
         print(f"cycle {cycle_id} {status}, cost ${done.cost_usd:.4f}, {elapsed:.0f}s")
-    return results
+
+
+def formula_flips(
+    session: Session,
+    cfg: Config,
+    by_asset: dict[str, list[AgentOutput]],
+    couplings: dict[str, float],
+    weights: dict[str, float],
+) -> str | None:
+    """The light cycle's verdict: an asset whose formula score now makes a call it did not
+    make at the last full cycle (sign flipped at or beyond `formula_flip`, or crossed it
+    from below). Returns the trigger text, or None."""
+    flip = cfg.triggers.formula_flip
+    for asset in cfg.trading.assets:
+        score, _ = formula_score(
+            by_asset.get(asset, []),
+            couplings.get(asset),
+            weights_for(weights, asset_overrides(cfg, asset)),
+        )
+        if score is None or abs(score) < flip:
+            continue
+        prev = session.execute(
+            select(DecisionRecord.formula_score)
+            .join(Cycle, Cycle.id == DecisionRecord.cycle_id)
+            .where(DecisionRecord.asset == asset, Cycle.kind != "light")
+            .order_by(DecisionRecord.ts.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        was = prev if prev is not None else 0.0
+        if abs(was) < flip or (was > 0) != (score > 0):
+            return f"formula: {asset} {score:+.2f} (was {was:+.2f})"
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     parser.add_argument("--no-x-fetch", action="store_true")
     parser.add_argument("--no-vision", action="store_true")
+    parser.add_argument("--light", action="store_true", help="agents and formula only")
     parser.add_argument("--no-alt", action="store_true", help="skip the alternate-provider PMs")
     parser.add_argument("--trigger", help="mark the cycle as triggered by this reason")
     args = parser.parse_args(argv)

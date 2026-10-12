@@ -83,6 +83,9 @@ class Limits:
     hard_stop_atr: Decimal = Decimal(1)  # the touch stop sits this far beyond the soft one
     min_valid_agents: int = 3
     chase_max_atr: Decimal = Decimal(0)  # block a call that extends a 24h move beyond this; 0 = off
+    stop_max_margin_pct: Decimal = Decimal(
+        0
+    )  # leverage capped so the loss at the stop is at most this share of the margin; 0 = off
 
 
 @dataclass(frozen=True)
@@ -262,6 +265,20 @@ def assess(
     leverage = result.leverage
     for name, cap in result.caps:
         hits.append(RuleHit(f"leverage_cap:{name}", f"{cap:.2f}x", "cap"))
+    if lim.stop_max_margin_pct > 0 and stop_distance > 0:
+        # v10 (owner): the take is 2% of the margin, so the stop may cost at most
+        # stop_max_margin_pct of it. The stop stays where it was placed; the leverage,
+        # and with it the size, comes down until the loss at the stop fits.
+        cap = max(Decimal(1), (lim.stop_max_margin_pct / stop_distance).quantize(Decimal("0.01")))
+        if leverage > cap:
+            leverage = cap
+            hits.append(
+                RuleHit(
+                    "leverage_cap:stop_on_margin",
+                    f"{cap:.2f}x so the stop costs at most {lim.stop_max_margin_pct:.0%} of margin",
+                    "cap",
+                )
+            )
     if not mkt.margin_enabled:
         leverage = Decimal(1)
         hits.append(RuleHit("leverage_cap:no_margin", "pair has no margin: 1x", "cap"))

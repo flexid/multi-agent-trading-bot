@@ -37,6 +37,7 @@ class ExitReason(StrEnum):
     RISK = "risk"  # day loss stop, drawdown pause, close-all
     TAKE_PROFIT = "take_profit"  # aggressive mode: the trade earned its share of the goal
     MANUAL = "manual"  # the owner asked for it to be closed
+    SHOCK = "shock"  # v10: a credible fresh news shock against the position, confirmed by price
 
 
 @dataclass(frozen=True)

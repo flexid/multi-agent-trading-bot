@@ -72,6 +72,25 @@ class CodeRead:
     false_breakout: bool
     trend_slope_atr: float  # per bar, in ATR units
     range_position: float  # 0 bottom .. 1 top of the current range
+    regime: str = "trend"  # trend | range, from ADX(14) (logic v10)
+    adx: float = 0.0
+
+
+ADX_TREND = 25.0  # at or above: a trend, follow the breakout; below: a range, fade the edges
+
+
+def adx14(df: pd.DataFrame) -> float:
+    """Wilder's ADX(14) on the frame; 0 when there is too little data."""
+    import pandas_ta as ta
+
+    try:
+        out = ta.adx(df["high"], df["low"], df["close"], length=14)
+    except Exception:
+        return 0.0
+    if out is None or "ADX_14" not in out:
+        return 0.0
+    val = float(out["ADX_14"].iloc[-1])
+    return val if np.isfinite(val) else 0.0
 
 
 # --- code track ---------------------------------------------------------------------
@@ -144,17 +163,31 @@ def code_track(df: pd.DataFrame, timeframe: str) -> CodeRead:
     slope = _slope_atr(sl, atr) if close > (sl[-1][1] if sl else close) else _slope_atr(sh, atr)
     slope = float(np.clip(slope, -1, 1))
 
+    adx = adx14(df)
+    regime = "trend" if adx >= ADX_TREND else "range"
     score = 0.0
-    if breakout is Direction.UP:
-        score += 0.6
-    elif breakout is Direction.DOWN:
-        score -= 0.6
-    if false_bo:
-        score -= (
-            0.4 if (last > prior_hi).any() else -0.4
-        )  # failed up-break is bearish, and vice versa
-    score += 0.3 * slope
-    score += 0.2 * (range_pos - 0.5) * 2 * (1 if slope >= 0 else -1) * 0.5
+    if regime == "trend":
+        # A trend (v10: ADX at or above 25): a breakout is the move continuing.
+        if breakout is Direction.UP:
+            score += 0.6
+        elif breakout is Direction.DOWN:
+            score -= 0.6
+        if false_bo:
+            score -= (
+                0.4 if (last > prior_hi).any() else -0.4
+            )  # failed up-break is bearish, and vice versa
+        score += 0.3 * slope
+        score += 0.2 * (range_pos - 0.5) * 2 * (1 if slope >= 0 else -1) * 0.5
+    else:
+        # A range (v10, after the week of 9-12 October when every breakout the agent
+        # followed failed): the edges are where the move turns, not where it starts.
+        # A close at the top of the range scores against a long; a breakout on its own
+        # earns nothing until the trend measure confirms it, and a failed one counts
+        # double in the other direction.
+        score -= 0.6 * (range_pos - 0.5) * 2
+        if false_bo:
+            score -= 0.5 if (last > prior_hi).any() else -0.5
+        score += 0.15 * slope
     return CodeRead(
         timeframe=timeframe,
         score=float(np.clip(score, -1, 1)),
@@ -164,6 +197,8 @@ def code_track(df: pd.DataFrame, timeframe: str) -> CodeRead:
         false_breakout=false_bo,
         trend_slope_atr=slope,
         range_position=round(range_pos, 2),
+        regime=regime,
+        adx=round(adx, 1),
     )
 
 
@@ -237,9 +272,15 @@ def combine(
             continue
         v = vision.get(tf)
         if v is None:
-            score_parts.append(weight * c.score * 0.5)  # code only: half weight
-            conf_parts.append(weight * 0.3)
-            evidence.append(f"{TF_LABEL[tf]} code {c.score:+.2f} (no vision read)")
+            # Code only (v10: vision is off by default; it confirmed the code's reading
+            # and cost a third of the agent budget): full weight, moderate confidence.
+            score_parts.append(weight * c.score)
+            conf_parts.append(weight * 0.55)
+            evidence.append(
+                f"{TF_LABEL[tf]}: code {c.score:+.2f} ({c.regime}, ADX {c.adx:.0f}, "
+                f"{c.breakout.value} breakout{', false' if c.false_breakout else ''}, "
+                f"slope {c.trend_slope_atr:+.2f} ATR, range pos {c.range_position:.2f})"
+            )
             continue
         v_score = {"up": 1.0, "down": -1.0, "none": 0.0}[v.direction.value] * v.confidence
         agree = np.sign(c.score) == np.sign(v_score) and c.score != 0 and v_score != 0
@@ -265,6 +306,11 @@ def combine(
         )
         if main.false_breakout:
             flags.append("false breakout on 4h")
+    components: dict[str, float] = {}
+    if main is not None:
+        components["adx_4h"] = main.adx
+        components["range_4h"] = 1.0 if main.regime == "range" else 0.0
+        evidence.insert(0, f"regime {main.regime} on 4h (ADX {main.adx:.0f})")
     return AgentOutput(
         agent=AGENT,
         asset=asset,
@@ -274,4 +320,5 @@ def combine(
         evidence=evidence[:10],
         risk_flags=flags,
         data_age_min=data_age_min,
+        components=components,
     )

@@ -383,6 +383,21 @@ def test_aggressive_mode_pushes_risk_and_leverage_inside_hard_bounds() -> None:
     assert aggressive_account(account(leverage_ceiling=D(2)), agg, live=True).leverage_ceiling == 2
 
 
+def test_the_stop_may_cost_at_most_a_share_of_the_margin() -> None:
+    """Logic v10 (owner): with a 2% take the loss at the stop is capped at a share of the
+    margin. The stop stays where it was placed; the leverage, and with it the size,
+    comes down until the loss at the stop fits."""
+    tight = cons(Direction.LONG, stop=99.0)  # 1% away: 2.5x at the test limits
+    free = engine.assess(tight, account(), market(), limits())
+    assert free.plan is not None and free.plan.leverage > 2
+    capped = engine.assess(tight, account(), market(), limits(stop_max_margin_pct=D("0.02")))
+    assert capped.plan is not None and capped.plan.leverage <= 2
+    assert any(h.rule == "leverage_cap:stop_on_margin" for h in capped.hits)
+    assert capped.plan.notional < free.plan.notional  # a smaller size at the same stop
+    loss_at_stop = capped.plan.notional * D("0.01")
+    assert loss_at_stop <= capped.plan.margin * D("0.02") + D("0.01")
+
+
 def test_a_call_that_chases_the_days_move_is_blocked() -> None:
     """Logic v9 (owner 2026-10-12): no new trade in the direction of a 24-hour move beyond
     the limit, in ATR. The opposite direction, a smaller move, or the rule switched off

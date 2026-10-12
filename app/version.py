@@ -1,6 +1,20 @@
 """Logic version: bumped when the decision logic changes in a way that makes earlier
 decisions not comparable. Stored on every cycle row.
 
+10 2026-10-12  the radical review (owner): (1) regime-aware charts: ADX(14) on the 4h splits
+              trend from range; in a range the edges score against the move, a breakout
+              earns nothing until ADX confirms, and the managers see the regime in the
+              pack; (2) chart vision off (it confirmed the code at a third of the agent
+              budget) and the managers' shadow swap off (it cost more than the three
+              seats); (3) the stop may cost at most 4% of the margin in aggressive mode:
+              the leverage comes down until it fits; (4) responsiveness in code: price
+              triggers at 1.5 ATR per hour checked every 5 minutes on the live quote,
+              a 3-minute X poll of the curated accounts labelled by Jev that starts a
+              cycle on a credible fresh shock, a shock exit when such a post is confirmed
+              by a one-ATR move against an open position, and an hourly code-only light
+              cycle that starts a full cycle when the formula flips on an asset; up to
+              4 triggered cycles a day; (5) X reads halved to 500 a day. Then one week
+              untouched (FROZEN_UNTIL 2026-10-19).
 9  2026-10-12  no chasing: the risk engine blocks a call in the direction of a 24-hour move
               larger than `risk.chase_max_atr` (2) ATR, and the managers see the 4h and
               24h change and the day's move in ATR in the pack with an instruction not to
@@ -39,5 +53,6 @@ decisions not comparable. Stored on every cycle row.
 1  2026-10-08  initial logic (SPEC §6-§9).
 """
 
-LOGIC_VERSION = 9
-FROZEN_UNTIL = "2026-11-07"  # the 4-week review; no logic change before then
+LOGIC_VERSION = 10
+# v10 (owner 2026-10-12): one week untouched, then judge; the 4-week review stays 2026-11-07
+FROZEN_UNTIL = "2026-10-19"

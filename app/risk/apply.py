@@ -140,6 +140,7 @@ def aggressive_limits(lim: engine.Limits, agg: AggressiveConfig | None) -> engin
         drawdown_pause=NEVER,
         emergency_brake=NEVER,
         max_trades_per_asset_day=10_000,
+        stop_max_margin_pct=agg.stop_max_margin_pct,
     )
 
 

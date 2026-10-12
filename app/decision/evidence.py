@@ -58,6 +58,7 @@ class AssetPack(BaseModel):
     asset: str
     spot: float
     atr_4h: float | None
+    regime: str | None = None  # trend | range on the 4h chart, from the chart agent (v10)
     change_4h_pct: float | None = None  # the move already made, in percent
     change_24h_pct: float | None = None
     move_24h_atr: float | None = None  # the same day's move in ATR, signed
@@ -160,6 +161,10 @@ def build_pack(
     for asset, outs in outputs.items():
         spot, atr = spot_and_atr(session, symbols[asset])
         d4 = price_change(session, symbols[asset], spot, now, 4)
+        chart = next((o for o in outs if o.agent == "chart_patterns"), None)
+        regime = None
+        if chart is not None and "range_4h" in chart.components:
+            regime = "range" if chart.components["range_4h"] >= 1 else "trend"
         d24 = price_change(session, symbols[asset], spot, now, 24)
         views = [
             AgentView(
@@ -180,6 +185,7 @@ def build_pack(
                 # six significant digits, not six decimals: PEPE's ATR is about 8e-08 and
                 # six decimals turned it into 0.0 for the managers
                 atr_4h=float(f"{atr:.6g}") if atr else None,
+                regime=regime,
                 change_4h_pct=round(d4 / spot * 100, 2) if d4 is not None else None,
                 change_24h_pct=round(d24 / spot * 100, 2) if d24 is not None else None,
                 move_24h_atr=round(d24 / atr, 2) if d24 is not None and atr else None,

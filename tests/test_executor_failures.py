@@ -385,6 +385,73 @@ async def test_aggressive_mode_banks_a_trade_at_its_share_of_the_goal(db: None) 
 
 
 @needs_db
+async def test_a_confirmed_news_shock_closes_the_position(db: None) -> None:
+    """Logic v10: a credible fresh shock post against the position, and the price down at
+    least one ATR since it, closes the position (reason "shock"). Either fact alone does
+    nothing: no single model's word closes a trade."""
+    from app.db.models import Candle, XPostRecord
+    from app.db.session import new_session
+
+    seed_decision(stop="90", target="130", atr="1")  # a far stop: only the shock can close it
+    ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+    await ex.tick()
+    (pos,) = [p for p in positions() if p.track == "primary"]
+    assert pos.atr == D(1)
+    symbol = get_config().symbol(ASSET)
+    posted = NOW - timedelta(minutes=5)
+    with new_session() as s:
+        s.merge(
+            Candle(
+                symbol=symbol,
+                interval="15",
+                open_time=posted - timedelta(minutes=10),
+                open=D(100),
+                high=D(100),
+                low=D(100),
+                close=D(100),
+                volume=D(1),
+                turnover=D(1),
+                fetched_at=NOW,
+            )
+        )
+        s.add(
+            XPostRecord(
+                id="shock-test-1",
+                author="test",
+                created_at=posted,
+                fetched_at=NOW,
+                text="[test]",
+                asset=ASSET,
+                stance="bearish",
+                kind="news",
+                credibility=D("0.9"),
+                shock=True,
+                fresh=True,
+                labeled_at=NOW,
+            )
+        )
+        s.commit()
+    try:
+        await ex.tick()  # the post alone, price unchanged: nothing
+        assert positions()[0].status == "open"
+        ex.quotes[symbol] = quote("98.9", "99.0")  # down one ATR since the post
+        await ex.tick()
+        (closed,) = [p for p in positions() if p.track == "primary"]
+        assert closed.status == "closed" and closed.close_reason == "shock"
+    finally:
+        with new_session() as s:
+            s.execute(delete(XPostRecord).where(XPostRecord.id == "shock-test-1"))
+            s.execute(
+                delete(Candle).where(
+                    Candle.symbol == symbol,
+                    Candle.interval == "15",
+                    Candle.open_time == posted - timedelta(minutes=10),
+                )
+            )
+            s.commit()
+
+
+@needs_db
 async def test_hold_command_lengthens_open_trades_and_never_shortens(db: None) -> None:
     """The owner's "hold" command (2026-10-12): the executor itself raises the holding limit
     of the open trades; a smaller number changes nothing and nonsense is rejected."""

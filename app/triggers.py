@@ -1,8 +1,11 @@
-"""Triggered cycles (SPEC §7.5): at most 2 per day, checked after every 15-minute fetch.
+"""Triggered cycles (SPEC §7.5; limits in config [triggers] since v10).
 
-- price: a move of more than 2× ATR(14, 4h) within the last hour
+- price: a move of more than `price_atr_1h` ATR(14, 4h) within the last hour, on the
+  executor's latest quote (checked every 5 minutes)
 - polymarket: a mapped market's P(yes) shifted more than 10 pp in the last hour
-- x_shock: a credible news-shock post in the last hour (labelled by the X agent)
+- x_shock: a credible fresh news-shock post in the last hour (labelled by Jev every few
+  minutes from the curated accounts)
+- formula: the hourly light cycle's code score flipped on an asset (app/decision/cycle.py)
 """
 
 from __future__ import annotations
@@ -18,15 +21,15 @@ from app.config import Config
 from app.db.models import (
     Candle,
     Cycle,
+    Mark,
     PolymarketMarket,
     PolymarketPrice,
     SuppressedTrigger,
     XPostRecord,
 )
 
-MAX_TRIGGERED_PER_DAY = 2
-ATR_MULT = Decimal(2)
 POLY_SHIFT = Decimal("0.10")
+MARK_MAX_AGE = timedelta(minutes=2)
 
 
 def triggered_today(session: Session, now: datetime) -> int:
@@ -35,7 +38,7 @@ def triggered_today(session: Session, now: datetime) -> int:
         session.execute(
             select(func.count())
             .select_from(Cycle)
-            .where(Cycle.kind == "triggered", Cycle.started_at >= day)
+            .where(Cycle.kind.in_(["triggered", "goal"]), Cycle.started_at >= day)
         ).scalar_one()
     )
 
@@ -69,9 +72,16 @@ def price_trigger(session: Session, cfg: Config, now: datetime) -> str | None:
             .scalars()
             .all()
         )
-        if len(recent) >= 2 and abs(recent[-1] - recent[0]) > ATR_MULT * atr:
-            move = float((recent[-1] / recent[0] - 1) * 100)
-            return f"price: {asset} moved {move:+.1f}% in 1h (> 2×ATR)"
+        if len(recent) < 2:
+            continue
+        last = recent[-1]
+        mark = session.get(Mark, symbol)  # the executor's quote: minutes fresher than a candle
+        if mark is not None and now - mark.ts <= MARK_MAX_AGE:
+            last = (mark.bid + mark.ask) / 2
+        mult = cfg.triggers.price_atr_1h
+        if abs(last - recent[0]) > mult * atr:
+            move = float((last / recent[0] - 1) * 100)
+            return f"price: {asset} moved {move:+.1f}% in 1h (> {mult}×ATR)"
     return None
 
 
@@ -115,6 +125,7 @@ def x_shock_trigger(session: Session, now: datetime) -> str | None:
         select(XPostRecord.asset)
         .where(
             XPostRecord.shock.is_(True),
+            XPostRecord.fresh.is_not(False),  # a recap of an old shock is not news
             XPostRecord.credibility >= Decimal("0.6"),
             XPostRecord.created_at >= now - timedelta(hours=1),
         )
@@ -191,18 +202,23 @@ def fill_moves(session: Session, cfg: Config, now: datetime | None = None) -> in
     return touched
 
 
-def check(session: Session, cfg: Config, now: datetime | None = None) -> str | None:
-    """The reason to trigger a cycle now, or None."""
+def check(
+    session: Session, cfg: Config, now: datetime | None = None, *, reason: str | None = None
+) -> str | None:
+    """The reason to trigger a cycle now, or None. ``reason``: a trigger found elsewhere
+    (the light cycle's formula flip), put through the same gap and cap."""
     now = now or datetime.now(UTC)
-    last = session.execute(select(func.max(Cycle.started_at))).scalar_one()
-    if last and now - last < timedelta(hours=1):
+    last = session.execute(
+        select(func.max(Cycle.started_at)).where(Cycle.kind != "light")
+    ).scalar_one()
+    if last and now - last < timedelta(minutes=cfg.triggers.min_gap_minutes):
         return None  # a cycle just ran; its decisions stand
-    reason = (
+    reason = reason or (
         price_trigger(session, cfg, now)
         or polymarket_trigger(session, now)
         or x_shock_trigger(session, now)
     )
-    if reason and triggered_today(session, now) >= MAX_TRIGGERED_PER_DAY:
+    if reason and triggered_today(session, now) >= cfg.triggers.max_per_day:
         log_suppressed(session, cfg, now, reason)  # the cap stands; only the log changes
         return None
     return reason

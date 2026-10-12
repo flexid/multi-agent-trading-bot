@@ -440,3 +440,17 @@ Owner: the closed trades on the site lagged a close by up to ten minutes (five-m
 Owner, after SOL was banked on the first pass at 2.0% net: "if it's suddenly 4% it can close on 4% as well, sometimes it goes fast." Past `take_profit_trade_pct` the take is armed rather than fired: the executor records the best net return on margin (`positions.profit_peak_pct`) and closes the trade when it has given back `take_profit_giveback` (25%) of that best return, never below the level itself. A run to 4% is banked near 3%; a trade that crosses 2% and turns is banked at 2%. The exact top is not knowable, so "close at 4%" means "close just under the best it reached". Both numbers are on the admin's Parameters page.
 
 The open-trades table on the site now shows the return on margin net of both fees, like the closed table, so a trade that is banked shows the same figure before and after.
+
+## 2026-10-12 · Logic v10: the radical review
+
+Owner, after a self-evaluation on three days of record (main book -5.9%, inverse +3.2%, every manager and the formula a quarter right on the 24-hour move, every call extending the move just made): "Ok go" on the list below, Grok kept as the third seat (his earlier decision; it is also the cheapest seat).
+
+1. **Regime-aware charts.** ADX(14) on each timeframe splits trend (25 and above) from range. In a range a close at the top of the range scores against a long and at the bottom against a short, a breakout earns nothing until ADX confirms it, and a failed breakout counts double the other way. In a trend the breakout logic is unchanged. The 4h regime goes into the evidence pack and the manager prompt (v10) tells the managers to respect it.
+2. **Chart vision off** (`agents.chart_vision`). Opus and Sonnet looked at the chart the code had just scored and agreed with it, for a third of the agent budget. Code-only reads now carry full weight instead of half.
+3. **The managers' shadow swap off** (`llm.shadow_managers`). Each seat ran once more on the other provider for a comparison that is answered: both providers scored the same. It cost more than the three real seats together.
+4. **The stop may cost at most 4% of the margin** in aggressive mode (`aggressive.stop_max_margin_pct`). The stop stays where the managers put it; the leverage and the size come down until the loss at the stop fits. A 2% take against a 9% stop needed four wins in five.
+5. **Responsiveness, all in code.** Price triggers at 1.5 ATR within an hour, checked every 5 minutes on the executor's quote. The curated X accounts are read every 3 minutes and labelled by Jev for every sleeve; a credible fresh shock on a traded asset starts a cycle. A shock post against an open position, confirmed by a one-ATR move the same way since the post, closes it (reason `shock`): a label and a price fact, never one model's word. An hourly light cycle runs the agents and the formula only, for cents, and starts a full cycle when the formula flips on an asset. Up to 4 triggered cycles a day, none within 30 minutes of another cycle. All in `[triggers]`.
+6. **X reads halved** to 500 a day; the poll reads only new posts, so polling often costs nothing extra.
+7. **One week untouched.** `FROZEN_UNTIL` is 2026-10-19. No decision-logic change before then; bugs, UI and ops only. Ten independent bets cannot judge nine rule changes.
+
+Not done, by the owner's decision: Grok stays. Not done, by mine: Jev as the only X labeller for bluechips (the shadow comparison has not run long enough on bluechip posts); the cycle's own labelling is unchanged.
