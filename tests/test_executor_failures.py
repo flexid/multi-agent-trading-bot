@@ -385,6 +385,53 @@ async def test_aggressive_mode_banks_a_trade_at_its_share_of_the_goal(db: None) 
 
 
 @needs_db
+async def test_aggressive_mode_banks_the_whole_ledger_at_the_day_goal(db: None) -> None:
+    """The day goal (owner 2026-10-12): the 1% is measured on the ledger for the day, not on
+    one trade. A ledger already up most of the way closes its open trade as soon as the
+    total reaches the goal, and the next goal counts from the banked equity."""
+    from app.db.models import PaperAccount, RiskState
+    from app.db.session import new_session
+
+    seed_decision(stop="98", target="130")
+    ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+    await ex.tick()
+    mine = [p for p in positions() if p.track == "primary"]
+    assert len(mine) == 1 and mine[0].status == "open"
+    with new_session() as s:
+        acct = s.get(PaperAccount, 1)
+        assert acct is not None
+        # earlier trades made most of the day's goal: this one is a few fees short of it
+        acct.goal_base = (acct.equity + mine[0].fees * 3) / D("1.01")
+        base = acct.goal_base
+        state = s.get(RiskState, 1) or RiskState(id=1, leverage_ceiling=D(2))
+        state.aggressive = True
+        s.merge(state)
+        s.commit()
+    try:
+        await ex.tick()
+        assert [p.status for p in positions() if p.track == "primary"] == ["open"]
+        # a small move in favour covers the gap and the closing fee
+        symbol = get_config().symbol(ASSET)
+        assert mine[0].entry_price is not None
+        up = mine[0].entry_price + mine[0].fees * 6 / mine[0].qty
+        ex.quotes[symbol] = quote(str(up), str(up + D("0.01")))
+        await ex.tick()
+        (closed,) = [p for p in positions() if p.track == "primary"]
+        assert closed.status == "closed" and closed.close_reason == "take_profit"
+        with new_session() as s:
+            after = s.get(PaperAccount, 1)
+            assert after is not None and after.goal_base is not None
+            assert after.goal_base >= base * D("1.01")  # the next step counts from here
+            assert after.cash >= base * D("1.01") - D("0.01")  # and that much is banked
+    finally:
+        with new_session() as s:
+            cur = s.get(RiskState, 1)
+            if cur is not None:
+                cur.aggressive = False
+                s.commit()
+
+
+@needs_db
 async def test_a_backup_stop_without_a_position_is_cancelled(db: None) -> None:
     """A stop order left on the exchange with no open position behind it (2026-10-11: a buy
     stop for a DOGE short closed hours before) is cancelled, on the second round it is seen

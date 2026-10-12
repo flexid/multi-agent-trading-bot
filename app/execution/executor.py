@@ -29,6 +29,7 @@ import asyncio
 import logging
 import sys
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -284,6 +285,7 @@ class Executor:
                 acct.equity,
                 acct.equity,
             )
+            acct.goal_base = None  # a new day: the goal counts from its start again
         return acct
 
     # --- control --------------------------------------------------------------------
@@ -388,6 +390,7 @@ class Executor:
         self._locked_cache = self._locked_sleeves(session, now)
         take_profit = self._take_profit(session)
         equity_of: dict[str, Decimal] = {}
+        goal_reached = self._day_goal_reached(session, now, rows, take_profit)
         for row in rows:
             quote = self.quotes.get(row.symbol)
             if quote is None:
@@ -407,6 +410,8 @@ class Executor:
             )
             if reason is None and (close_all or self._sleeve_locked(row, now)):
                 reason = ExitReason.RISK
+            if reason is None and row.track in goal_reached:
+                reason = ExitReason.TAKE_PROFIT  # the ledger made its day goal: bank it all
             if reason is None and take_profit is not None:
                 # Aggressive mode: bank a trade once its net profit reaches its share of
                 # the goal, measured on the ledger's equity.
@@ -453,6 +458,8 @@ class Executor:
             await self._book_exit(
                 session, row, pos, quote, ExitReason(row.close_reason or reason.value), now
             )
+        if take_profit is not None:
+            self._rebase_flat_ledgers(session, now, take_profit)
         session.commit()
 
     def _exit_pending(self, row: Position, reason: ExitReason, detail: str) -> None:
@@ -552,6 +559,67 @@ class Executor:
         )
 
     # --- exchange-side backup stop ---------------------------------------------------
+
+    def _day_goal_reached(
+        self,
+        session: Session,
+        now: datetime,
+        rows: Sequence[Position],
+        take_profit: Decimal | None,
+    ) -> set[str]:
+        """Aggressive mode's day goal (owner 2026-10-12): the ledgers whose equity, with
+        every open trade valued now and its closing fee taken off, stands at least the
+        goal above the base. Everything on such a ledger is closed. The base is the day's
+        start and moves up to the banked equity each time, so the bot keeps going for the
+        next step instead of stopping for the day."""
+        if take_profit is None:
+            return set()
+        fee_rate = TAKER_FEE.get(self.cfg.exchange.quote, Decimal("0.001"))
+        by_track: dict[str, list[Position]] = {}
+        for row in rows:
+            by_track.setdefault(row.track, []).append(row)
+        reached: set[str] = set()
+        for track, mine in by_track.items():
+            quotes = [self.quotes.get(r.symbol) for r in mine]
+            if any(q is None for q in quotes):
+                continue  # cannot value the whole ledger: no day-goal exit this pass
+            acct = self.ledger(session, now, track)
+            base = acct.goal_base or acct.day_start_equity
+            if base <= 0:
+                continue
+            banked = acct.cash
+            for r, q in zip(mine, quotes, strict=True):
+                assert q is not None
+                pos = self._to_sim(r)
+                banked += r.margin + sim.unrealized(pos, q) - q.mid * pos.qty * fee_rate
+            if banked >= base * (1 + take_profit):
+                reached.add(track)
+                acct.goal_base = banked
+                log.info(
+                    "%s: day goal reached, equity %.2f from base %.2f; closing %d trade(s)",
+                    track,
+                    banked,
+                    base,
+                    len(mine),
+                )
+        return reached
+
+    def _rebase_flat_ledgers(self, session: Session, now: datetime, take_profit: Decimal) -> None:
+        """A ledger with nothing open that already stands a goal above its base (a target
+        or a single trade banked it) counts the next goal from where it is now. Otherwise
+        the next trade would be closed the moment it opened."""
+        busy = set(
+            session.scalars(
+                select(Position.track).where(Position.status.in_(["open", "closing"]))
+            ).all()
+        )
+        for track in TRACKS[self.mode]:
+            if track in busy:
+                continue
+            acct = self.ledger(session, now, track)
+            base = acct.goal_base or acct.day_start_equity
+            if base > 0 and acct.cash >= base * (1 + take_profit):
+                acct.goal_base = acct.cash
 
     def _take_profit(self, session: Session) -> Decimal | None:
         """The aggressive profile's profit level (a share of equity), or None when the

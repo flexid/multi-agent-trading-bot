@@ -495,6 +495,9 @@ class PaperAccount(Base):
     day_start_equity: Mapped[Decimal]
     day_date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     day_high_equity: Mapped[Decimal]
+    # Aggressive mode's day goal: the equity the next 1% is measured from. The day's start,
+    # then the banked equity each time the goal is reached. None = the day's start.
+    goal_base: Mapped[Decimal | None]
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

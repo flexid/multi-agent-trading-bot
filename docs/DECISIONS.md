@@ -385,3 +385,14 @@ Owner: the site should show the live figures from the backend, not a five-minute
 - A scheduler job publishes `live.json` to R2 every `site.live_interval_seconds` (15): mode plus the open trades of the storyline track with price now and the result in price and on margin. It passes the same whitelist as the snapshot (no sizes, no amounts) and is cached for five seconds. With nothing open and nothing changed it writes at most once per five minutes.
 - The site polls it every 15 seconds while the tab is visible and uses it for the open-trades table whenever it is newer than the snapshot; the table gained a "now" column. Everything else on the site stays on the five-minute snapshot.
 - The admin's open-positions table shows price now, result in price and on margin, and the result in USDT before fees, for all tracks, and refreshes itself every 15 seconds.
+
+## 2026-10-12 · Aggressive mode: the 1% is a day goal for the whole ledger
+
+Owner: "the goal is to let the bot generate 1% net profit per day on the entire wallet." The profit rule of 2026-10-11 closed one trade once that trade alone had made 1% of the ledger's equity. With a slot of 14% of the book that needs a price move of 2.3% at 6.9x, further than most targets, so the rule almost never fired, and several trades that made 1% together were left to run.
+
+- The executor now values each ledger on every pass: cash plus every open trade at the price now, minus the fee for closing each of them. When that stands `take_profit_equity_pct` (1%) above the base, every open trade on that ledger is closed with reason `take_profit`.
+- The base is the day's start (00:00 UTC). When the goal is reached it moves up to the banked equity (`paper_account.goal_base`), so the next 1% counts from there. The owner asked for no locks in this mode: the bot keeps trading after a banked goal instead of stopping for the day.
+- A ledger with nothing open that already stands a goal above its base (a target or a single trade banked it) is rebased the same way, so the next trade is not closed the moment it opens.
+- The single-trade rule stays: one trade that makes the goal alone is closed. It is now a special case of the day goal.
+- Each ledger (main, max, inverse, pilot) has its own goal. Losses are not part of this rule: a ledger that is down 2% needs to come back to +1% on the day before anything is banked.
+- No logic version bump, like the rest of aggressive mode: it is an exit rule behind the owner's switch.

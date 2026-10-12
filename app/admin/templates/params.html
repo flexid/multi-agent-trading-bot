@@ -6,7 +6,7 @@
 <ul class="small" style="margin:0 0 .8rem 1.1rem">
 <li><b>More risk and leverage</b>: the risk per trade goes up and the full leverage ceiling is used at once (table below).</li>
 <li><b>No locks</b>: no daily loss stop, no direction lock, no drawdown pause, no automatic brake and no daily limit on trades per coin. It keeps trading whatever the day's result.</li>
-<li><b>Profits are banked early</b>: a trade is closed as soon as its net profit, after both fees and the borrow interest, reaches {{ '%.0f'|format(aggressive.take_profit * 100) }}% of the ledger's equity. Prices are checked every ten seconds, so it closes at or a little above that.</li>
+<li><b>Day goal</b>: as soon as a ledger stands {{ '%.0f'|format(aggressive.take_profit * 100) }}% above where the day started, after every fee and the borrow interest, all its open trades are closed and the profit is banked. The next {{ '%.0f'|format(aggressive.take_profit * 100) }}% then counts from the banked level, so the bot keeps trading. A single trade that makes the goal on its own is closed the same way. Prices are checked every ten seconds, so it closes at or a little above the goal.</li>
 <li><b>Stops with more room</b>: every stop sits {{ aggressive.stop_room }} times further from the entry than the managers put it. The position is made smaller to match, so the loss at the stop stays the same.</li>
 <li><b>Short holds</b>: no trade is held longer than {{ aggressive.hold }} hours.</li>
 </ul>
