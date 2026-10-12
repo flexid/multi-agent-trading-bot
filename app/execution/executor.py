@@ -454,13 +454,20 @@ class Executor:
                 # ... or once the trade alone is up its share of the margin put in (owner
                 # 2026-10-12: "1-3% on a single trade, then close it").
                 per_trade = self.cfg.aggressive.take_profit_trade_pct
-                if (
-                    reason is None
-                    and per_trade > 0
-                    and row.margin > 0
-                    and net / row.margin >= per_trade
-                ):
-                    reason = ExitReason.TAKE_PROFIT
+                if reason is None and per_trade > 0 and row.margin > 0:
+                    ret = net / row.margin
+                    peak = row.profit_peak_pct
+                    if ret >= per_trade or peak is not None:
+                        # Armed at the level; from there the take trails the best return
+                        # and fires when the trade gives back a share of it, never below
+                        # the level (a fast run to 4% is banked near 4%, not at 2%).
+                        peak = max(peak or Decimal(0), ret)
+                        row.profit_peak_pct = peak
+                        floor = max(
+                            per_trade, peak * (1 - self.cfg.aggressive.take_profit_giveback)
+                        )
+                        if ret <= floor and peak > ret:
+                            reason = ExitReason.TAKE_PROFIT
             if reason is None and row.status == "closing":
                 reason = ExitReason(row.close_reason or "risk")  # retry a pending exit
             row.interest, row.trail_stop, row.updated_at = pos.interest, pos.trail_stop, now

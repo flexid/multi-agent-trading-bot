@@ -438,18 +438,24 @@ async def test_aggressive_mode_banks_a_single_trade_at_its_margin_return(db: Non
         symbol = get_config().symbol(ASSET)
         fees_pct = pos.fees * 2 / pos.notional  # entry fee paid, exit fee to come
         # the return on margin is the price move times the leverage, after both fees
+        # armed at 2%, the take trails: a run to 4% stays open, a drop to 3% (a quarter
+        # given back) closes it; a trade that crosses 2% and turns is banked at the level
         moves = (
-            (D("0.015") / pos.leverage + fees_pct, "open"),
-            (D("0.021") / pos.leverage + fees_pct, "closed"),
+            (D("0.015"), "open"),
+            (D("0.021"), "open"),
+            (D("0.040"), "open"),
+            (D("0.032"), "open"),
+            (D("0.029"), "closed"),
         )
-        for move, expect in moves:
-            up = pos.entry_price * (1 + move)
+        for ret, expect in moves:
+            up = pos.entry_price * (1 + ret / pos.leverage + fees_pct)
             ex.quotes[symbol] = quote(str(up), str(up + D("0.01")))
             await ex.tick()
             (cur,) = [p for p in positions() if p.track == "primary"]
-            assert cur.status == expect, move
+            assert cur.status == expect, ret
         assert cur.close_reason == "take_profit"
-        assert cur.pnl is not None and cur.pnl / pos.margin >= level
+        assert cur.pnl is not None and cur.pnl / pos.margin >= D("0.028") >= level
+        assert cur.profit_peak_pct is not None and cur.profit_peak_pct >= D("0.039")
     finally:
         with new_session() as s:
             cur_state = s.get(RiskState, 1)

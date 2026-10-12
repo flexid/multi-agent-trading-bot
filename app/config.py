@@ -97,6 +97,10 @@ class AggressiveConfig(_Section):
     # Close a single trade once its net profit, the closing fee taken off, reaches this
     # share of the margin put in (owner 2026-10-12: "1-3% on a single trade"). 0 = off.
     take_profit_trade_pct: Decimal = Field(default=Decimal("0.02"), ge=0, le=Decimal("0.5"))
+    # Past that level the take trails: the trade stays open while the return keeps rising
+    # and is closed when it has given back this share of its best return, never below the
+    # level itself (owner: "if it's suddenly 4% it can close on 4% as well").
+    take_profit_giveback: Decimal = Field(default=Decimal("0.25"), ge=0, le=Decimal("0.9"))
 
 
 class PilotConfig(_Section):

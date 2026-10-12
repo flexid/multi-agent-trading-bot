@@ -25,7 +25,8 @@ cycle_hours = 4
 risk_multiplier = 2.5           # × each sleeve's risk per trade: bluechips 1% → 2.5%, alts 0.5% → 1.25% (never above 5%)
 leverage_ceiling = 10           # the full ceiling instead of 2x; a sleeve's own cap still applies (alts 3x)
 take_profit_equity_pct = 0.01   # day goal: all trades are closed once the ledger is 1% up, net; so is one trade that makes it alone
-take_profit_trade_pct = 0.02    # a single trade is closed once it is 2% up on its margin, net of the closing fee (owner 2026-10-12); 0 = off
+take_profit_trade_pct = 0.02    # a single trade is banked once it is 2% up on its margin, net of the closing fee (owner 2026-10-12); 0 = off
+take_profit_giveback = 0.25     # past that level the take trails: closed after giving back this share of its best return, never below the level
 net_beta_exposure_max = 3.0     # × equity, per sleeve and across both
 max_hold_hours = 48             # no trade is held longer (24 until 2026-10-12)
 goal_cycle = true               # after the day goal is banked, start a new decision cycle at once

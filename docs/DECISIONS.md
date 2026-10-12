@@ -434,3 +434,9 @@ Said once: with the stops where the managers put them (SOL's is 9.5% below the e
 ## 2026-10-12 · The site's snapshot is rebuilt the moment a trade opens or closes
 
 Owner: the closed trades on the site lagged a close by up to ten minutes (five-minute snapshot, five-minute page poll, one-minute edge cache). The live job (every 15 seconds) now checks whether a position on the storyline track opened or closed after the last full snapshot and rebuilds and pushes it at once. The live feed carries the snapshot's time; the page compares it with the one it holds and fetches the new one with that time as the cache key, so the edge serves the fresh file. The five-minute job stays for everything else.
+
+## 2026-10-12 · The single-trade take trails past its level
+
+Owner, after SOL was banked on the first pass at 2.0% net: "if it's suddenly 4% it can close on 4% as well, sometimes it goes fast." Past `take_profit_trade_pct` the take is armed rather than fired: the executor records the best net return on margin (`positions.profit_peak_pct`) and closes the trade when it has given back `take_profit_giveback` (25%) of that best return, never below the level itself. A run to 4% is banked near 3%; a trade that crosses 2% and turns is banked at 2%. The exact top is not knowable, so "close at 4%" means "close just under the best it reached". Both numbers are on the admin's Parameters page.
+
+The open-trades table on the site now shows the return on margin net of both fees, like the closed table, so a trade that is banked shows the same figure before and after.

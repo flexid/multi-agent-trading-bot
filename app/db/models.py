@@ -427,6 +427,9 @@ class Position(Base):
     hard_stop: Mapped[Decimal | None]  # touch stop an ATR further; sizing and backup use it
     target: Mapped[Decimal]
     trail_stop: Mapped[Decimal | None]
+    # the best net return on margin since the take-profit level was first reached; the
+    # trailing take closes the trade when it gives part of that back (owner 2026-10-12)
+    profit_peak_pct: Mapped[Decimal | None]
     # Stopped out, and price then reached the target within the planned hold: a wick-out.
     wick_out: Mapped[bool | None] = mapped_column(Boolean)
     max_hold_hours: Mapped[int] = mapped_column(Integer)

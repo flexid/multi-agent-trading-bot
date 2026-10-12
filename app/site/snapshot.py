@@ -562,6 +562,16 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
     )
 
 
+def _net_margin_pct(p: Position, spot: float | None, price_pct: float) -> float:
+    """The return on the margin put in, net of the entry fee paid and the exit fee to
+    come, so the open and the closed tables say the same thing (owner 2026-10-12)."""
+    if not spot or not p.margin or p.margin <= 0:
+        return price_pct * float(p.leverage)
+    exit_fee = spot * float(p.qty) * 0.001
+    net = price_pct * float(p.notional) - float(p.fees) - float(p.interest or 0) - exit_fee
+    return net / float(p.margin)
+
+
 MARK_MAX_AGE_S = 120  # an older quote is not "now": fall back to the last candle
 
 
@@ -613,7 +623,7 @@ def open_trades_view(s: Any, cfg: Config, now: datetime) -> list[OpenTrade]:
                 if p.opened_at
                 else "",
                 unrealized_price_pct=round(price_pct * 100, 2),
-                unrealized_margin_pct=round(price_pct * float(p.leverage) * 100, 2),
+                unrealized_margin_pct=round(_net_margin_pct(p, spot, price_pct) * 100, 2),
                 paper=p.mode == "paper",
                 price=spot,
             )
