@@ -14,11 +14,20 @@ import json
 import logging
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from app.config import get_secrets
-from app.site.snapshot import OUT, Snapshot, build, build_live, verify, verify_dict
+from app.site.snapshot import (
+    OUT,
+    Snapshot,
+    build,
+    build_live,
+    last_trade_event,
+    verify,
+    verify_dict,
+)
 
 log = logging.getLogger("publish")
 
@@ -122,13 +131,25 @@ def push_r2(
 LIVE_MAX_AGE_S = 5  # the page asks every fifteen seconds
 LIVE_IDLE_PUSH_S = 300  # with nothing changed, still refresh the file this often
 _last_live: tuple[str, float] = ("", 0.0)
+_last_snapshot_at: datetime | None = None  # of this process; None until the first publish
+
+
+def snapshot_due(now: datetime | None = None) -> bool:
+    """A position opened or closed since the last full snapshot: rebuild it now rather
+    than at the next five-minute mark."""
+    if _last_snapshot_at is None:
+        return False  # the regular job publishes first; nothing to compare against
+    event = last_trade_event(now)
+    return event is not None and event > _last_snapshot_at
 
 
 def publish_live(push: bool = True) -> bool:
     """The fast feed: the open trades with the price now, as ``live.json``. Same
     whitelist as the snapshot. Returns whether it was pushed."""
     global _last_live
-    live = build_live()
+    if snapshot_due():
+        publish(push)
+    live = build_live(snapshot_at=_last_snapshot_at)
     payload = live.model_dump(mode="json")
     problems = verify_dict(payload)
     if problems:
@@ -147,6 +168,7 @@ def publish_live(push: bool = True) -> bool:
 
 
 def publish(push: bool = True) -> Snapshot:
+    global _last_snapshot_at
     snap = build()
     problems = verify(snap)
     if problems:
@@ -175,6 +197,7 @@ def publish(push: bool = True) -> Snapshot:
             "og-latest.json": (latest, "application/json"),
         }
     )
+    _last_snapshot_at = snap.generated_at
     log.info(
         "snapshot %s (%d bytes)%s",
         snap.generated_at,

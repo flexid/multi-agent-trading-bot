@@ -627,9 +627,10 @@ class LiveView(_Strict):
     generated_at: datetime
     mode: str
     open_trades: list[OpenTrade]
+    snapshot_at: datetime | None = None  # the full snapshot's time: the page reloads it when newer
 
 
-def build_live(now: datetime | None = None) -> LiveView:
+def build_live(now: datetime | None = None, snapshot_at: datetime | None = None) -> LiveView:
     now = now or datetime.now(UTC)
     cfg = get_config()
     with new_session() as s:
@@ -637,7 +638,22 @@ def build_live(now: datetime | None = None) -> LiveView:
             generated_at=now,
             mode="live" if _is_live(s) else "shadow",
             open_trades=open_trades_view(s, cfg, now),
+            snapshot_at=snapshot_at,
         )
+
+
+def last_trade_event(now: datetime | None = None) -> datetime | None:
+    """When a position last opened or closed on the storyline track: the full snapshot is
+    rebuilt right after (owner 2026-10-12: the closed trades must not lag)."""
+    with new_session() as s:
+        track = _record_track(s)
+        opened, closed = s.execute(
+            select(func.max(Position.opened_at), func.max(Position.closed_at)).where(
+                Position.track == track
+            )
+        ).one()
+    stamps = [t for t in (opened, closed) if t is not None]
+    return max(stamps) if stamps else None
 
 
 def verify(snapshot: Snapshot) -> list[str]:
@@ -661,6 +677,7 @@ def verify_dict(data: dict[str, Any]) -> list[str]:
             (
                 ".x_url",
                 ".generated_at",
+                ".snapshot_at",
                 ".since",
                 ".opened_at",
                 ".closed_at",

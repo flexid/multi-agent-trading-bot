@@ -14,16 +14,18 @@ export type Snapshot = {
 
 export const SNAPSHOT_URL = process.env.NEXT_PUBLIC_SNAPSHOT_URL ?? "/data/snapshot.json";
 
-export async function loadSnapshot(): Promise<Snapshot | null> {
+// `key` busts the edge cache: the live feed passes the new snapshot's time so a trade that
+// just closed shows at once instead of after the one-minute cache.
+export async function loadSnapshot(key?: string): Promise<Snapshot | null> {
   try {
-    const r = await fetch(`${SNAPSHOT_URL}?t=${Math.floor(Date.now() / 60000)}`, { cache: "no-store" });
+    const r = await fetch(`${SNAPSHOT_URL}?t=${key ?? Math.floor(Date.now() / 60000)}`, { cache: "no-store" });
     return r.ok ? ((await r.json()) as Snapshot) : null;
   } catch {
     return null;
   }
 }
 
-export type Live = { generated_at: string; mode: string; open_trades: Snapshot["open_trades"] };
+export type Live = { generated_at: string; mode: string; open_trades: Snapshot["open_trades"]; snapshot_at?: string | null };
 export const LIVE_URL = SNAPSHOT_URL.replace(/snapshot\.json$/, "live.json");
 
 // The fast feed: open trades with the price now, refreshed by the backend every 15 seconds.

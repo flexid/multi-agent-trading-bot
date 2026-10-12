@@ -58,7 +58,15 @@ export default function Page() {
   useEffect(() => { loadSnapshot().then(setS); const t = setInterval(() => loadSnapshot().then(setS), 300000); return () => clearInterval(t); }, []);
   const [live, setLive] = useState<Live | null>(null);
   useEffect(() => {
-    const pull = () => { if (!document.hidden) loadLive().then((l) => l && setLive(l)); };
+    const pull = () => {
+      if (document.hidden) return;
+      loadLive().then((l) => {
+        if (!l) return;
+        setLive(l);
+        // a trade opened or closed: the backend rebuilt the snapshot, fetch it now
+        if (l.snapshot_at) setS((cur) => { if (cur && Date.parse(l.snapshot_at!) > Date.parse(cur.generated_at)) loadSnapshot(String(Date.parse(l.snapshot_at!))).then((n) => n && setS(n)); return cur; });
+      });
+    };
     pull(); const t = setInterval(pull, 15000); return () => clearInterval(t);
   }, []);
   if (s === undefined) return <p className="muted">Loading…</p>;

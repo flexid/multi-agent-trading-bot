@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -192,7 +192,8 @@ def test_live_feed_is_not_pushed_when_nothing_changed(
         )
         for i in range(3)
     )
-    monkeypatch.setattr(publish, "build_live", lambda: next(views))
+    monkeypatch.setattr(publish, "build_live", lambda snapshot_at=None: next(views))
+    monkeypatch.setattr(publish, "snapshot_due", lambda: False)
     monkeypatch.setattr(publish, "OUT", Path(str(tmp_path)) / "snapshot.json")
     monkeypatch.setattr(publish, "_last_live", ("", 0.0))
 
@@ -205,3 +206,25 @@ def test_live_feed_is_not_pushed_when_nothing_changed(
     assert publish.publish_live() is True
     assert publish.publish_live() is False  # same content, only the timestamp moved
     assert len(pushes) == 1
+
+
+def test_a_trade_event_rebuilds_the_snapshot_at_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Owner 2026-10-12: a close must show on the site right away, not at the next
+    five-minute mark. The live job rebuilds the snapshot when a position opened or closed
+    after the last one, and tells the page its time."""
+    from app.site import publish
+
+    t0 = datetime(2026, 10, 12, 17, 0, tzinfo=UTC)
+    monkeypatch.setattr(publish, "_last_snapshot_at", None)
+    monkeypatch.setattr(publish, "last_trade_event", lambda now=None: t0 + timedelta(minutes=1))
+    assert publish.snapshot_due() is False  # nothing published yet by this process
+    monkeypatch.setattr(publish, "_last_snapshot_at", t0)
+    assert publish.snapshot_due() is True  # a close one minute after the snapshot
+    monkeypatch.setattr(publish, "last_trade_event", lambda now=None: t0 - timedelta(minutes=1))
+    assert publish.snapshot_due() is False
+    monkeypatch.setattr(publish, "last_trade_event", lambda now=None: None)
+    assert publish.snapshot_due() is False
+    # the live feed carries the snapshot's time, and the whitelist allows it
+    trade = minimal().open_trades[0].model_copy(update={"price": 74.4})
+    live = snap.LiveView(generated_at=t0, mode="shadow", open_trades=[trade], snapshot_at=t0)
+    assert snap.verify_dict(live.model_dump(mode="json")) == []
