@@ -111,6 +111,7 @@ Every job writes a `fetch_runs` row and updates `data_sources` (last success, la
 | `make selftest` | All read-only checks. The X read costs about $0.06; skip it with `ARGS=--no-x` |
 | `make selftest ARGS="--json logs/selftest.json"` | Same, and saves the results |
 | `make selftest-live CONFIRM=yes` | Also places one minimal post-only order 10% below the bid and cancels it |
+| `make deploy-arena-site` | Builds and deploys arena.dorkbot.dev (arena-site/) to Cloudflare Pages |
 | `make bybit-authorize` | Connects the bot to a Bybit AI Subaccount via OAuth and writes its key into `.env` (`ARGS=--list`, `--use <id>`, `--create`; add `--for kwikton` for an arena trader's own key; `--code CODE` when Bybit shows the code on its page instead of redirecting) |
 | `make up` / `make down` | Postgres 16 (used from M1) |
 
@@ -152,3 +153,15 @@ Display names for the site, the admin and the docs (ids stay as they are in code
 | **Hands** | executor | the only process that touches the exchange |
 | **Scribe** / **Pedant** | post writer / auditor | writes the X post; checks it |
 | **Coach** | memo | the Monday review with proposals, never changes anything |
+
+## The arena
+
+`app/arena/` is the dorkbot arena (owner's TRADING_COMPETITION_SPEC.md, 2026-10-13): three AI
+traders, Kwikton (Astra), Kwekton (Grok) and Kwakton (Fable), each on its own Bybit AI
+sub-account, trading the BTCUSDT perpetual under fixed rules. Each writes a public rulebook once
+per round; Jev judges every closed 1-minute candle against it; the rules engine (pure code) sizes,
+places the entry with the take-profit and stop attached, counts losses, benches after two and
+resets the round when all three are benched. Its own process (`docker compose` service `arena`,
+`python -m app.arena.main`), its own tables (`arena_*`), and a read-only API at
+`https://api.dorkbot.dev/arena/v1` (through the tunnel) that the site in `arena-site/` reads.
+`arena.live = false` runs the paper twin over real prices; `true` trades the sub-accounts.

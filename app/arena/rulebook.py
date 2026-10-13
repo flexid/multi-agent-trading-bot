@@ -8,6 +8,12 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 QUESTIONS_VERSION = 1  # bump when the compiled questions change
+CONVICTION_LEVELS = [  # the score question's rubric; Jev's score is the level index
+    "the rule is not met, or only with a generous reading",
+    "the rule is partly met; some conditions are borderline",
+    "the rule is met; the conditions are visible in the data",
+    "a textbook example: every condition is clearly and strongly met",
+]
 
 Leverage = Field(ge=1, le=10)
 
@@ -74,12 +80,7 @@ def compile_questions(rb: Rulebook, *, side: str | None = None) -> dict[str, Any
                     "How clearly is the chosen entry rule satisfied by the candle data? "
                     "0 = not at all, 1 = a textbook example."
                 ),
-                criteria=[
-                    "the rule is not met, or only with a generous reading",
-                    "the rule is partly met; some conditions are borderline",
-                    "the rule is met; the conditions are visible in the data",
-                    "a textbook example: every condition is clearly and strongly met",
-                ],
+                criteria=CONVICTION_LEVELS,
             ),
         }
     if not rb.early_exit:

@@ -49,6 +49,7 @@ export type TraderState = {
 
 export type State = {
   generated_at: string;
+  mode?: "live" | "paper";
   started_at: string;
   round: { number: number; started_at: string; active: number };
   traders: TraderState[];

@@ -454,3 +454,16 @@ Owner, after a self-evaluation on three days of record (main book -5.9%, inverse
 7. **One week untouched.** `FROZEN_UNTIL` is 2026-10-19. No decision-logic change before then; bugs, UI and ops only. Ten independent bets cannot judge nine rule changes.
 
 Not done, by the owner's decision: Grok stays. Not done, by mine: Jev as the only X labeller for bluechips (the shadow comparison has not run long enough on bluechip posts); the cycle's own labelling is unchanged.
+
+## 2026-10-14 · The arena bot, in Python, in this repo
+
+Owner's spec (TRADING_COMPETITION_SPEC.md) assumed a TypeScript monorepo; he chose Python inside this repo so the Bybit client, the LLM layer, the Jev client and the ledger are reused. Decisions taken while building:
+
+- **Exchange:** bybit.com (the code never used the EU host; the EU wording in CLAUDE.md and SPEC is from the original plan). BTCUSDT linear, one-way mode, 10x cap (owner: "10 or 20?" → 10: fees scale with leverage, the edge does not).
+- **Ledger:** the existing Postgres, tables `arena_*`, instead of SQLite. One database, one backup.
+- **Size:** each trade puts up `margin_share` (95%) of the sub-account's available USDT as margin at the rulebook's leverage. The stop caps the loss per trade at the rulebook's stop (≤ take ≤ 10% of margin), the allocation caps the trader.
+- **Net result:** Bybit's `closedPnl` from `/v5/position/closed-pnl`, which is net of both fee legs (openFee and closeFee reported beside it). To be confirmed on the first real trade; the paper twin books fees the same way.
+- **Jev's conviction** is the probability-weighted level over a four-level rubric, scaled to 0..1 like the X labels' credibility.
+- **Rulebook refusals** (a pair the fee rule or the stop band forbids) leave the trader flat for the round, with the refused book still published.
+- **Paper first:** `arena.enabled = true`, `arena.live = false`: the three traders run on simulated fills over real prices with 1,000 USDT each; the site shows a "paper" badge. Live needs funded sub-accounts and the owner's word.
+- **Not built yet:** X posts for arena trades (spec §7), the `/live` WebSocket (the site polls), round-start rulebooks from a testnet season.

@@ -70,6 +70,7 @@ services:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
       - admin
+      - arena
     restart: unless-stopped
 
   executor:
@@ -81,6 +82,22 @@ services:
     command: ["python", "-m", "app.execution.executor"]
     volumes:
       - ./config.toml:/app/config.toml  # parameter changes from the admin land here
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  arena:
+    # The dorkbot arena (app/arena): its own minute loop and the read-only API on 8787,
+    # reached through the tunnel as api.dorkbot.dev. Idles while arena.enabled is false.
+    profiles: ["bot"]
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://bot:bot@postgres:5432/bot
+    command: ["python", "-m", "app.arena.main"]
+    volumes:
+      - ./config.toml:/app/config.toml
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -30,6 +30,7 @@ class PaperExchange:
         self._opened_at: datetime | None = None
         self._open_fee = Decimal(0)
         self._closed: list[ClosedTrade] = []
+        self.now: datetime | None = None  # the engine's clock; real time when unset
         self.instrument_spec = Instrument(
             tick=Decimal("0.1"), lot=Decimal("0.001"), min_qty=Decimal("0.001")
         )
@@ -71,7 +72,7 @@ class PaperExchange:
         self._open_fee = notional * self.fee
         self.cash -= margin + self._open_fee
         self._pos = Position(side, qty, price, self._leverage, tp, sl, Decimal(0), margin)
-        self._opened_at = datetime.now(UTC)
+        self._opened_at = self._now()
         return f"paper-{link_id}"
 
     async def set_tpsl(self, tp: Decimal, sl: Decimal) -> None:
@@ -84,6 +85,9 @@ class PaperExchange:
 
     async def closed_trades(self, since: datetime) -> list[ClosedTrade]:
         return [t for t in self._closed if t.closed_at >= since]
+
+    def _now(self) -> datetime:
+        return self.now or datetime.now(UTC)
 
     # --- the simulation ----------------------------------------------------------
 
@@ -121,7 +125,7 @@ class PaperExchange:
                 leverage=p.leverage,
                 fees=self._open_fee + close_fee,
                 pnl=pnl,
-                closed_at=datetime.now(UTC),
+                closed_at=self._now(),
             )
         )
         self._pos, self._opened_at, self._open_fee = None, None, Decimal(0)

@@ -150,8 +150,8 @@ x_poll_minutes = 3              # the curated X accounts are read and labelled b
 light_cycle = true              # every hour a code-only check (no managers, cents): a formula flip on an asset starts a full cycle
 formula_flip = 0.3              # the formula score that counts as a call for that check
 
-[arena]                         # the dorkbot arena (app/arena, competition-site/): three traders on the BTCUSDT perpetual (owner 2026-10-13)
-enabled = false                 # the arena process exits at once while false
+[arena]                         # the dorkbot arena (app/arena, arena-site/): three traders on the BTCUSDT perpetual (owner 2026-10-13)
+enabled = true                  # the arena process idles while false (owner 2026-10-14: paper first)
 live = false                    # real orders on the three AI subaccounts; false = paper fills on real prices
 market = "BTCUSDT"
 jev_model = "jev-1.13.0"        # pinned: a model bump mid-season is a season boundary

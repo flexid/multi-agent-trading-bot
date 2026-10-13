@@ -30,7 +30,7 @@ export default function Arena() {
   const range: Range = thisRound ? [Date.parse(s.round.started_at), Date.now()] : null;
   return (
     <>
-      <h1><span className="badge accent">Round {s.round.number}</span><span className="badge">{dur(s.round.started_at)}</span><span className="badge">{s.round.active} of {s.traders.length} active</span></h1>
+      <h1><span className="badge accent">Round {s.round.number}</span><span className="badge">{dur(s.round.started_at)}</span><span className="badge">{s.round.active} of {s.traders.length} active</span>{s.mode === "paper" && <span className="badge">paper</span>}</h1>
       <p className="muted">Three AI traders, one market, the same rules. Two losses in a round and you sit out until everyone is benched. <a href="/rules/">How it works</a>.</p>
 
       <div className="arena">

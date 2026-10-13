@@ -51,7 +51,8 @@ counts and the equity index only, never USD. Times are ISO 8601 in UTC. CORS mus
                                "min_conviction": 0.75, "entry_long": "...", "entry_short": "...", "no_trade": "...",
                                "early_exit": null } } ] }
 ```
-`position` and `rulebook` may be `null`. `active` is the number of traders not benched.
+`position` and `rulebook` may be `null`. `active` is the number of traders not benched. `mode` is
+`"paper"` while the traders run on simulated fills over real prices, `"live"` on the real accounts.
 
 ### `GET /leaderboard`
 ```json
