@@ -158,6 +158,7 @@ jev_model = "jev-1.13.0"        # pinned: a model bump mid-season is a season bo
 max_leverage = 10               # owner 2026-10-14: 10x; fees scale with leverage, the edge does not
 tp_net_roe_range = [2, 10]      # net profit on margin, after both fee legs
 losses_to_bench = 2
+max_round_hours = 48            # a round also ends after this long, benched or not (owner 2026-10-14); 0 = never
 taker_fee_pct = 0.055           # per side; the probe on 2026-10-13 confirmed 0.055% on all three accounts
 min_conviction_floor = 0.5
 margin_share = 0.95             # of the sub-account's USDT put up as margin per trade

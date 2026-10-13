@@ -56,6 +56,10 @@ def test_loss_bench_and_round() -> None:
     assert not R.round_over({"a": True, "b": False, "c": True})
     assert R.round_over({"a": True, "b": True, "c": True})
     assert not R.round_over({})
+    # the time limit (owner 2026-10-14): a round also ends after max_hours, not before
+    assert not R.round_over({"a": False}, hours_running=47.9, max_hours=48)
+    assert R.round_over({"a": False}, hours_running=48, max_hours=48)
+    assert not R.round_over({"a": False}, hours_running=500, max_hours=0)
     assert R.qty_for(D(100), 5, D(60000), D("0.001"), D("0.001")) == D("0.008")
     assert R.qty_for(D(10), 1, D(60000), D("0.001"), D("0.001")) == D(0)  # below the minimum
     assert R.net_roe_pct(D("2.10"), D(100)) == D("2.10")

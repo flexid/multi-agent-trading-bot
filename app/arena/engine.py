@@ -122,7 +122,23 @@ class Engine:
                 if last and new_candle:
                     await t.exchange.on_candle(Decimal(str(last[2])), Decimal(str(last[3])))
             await self.reconcile(t, now)
-        if R.round_over({t.id: t.benched for t in self.traders.values()}):
+        running = (now - self.round_started).total_seconds() / 3600 if self.round_started else None
+        if R.round_over(
+            {t.id: t.benched for t in self.traders.values()},
+            hours_running=running,
+            max_hours=self.cfg.max_round_hours,
+        ):
+            if not all(t.benched for t in self.traders.values()):
+                log.info(
+                    "arena: round %d ends on the %dh limit",
+                    self.round_number,
+                    self.cfg.max_round_hours,
+                )
+                for t in self.traders.values():
+                    if await t.exchange.position() is not None:
+                        t.pending_exit = "bench"
+                        await t.exchange.close_market(f"arena-{t.id}-round-{int(now.timestamp())}")
+                        await self.reconcile(t, now)
             await self.new_round(now)
         if new_candle:
             for t in self.traders.values():

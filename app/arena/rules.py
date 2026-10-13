@@ -111,9 +111,14 @@ def is_benched(losses: int, rules: Rules) -> bool:
     return losses >= rules.losses_to_bench
 
 
-def round_over(benched: dict[str, bool]) -> bool:
-    """Rule 8: the round resets when every trader is benched."""
-    return bool(benched) and all(benched.values())
+def round_over(
+    benched: dict[str, bool], *, hours_running: float | None = None, max_hours: int = 0
+) -> bool:
+    """Rule 8: the round resets when every trader is benched, or (owner 2026-10-14) once
+    it has run ``max_hours``, so a trader who never trades cannot hold it open."""
+    if bool(benched) and all(benched.values()):
+        return True
+    return max_hours > 0 and hours_running is not None and hours_running >= max_hours
 
 
 def qty_for(

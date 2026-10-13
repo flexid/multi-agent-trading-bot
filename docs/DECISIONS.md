@@ -467,3 +467,7 @@ Owner's spec (TRADING_COMPETITION_SPEC.md) assumed a TypeScript monorepo; he cho
 - **Rulebook refusals** (a pair the fee rule or the stop band forbids) leave the trader flat for the round, with the refused book still published.
 - **Paper first:** `arena.enabled = true`, `arena.live = false`: the three traders run on simulated fills over real prices with 1,000 USDT each; the site shows a "paper" badge. Live needs funded sub-accounts and the owner's word.
 - **Not built yet:** X posts for arena trades (spec §7), the `/live` WebSocket (the site polls), round-start rulebooks from a testnet season.
+
+## 2026-10-14 · Arena rounds also end on a time limit
+
+A round ends when all three are benched (spec rule 8). A trader that never trades can never be benched, so one selective rulebook would hold the round open for everyone. Owner chose a maximum round length over benching for inactivity: `arena.max_round_hours` (48). When it is reached the open positions are closed at market (exit reason `bench`), the round ends with its winner, and the authors write new rulebooks. A trader that went a whole round without a trade sees that in its record.

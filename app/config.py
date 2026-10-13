@@ -188,6 +188,10 @@ class ArenaConfig(_Section):
     max_leverage: int = Field(default=10, ge=1, le=20)
     tp_net_roe_range: tuple[int, int] = (2, 10)
     losses_to_bench: int = Field(default=2, ge=1, le=10)
+    # A round ends when all are benched, or after this many hours regardless (owner
+    # 2026-10-14): a trader that never trades can never be benched and would hold the
+    # round open for everyone. 0 = no limit.
+    max_round_hours: int = Field(default=48, ge=0, le=720)
     taker_fee_pct: Decimal = Decimal("0.055")
     min_conviction_floor: float = Field(default=0.5, ge=0, le=1)
     margin_share: Decimal = Field(

@@ -253,3 +253,41 @@ async def test_a_restart_writes_the_rulebooks_the_round_still_lacks(
     engine2, _ = make(prices)
     await engine2.start(T0)
     assert written == []
+
+
+@needs_db
+async def test_a_round_also_ends_on_the_time_limit(
+    db: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Owner 2026-10-14: a trader that never trades can never be benched; after
+    max_round_hours the round resets anyway, any open position closed first."""
+    prices = Prices()
+    engine, traders = make(prices)
+    engine.cfg = engine.cfg.model_copy(update={"max_round_hours": 2})
+
+    async def fake_write(model: str, context: str, *, round_number: int) -> Rulebook:
+        return RB
+
+    async def fake_entry(
+        rb: Rulebook, state: dict[str, object], *, model: str, trader: str
+    ) -> Signal:
+        return Signal("none", {"none": 1.0}, 0.0)
+
+    monkeypatch.setattr(author, "write_rulebook", fake_write)
+    monkeypatch.setattr(reflex, "decide_entry", fake_entry)
+    now = T0
+    await engine.start(now)
+    prices.push(60000.0)
+    await engine.tick(now)
+    assert engine.round_number == 1
+    now = T0 + timedelta(hours=1, minutes=59)
+    prices.push(60000.0)
+    await engine.tick(now)
+    assert engine.round_number == 1
+    now = T0 + timedelta(hours=2)
+    prices.push(60000.0)
+    await engine.tick(now)
+    assert engine.round_number == 2
+    with new_session() as s:
+        first = s.query(ArenaRound).filter_by(number=1).one()
+        assert first.ended_at is not None
