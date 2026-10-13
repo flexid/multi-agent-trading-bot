@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import ShareLink from "./share";
 
-const V = "c2"; // brand asset version: bumps when brand/ changes
+const V = "c3"; // brand asset version: bumps when brand/ changes
 const OG = "https://competition.dorkbot.dev/brand/og-competition.png";
 
 export const metadata: Metadata = {
