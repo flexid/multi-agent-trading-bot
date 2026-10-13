@@ -4,6 +4,7 @@
     python -m app.bybit_authorize --use ID     # fetch that AI subaccount's key into .env
     python -m app.bybit_authorize --create     # create a new AI subaccount and fetch its key
     python -m app.bybit_authorize --create --for kwikton   # one of the arena's three traders
+    python -m app.bybit_authorize --code CODE  # Bybit showed a code instead of redirecting
 
 ``--for`` writes the key under the trader's own names (COMPETITION_KWIKTON_API_KEY and
 _SECRET) instead of dorkbot's BYBIT_API_KEY, so each trader keeps its own sub-account.
@@ -38,6 +39,9 @@ AUTHORIZE_URL = "https://www.bybit.com/oauth"
 API_BASE = "https://api2.bybit.com"
 TRADING_BASE_URL = "https://api.bybit.com"
 TOKEN_PATH = Path.home() / ".config" / "multi-agent-trading-bot" / "bybit_oauth.json"
+PENDING_PATH = TOKEN_PATH.with_name(
+    "bybit_oauth_pending.json"
+)  # the PKCE verifier of the open link
 PORT_RANGE = range(9876, 9887)
 CALLBACK_TIMEOUT_S = 600
 
@@ -158,13 +162,18 @@ def authorize() -> None:
         "code_challenge": challenge,
         "code_challenge_method": "S256",
     }
+    # Kept for `--code`: when Bybit shows the code on its page instead of redirecting, the
+    # exchange still needs this link's verifier.
+    PENDING_PATH.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+    PENDING_PATH.touch(mode=0o600, exist_ok=True)
+    PENDING_PATH.write_text(json.dumps({"verifier": verifier, "created_at": int(time.time())}))
     minutes = CALLBACK_TIMEOUT_S // 60
     print(f"Open this link, log in to Bybit and click Authorize (valid {minutes} min):\n")
     print(f"{AUTHORIZE_URL}?{urlencode(params)}\n", flush=True)
     print(
-        "Keep this terminal open: Bybit sends the browser back here. If Bybit shows a token\n"
-        "on its own page instead, save it to a file and run:\n"
-        "  make bybit-authorize ARGS='--token-file FILE'\n",
+        "Keep this terminal open: Bybit sends the browser back here. If Bybit shows a code\n"
+        "on its own page instead, stop this with Ctrl-C and run:\n"
+        "  make bybit-authorize ARGS='--code THECODE'\n",
         flush=True,
     )
 
@@ -178,9 +187,13 @@ def authorize() -> None:
     if "error" in _Callback.result:
         raise SystemExit(f"authorization failed: {_Callback.result['error']}")
 
+    _exchange(_Callback.result["code"], verifier)
+
+
+def _exchange(code: str, verifier: str) -> None:
     response = httpx.post(
         f"{API_BASE}/oauth/v1/public/access_token",
-        data={"client_id": CLIENT_ID, "code": _Callback.result["code"], "code_verifier": verifier},
+        data={"client_id": CLIENT_ID, "code": code, "code_verifier": verifier},
         timeout=20,
     )
     token = _unwrap(response)
@@ -190,8 +203,25 @@ def authorize() -> None:
     token.setdefault("refresh_token_expires_in", 2592000)
     token["created_at"] = int(time.time())
     _save_token(token)
+    PENDING_PATH.unlink(missing_ok=True)
     print("Authorized. Token stored.\n")
     list_accounts(token)
+
+
+def exchange_pasted_code(code: str) -> None:
+    """Bybit showed the authorization code on its page instead of redirecting: exchange it
+    with the verifier of the link that was last printed."""
+    if not PENDING_PATH.exists():
+        raise SystemExit(
+            "no open authorization: run `make bybit-authorize` first, approve in the browser, "
+            "then pass the code Bybit shows"
+        )
+    pending = json.loads(PENDING_PATH.read_text())
+    if time.time() - pending["created_at"] > CALLBACK_TIMEOUT_S:
+        raise SystemExit(
+            "the last link is older than ten minutes; run `make bybit-authorize` again"
+        )
+    _exchange(code.strip(), pending["verifier"])
 
 
 # --- step 2: pick an AI subaccount -------------------------------------------
@@ -287,6 +317,11 @@ def store_pasted_token(path: Path) -> None:
         parsed = json.loads(raw)
         token = parsed.get("result", parsed) if isinstance(parsed, dict) else {}
     except ValueError:
+        if raw.count(".") != 2:  # an access token is a JWT; a short string is the code
+            raise SystemExit(
+                "that is an authorization code, not a token: use  "
+                "make bybit-authorize ARGS='--code THECODE'"
+            ) from None
         token = {"access_token": raw}
     if not token.get("access_token"):
         raise SystemExit("file holds no access token")
@@ -305,6 +340,9 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument("--create", action="store_true", help="create a new AI subaccount")
     group.add_argument("--list", action="store_true", help="list AI subaccounts (stored token)")
     group.add_argument(
+        "--code", metavar="CODE", help="the code Bybit showed instead of redirecting"
+    )
+    group.add_argument(
         "--token-file", type=Path, help="file holding the access token shown by Bybit's page"
     )
     parser.add_argument(
@@ -316,7 +354,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.trader and not (args.use or args.create):
         parser.error("--for goes with --use or --create")
-    if args.token_file:
+    if args.code:
+        exchange_pasted_code(args.code)
+    elif args.token_file:
         store_pasted_token(args.token_file)
     elif args.list:
         list_accounts(_load_token())
