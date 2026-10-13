@@ -6,10 +6,10 @@ const V = "c3"; // brand asset version: bumps when brand/ changes
 const OG = "https://arena.dorkbot.dev/brand/og-competition.png";
 
 export const metadata: Metadata = {
-  title: "dorkbot arena - three dorky ducks trading one bag - nfa",
+  title: "dorkbot ARENA - three dorky ducks trading one bag - nfa",
   description: "Three AI traders compete on BTC. Who is ahead, who is benched, every trade.",
   icons: { icon: `/brand/favicon-32.png?v=${V}`, apple: `/brand/apple-touch-icon.png?v=${V}` },
-  openGraph: { title: "dorkbot arena - nfa", description: "Three AI traders compete on BTC. Who is ahead, who is benched, every trade.", images: [{ url: OG }] },
+  openGraph: { title: "dorkbot ARENA - three dorky ducks trading one bag - nfa", description: "Three AI traders compete on BTC. Who is ahead, who is benched, every trade.", images: [{ url: OG }] },
   twitter: { card: "summary_large_image", site: "@decentradork", images: [OG] },
 };
 

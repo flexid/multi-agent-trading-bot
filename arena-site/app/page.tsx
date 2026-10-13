@@ -14,9 +14,6 @@ export default function Arena() {
   useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 30000); return () => clearInterval(t); }, []);
 
   const ranked = useMemo(() => (s ? [...s.traders].sort((a, b) => b.equity_index - a.equity_index) : []), [s]);
-  useEffect(() => {
-    if (ranked.length && s) document.title = `${ranked[0].name} leads · R${s.round.number} — dorkbot arena`;
-  }, [ranked, s]);
 
   if (s === undefined) return <p className="muted">Loading…</p>;
   if (s === null) return (
