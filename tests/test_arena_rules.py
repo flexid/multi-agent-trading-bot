@@ -81,3 +81,41 @@ def test_rulebook_compiles_to_jev_questions() -> None:
     assert rb.public()["tp_net_roe_pct"] == 2
     with pytest.raises(ValueError):
         Rulebook.model_validate({**rb.model_dump(), "leverage": 12})
+
+
+def test_jev_state_is_compact() -> None:
+    """Jev's window is small: at most 328 candles, prices to one decimal, integer volumes,
+    times as minutes before now; the whole state well under 20k characters."""
+    import asyncio
+    import json
+    from datetime import UTC, datetime, timedelta
+
+    from app.arena.candles import JEV_COUNT, CandleBuffer
+
+    now = datetime(2026, 10, 14, tzinfo=UTC)
+
+    class Src:
+        async def klines(self, interval: str, limit: int = 151) -> list[list[float]]:
+            step = int(interval)
+            return [
+                [
+                    (now - timedelta(minutes=(limit - i) * step)).timestamp() * 1000,
+                    60000.123,
+                    60010.456,
+                    59990.789,
+                    60005.0001,
+                    1234.5678,
+                ]
+                for i in range(limit)
+            ]
+
+        async def last_price(self) -> D:
+            return D(60000)
+
+    buf = CandleBuffer(Src())  # type: ignore[arg-type]
+    asyncio.run(buf.refresh())
+    state = buf.state(None, now)
+    assert {k: len(v) for k, v in state["candles"].items()} == JEV_COUNT
+    last = state["candles"]["1m"][-1]
+    assert last == [1, 60000.1, 60010.5, 59990.8, 60005.0, 1234]
+    assert len(json.dumps(state, separators=(",", ":"))) < 20000

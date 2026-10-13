@@ -31,7 +31,10 @@ def round_context(
         "round": round_number,
         "your_record": stats,
         "last_round": {"rulebook": last_rulebook, "result": last_result},
-        "candles_1h": [[int(r[0]), r[1], r[2], r[3], r[4], r[5]] for r in hourly[-200:]],
+        "candles_1h": [
+            [int(r[0]), round(r[1], 1), round(r[2], 1), round(r[3], 1), round(r[4], 1), int(r[5])]
+            for r in hourly[-200:]
+        ],
         "candle_fields": "[time_ms, open, high, low, close, volume], oldest first",
     }
     return json.dumps(ctx, separators=(",", ":"))

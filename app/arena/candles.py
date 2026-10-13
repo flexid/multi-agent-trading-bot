@@ -11,6 +11,11 @@ from app.arena.exchange import Exchange
 
 INTERVALS = {"1m": "1", "5m": "5", "15m": "15", "1h": "60"}
 KEEP = 150
+# What Jev sees per timeframe: its window is small (a state of 600 full-precision candles
+# was refused on the first run, 2026-10-13), so fewer candles, prices rounded, volumes as
+# integers and times as minutes before now.
+JEV_COUNT = {"1m": 120, "5m": 72, "15m": 64, "1h": 72}
+PRICE_DECIMALS = 1
 
 
 class CandleBuffer:
@@ -39,12 +44,25 @@ class CandleBuffer:
         return Decimal(str(row[4])) if row else None
 
     def state(self, position: dict[str, Any] | None, now: datetime | None = None) -> dict[str, Any]:
-        """What Jev sees: candles as [t, o, h, l, c, v] oldest first, plus the position."""
+        """What Jev sees: per timeframe the last candles as
+        [minutes_before_now, open, high, low, close, volume], oldest first, plus the position."""
         now = now or datetime.now(UTC)
+        now_ms = now.timestamp() * 1000
         return {
-            "now": now.isoformat(timespec="seconds"),
+            "now": now.isoformat(timespec="minutes"),
+            "candle_fields": "[minutes_before_now, open, high, low, close, volume], oldest first",
             "candles": {
-                k: [[int(r[0]), r[1], r[2], r[3], r[4], r[5]] for r in v]
+                k: [
+                    [
+                        int(round((now_ms - r[0]) / 60000)),
+                        round(r[1], PRICE_DECIMALS),
+                        round(r[2], PRICE_DECIMALS),
+                        round(r[3], PRICE_DECIMALS),
+                        round(r[4], PRICE_DECIMALS),
+                        int(r[5]),
+                    ]
+                    for r in v[-JEV_COUNT[k] :]
+                ]
                 for k, v in self.frames.items()
             },
             "position": position,

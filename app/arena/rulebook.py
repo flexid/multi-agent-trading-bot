@@ -62,8 +62,9 @@ def compile_questions(rb: Rulebook, *, side: str | None = None) -> dict[str, Any
             "signal": Choice(
                 instructions=(
                     "You are judging whether the current BTC candle data in `candles` "
-                    "(arrays of [time, open, high, low, close, volume], oldest first, the last "
-                    "entry the most recent closed candle) satisfies a trader's entry rules. "
+                    "(per timeframe, arrays of [minutes before now, open, high, low, close, "
+                    "volume], oldest first, the last entry the most recent closed candle) "
+                    "satisfies a trader's entry rules. "
                     'Judge literally. Prefer "none" unless a rule is clearly met.'
                 ),
                 criteria={
