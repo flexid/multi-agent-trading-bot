@@ -1,4 +1,4 @@
-.PHONY: up down deploy deploy-site snapshot golive costs selftest-live-full test lint migrate fetch-once scheduler cycle executor kill resume indicators backtest selftest selftest-live bybit-authorize
+.PHONY: up down deploy deploy-site deploy-competition-site snapshot golive costs selftest-live-full test lint migrate fetch-once scheduler cycle executor kill resume indicators backtest selftest selftest-live bybit-authorize
 
 up:
 	docker compose up -d postgres
@@ -75,3 +75,6 @@ selftest-live:
 # Connect to a Bybit AI subaccount via OAuth; writes the key into .env.
 bybit-authorize:
 	uv run python -m app.bybit_authorize $(ARGS)
+
+deploy-competition-site:
+	competition-site/scripts/deploy.sh

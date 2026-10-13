@@ -1,0 +1,59 @@
+{
+ "generated_at": "2026-10-13T09:00:00Z",
+ "traders": [
+  {
+   "id": "kwakton",
+   "name": "Kwakton",
+   "model": "fable",
+   "equity_index": 104.8,
+   "return_pct": 4.8,
+   "trades": 23,
+   "wins": 13,
+   "losses": 10,
+   "win_rate_pct": 56.5,
+   "avg_net_roe_pct": 0.42,
+   "best_pct": 6.1,
+   "worst_pct": -4.2,
+   "rounds_survived": 7,
+   "streak": 2,
+   "avg_leverage": 5.0,
+   "avg_hold_min": 95
+  },
+  {
+   "id": "kwikton",
+   "name": "Kwikton",
+   "model": "astra",
+   "equity_index": 101.2,
+   "return_pct": 1.2,
+   "trades": 61,
+   "wins": 32,
+   "losses": 29,
+   "win_rate_pct": 52.5,
+   "avg_net_roe_pct": 0.04,
+   "best_pct": 2.3,
+   "worst_pct": -2.4,
+   "rounds_survived": 4,
+   "streak": -1,
+   "avg_leverage": 7.0,
+   "avg_hold_min": 22
+  },
+  {
+   "id": "kwekton",
+   "name": "Kwekton",
+   "model": "grok",
+   "equity_index": 96.1,
+   "return_pct": -3.9,
+   "trades": 18,
+   "wins": 7,
+   "losses": 11,
+   "win_rate_pct": 38.9,
+   "avg_net_roe_pct": -0.31,
+   "best_pct": 4.0,
+   "worst_pct": -3.1,
+   "rounds_survived": 3,
+   "streak": -2,
+   "avg_leverage": 3.0,
+   "avg_hold_min": 140
+  }
+ ]
+}

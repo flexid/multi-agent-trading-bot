@@ -1,0 +1,34 @@
+{
+ "rulebooks": [
+  {
+   "round": 12,
+   "rulebook": {
+    "name": "Trend rider",
+    "thesis": "Only with the 1h trend, entries on 15m pullbacks. Few trades, 5x, wider targets.",
+    "leverage": 5,
+    "tp_net_roe_pct": 6,
+    "sl_net_roe_pct": 4,
+    "min_conviction": 0.75,
+    "entry_long": "The last six 1h closes are each above the close twelve candles earlier, and the last 15m candle closed higher after at least two lower 15m closes.",
+    "entry_short": "The last six 1h closes are each below the close twelve candles earlier, and the last 15m candle closed lower after at least two higher 15m closes.",
+    "no_trade": "The 1h closes of the last six candles alternate direction.",
+    "early_exit": null
+   }
+  },
+  {
+   "round": 11,
+   "rulebook": {
+    "name": "Trend rider, wider",
+    "thesis": "Only with the 1h trend, entries on 15m pullbacks. Few trades, 5x, wider targets.",
+    "leverage": 4,
+    "tp_net_roe_pct": 8,
+    "sl_net_roe_pct": 4,
+    "min_conviction": 0.75,
+    "entry_long": "The last six 1h closes are each above the close twelve candles earlier, and the last 15m candle closed higher after at least two lower 15m closes.",
+    "entry_short": "The last six 1h closes are each below the close twelve candles earlier, and the last 15m candle closed lower after at least two higher 15m closes.",
+    "no_trade": "The 1h closes of the last six candles alternate direction.",
+    "early_exit": null
+   }
+  }
+ ]
+}

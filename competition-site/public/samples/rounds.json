@@ -1,0 +1,270 @@
+{
+ "rounds": [
+  {
+   "number": 1,
+   "started_at": "2026-10-07T06:00:00Z",
+   "ended_at": "2026-10-07T17:00:00Z",
+   "benches": [
+    {
+     "trader": "kwekton",
+     "at": "2026-10-07T09:40:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwikton",
+     "at": "2026-10-07T13:20:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwakton",
+     "at": "2026-10-07T17:00:00Z",
+     "losses": 2
+    }
+   ],
+   "winner": "kwekton"
+  },
+  {
+   "number": 2,
+   "started_at": "2026-10-07T17:00:00Z",
+   "ended_at": "2026-10-07T23:00:00Z",
+   "benches": [
+    {
+     "trader": "kwikton",
+     "at": "2026-10-07T19:00:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwakton",
+     "at": "2026-10-07T21:00:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwekton",
+     "at": "2026-10-07T23:00:00Z",
+     "losses": 2
+    }
+   ],
+   "winner": "kwekton"
+  },
+  {
+   "number": 3,
+   "started_at": "2026-10-07T23:00:00Z",
+   "ended_at": "2026-10-08T08:00:00Z",
+   "benches": [
+    {
+     "trader": "kwekton",
+     "at": "2026-10-08T02:00:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwikton",
+     "at": "2026-10-08T05:00:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwakton",
+     "at": "2026-10-08T08:00:00Z",
+     "losses": 2
+    }
+   ],
+   "winner": "kwikton"
+  },
+  {
+   "number": 4,
+   "started_at": "2026-10-08T08:00:00Z",
+   "ended_at": "2026-10-08T22:00:00Z",
+   "benches": [
+    {
+     "trader": "kwekton",
+     "at": "2026-10-08T12:40:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwikton",
+     "at": "2026-10-08T17:20:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwakton",
+     "at": "2026-10-08T22:00:00Z",
+     "losses": 2
+    }
+   ],
+   "winner": "kwekton"
+  },
+  {
+   "number": 5,
+   "started_at": "2026-10-08T22:00:00Z",
+   "ended_at": "2026-10-09T14:00:00Z",
+   "benches": [
+    {
+     "trader": "kwakton",
+     "at": "2026-10-09T03:20:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwekton",
+     "at": "2026-10-09T08:40:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwikton",
+     "at": "2026-10-09T14:00:00Z",
+     "losses": 2
+    }
+   ],
+   "winner": "kwakton"
+  },
+  {
+   "number": 6,
+   "started_at": "2026-10-09T14:00:00Z",
+   "ended_at": "2026-10-09T21:00:00Z",
+   "benches": [
+    {
+     "trader": "kwekton",
+     "at": "2026-10-09T16:20:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwakton",
+     "at": "2026-10-09T18:40:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwikton",
+     "at": "2026-10-09T21:00:00Z",
+     "losses": 2
+    }
+   ],
+   "winner": "kwikton"
+  },
+  {
+   "number": 7,
+   "started_at": "2026-10-09T21:00:00Z",
+   "ended_at": "2026-10-10T13:00:00Z",
+   "benches": [
+    {
+     "trader": "kwikton",
+     "at": "2026-10-10T02:20:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwakton",
+     "at": "2026-10-10T07:40:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwekton",
+     "at": "2026-10-10T13:00:00Z",
+     "losses": 2
+    }
+   ],
+   "winner": "kwakton"
+  },
+  {
+   "number": 8,
+   "started_at": "2026-10-10T13:00:00Z",
+   "ended_at": "2026-10-10T22:00:00Z",
+   "benches": [
+    {
+     "trader": "kwakton",
+     "at": "2026-10-10T16:00:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwekton",
+     "at": "2026-10-10T19:00:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwikton",
+     "at": "2026-10-10T22:00:00Z",
+     "losses": 2
+    }
+   ],
+   "winner": "kwakton"
+  },
+  {
+   "number": 9,
+   "started_at": "2026-10-10T22:00:00Z",
+   "ended_at": "2026-10-11T14:00:00Z",
+   "benches": [
+    {
+     "trader": "kwekton",
+     "at": "2026-10-11T03:20:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwakton",
+     "at": "2026-10-11T08:40:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwikton",
+     "at": "2026-10-11T14:00:00Z",
+     "losses": 2
+    }
+   ],
+   "winner": "kwikton"
+  },
+  {
+   "number": 10,
+   "started_at": "2026-10-11T14:00:00Z",
+   "ended_at": "2026-10-11T22:00:00Z",
+   "benches": [
+    {
+     "trader": "kwakton",
+     "at": "2026-10-11T16:40:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwekton",
+     "at": "2026-10-11T19:20:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwikton",
+     "at": "2026-10-11T22:00:00Z",
+     "losses": 2
+    }
+   ],
+   "winner": "kwikton"
+  },
+  {
+   "number": 11,
+   "started_at": "2026-10-11T22:00:00Z",
+   "ended_at": "2026-10-12T08:00:00Z",
+   "benches": [
+    {
+     "trader": "kwikton",
+     "at": "2026-10-12T01:20:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwakton",
+     "at": "2026-10-12T04:40:00Z",
+     "losses": 2
+    },
+    {
+     "trader": "kwekton",
+     "at": "2026-10-12T08:00:00Z",
+     "losses": 2
+    }
+   ],
+   "winner": "kwekton"
+  },
+  {
+   "number": 12,
+   "started_at": "2026-10-12T08:00:00Z",
+   "ended_at": null,
+   "benches": [
+    {
+     "trader": "kwekton",
+     "at": "2026-10-13T07:55:00Z",
+     "losses": 2
+    }
+   ],
+   "winner": null
+  }
+ ]
+}

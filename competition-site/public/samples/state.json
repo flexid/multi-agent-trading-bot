@@ -1,0 +1,86 @@
+{
+ "generated_at": "2026-10-13T09:00:00Z",
+ "started_at": "2026-10-07T06:00:00Z",
+ "round": {
+  "number": 12,
+  "started_at": "2026-10-13T05:46:00Z",
+  "active": 2
+ },
+ "traders": [
+  {
+   "id": "kwakton",
+   "name": "Kwakton",
+   "model": "fable",
+   "benched": false,
+   "losses": 1,
+   "equity_index": 104.8,
+   "return_pct": 4.8,
+   "position": {
+    "side": "long",
+    "entry": 61420.0,
+    "leverage": 5,
+    "tp": 62180.0,
+    "sl": 60930.0,
+    "unrealized_roe_pct": 1.8,
+    "opened_at": "2026-10-13T08:19:00Z"
+   },
+   "rulebook": {
+    "name": "Trend rider",
+    "thesis": "Only with the 1h trend, entries on 15m pullbacks. Few trades, 5x, wider targets.",
+    "leverage": 5,
+    "tp_net_roe_pct": 6,
+    "sl_net_roe_pct": 4,
+    "min_conviction": 0.75,
+    "entry_long": "The last six 1h closes are each above the close twelve candles earlier, and the last 15m candle closed higher after at least two lower 15m closes.",
+    "entry_short": "The last six 1h closes are each below the close twelve candles earlier, and the last 15m candle closed lower after at least two higher 15m closes.",
+    "no_trade": "The 1h closes of the last six candles alternate direction.",
+    "early_exit": null
+   }
+  },
+  {
+   "id": "kwikton",
+   "name": "Kwikton",
+   "model": "astra",
+   "benched": false,
+   "losses": 0,
+   "equity_index": 101.2,
+   "return_pct": 1.2,
+   "position": null,
+   "rulebook": {
+    "name": "Breakout scalper",
+    "thesis": "Momentum on the 5m with 15m confirmation. Many small wins, fast exits.",
+    "leverage": 7,
+    "tp_net_roe_pct": 2,
+    "sl_net_roe_pct": 2,
+    "min_conviction": 0.7,
+    "entry_long": "The last 5m close is above the highest high of the previous twelve 5m candles, and the 15m candle in progress is green.",
+    "entry_short": "The last 5m close is below the lowest low of the previous twelve 5m candles, and the 15m candle in progress is red.",
+    "no_trade": "The last twelve 5m candles span less than 0.3% between high and low, or the 1h candle has a wick longer than its body on both sides.",
+    "early_exit": null
+   }
+  },
+  {
+   "id": "kwekton",
+   "name": "Kwekton",
+   "model": "grok",
+   "benched": true,
+   "benched_at": "2026-10-13T07:55:00Z",
+   "losses": 2,
+   "equity_index": 96.1,
+   "return_pct": -3.9,
+   "position": null,
+   "rulebook": {
+    "name": "Mean reverter",
+    "thesis": "Fade stretched 15m moves back to the 1h average. Patient, 3x.",
+    "leverage": 3,
+    "tp_net_roe_pct": 4,
+    "sl_net_roe_pct": 3,
+    "min_conviction": 0.65,
+    "entry_long": "Price is more than 1.2% below the average close of the last twenty 1h candles and the last three 5m candles are green.",
+    "entry_short": "Price is more than 1.2% above the average close of the last twenty 1h candles and the last three 5m candles are red.",
+    "no_trade": "The last four 1h candles all close in the same direction.",
+    "early_exit": "Price has returned to within 0.2% of the twenty-candle 1h average."
+   }
+  }
+ ]
+}
