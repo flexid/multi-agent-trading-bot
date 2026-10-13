@@ -20,7 +20,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.admin import auth, notify
@@ -885,7 +885,109 @@ def _p_controls(s: Session, cfg: Config, now: datetime, risk: RiskState | None) 
     return {}
 
 
+def _p_arena(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> dict[str, Any]:
+    """The arena (app/arena): round, traders, rulebooks, the latest decisions and trades,
+    bench and round events, and what the two brains cost. Read from the ledger only."""
+    from app.arena import ledger
+    from app.db.models import (
+        ArenaBenchEvent,
+        ArenaDecision,
+        ArenaEquity,
+        ArenaRound,
+        ArenaTrade,
+        ArenaTrader,
+    )
+
+    a = cfg.arena
+    rnd = ledger.current_round(s)
+    traders = []
+    for t in s.scalars(select(ArenaTrader).order_by(ArenaTrader.created_at)).all():
+        eq = s.execute(
+            select(ArenaEquity.equity_usdt, ArenaEquity.equity_index, ArenaEquity.ts)
+            .where(ArenaEquity.trader == t.id)
+            .order_by(ArenaEquity.ts.desc())
+            .limit(1)
+        ).first()
+        rb = ledger.latest_rulebook(s, t.id, rnd.number) if rnd else None
+        traders.append(
+            {
+                "id": t.id,
+                "name": t.display_name,
+                "model": t.model,
+                "start_equity": t.start_equity,
+                "equity": eq[0] if eq else None,
+                "index": eq[1] if eq else None,
+                "equity_at": eq[2] if eq else None,
+                "losses": ledger.losses_in_round(s, t.id, rnd.number) if rnd else 0,
+                "benched": (ledger.benched_in_round(s, t.id, rnd.number) is not None)
+                if rnd
+                else False,
+                "open": ledger.open_trade(s, t.id),
+                "rulebook": rb,
+            }
+        )
+    decisions = s.scalars(select(ArenaDecision).order_by(ArenaDecision.id.desc()).limit(40)).all()
+    acted = s.execute(
+        select(func.count()).select_from(ArenaDecision).where(ArenaDecision.acted.is_(True))
+    ).scalar_one()
+    n_decisions = s.execute(select(func.count()).select_from(ArenaDecision)).scalar_one()
+    trades = s.scalars(select(ArenaTrade).order_by(ArenaTrade.id.desc()).limit(30)).all()
+    rounds = s.scalars(select(ArenaRound).order_by(ArenaRound.number.desc()).limit(20)).all()
+    benches = s.scalars(select(ArenaBenchEvent).order_by(ArenaBenchEvent.at.desc()).limit(20)).all()
+    day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    costs = []
+    for task in ("arena_author", "arena_reflex"):
+        for label, since in (("today", day), ("all time", None)):
+            q = select(
+                func.count(),
+                func.coalesce(func.sum(LLMCall.cost_usd), 0),
+                func.avg(LLMCall.latency_ms),
+                func.avg(LLMCall.input_tokens),
+                func.sum(case((LLMCall.error.is_not(None), 1), else_=0)),
+            ).where(LLMCall.task == task)
+            if since is not None:
+                q = q.where(LLMCall.ts >= since)
+            n, cost, lat, tok, errs = s.execute(q).one()
+            costs.append(
+                {
+                    "task": task,
+                    "window": label,
+                    "calls": n,
+                    "cost": Decimal(str(cost)),
+                    "latency_s": (lat or 0) / 1000,
+                    "tokens": int(tok or 0),
+                    "errors": int(errs or 0),
+                }
+            )
+    failures = s.scalars(
+        select(LLMCall)
+        .where(LLMCall.task.in_(["arena_author", "arena_reflex"]), LLMCall.error.is_not(None))
+        .order_by(LLMCall.ts.desc())
+        .limit(10)
+    ).all()
+    return {
+        "arena": {
+            "enabled": a.enabled,
+            "live": a.live,
+            "market": a.market,
+            "jev": a.jev_model,
+            "round": rnd,
+            "traders": traders,
+            "decisions": decisions,
+            "acted": acted,
+            "n_decisions": n_decisions,
+            "trades": trades,
+            "rounds": rounds,
+            "benches": benches,
+            "costs": costs,
+            "failures": failures,
+            "losses_to_bench": a.losses_to_bench,
+        }
+    }
+
+
 PANELS: dict[str, Any] = {
+    "arena": _p_arena,
     "money": _p_money,
     "sleeves": _p_sleeves,
     "betas": _p_betas,
@@ -919,6 +1021,7 @@ PAGES: dict[str, tuple[str, ...]] = {
     "sources": ("xposts", "djaf", "pmarkets", "polymarket", "macro_inputs"),
     "costs": ("costs", "optima"),
     "system": ("server", "freshness", "controls"),
+    "arena": ("arena",),
 }
 
 
@@ -984,6 +1087,11 @@ def costs_page(request: Request, user: str = Depends(current_user)) -> HTMLRespo
 @app.get("/system", response_class=HTMLResponse)
 def system_page(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
     return dashboard(request, user, "system")
+
+
+@app.get("/arena", response_class=HTMLResponse)
+def arena_page(request: Request, user: str = Depends(current_user)) -> HTMLResponse:
+    return dashboard(request, user, "arena")
 
 
 @app.get("/decisions", response_class=HTMLResponse)

@@ -1,0 +1,54 @@
+{% set A = arena %}
+<article><header>Arena · <b>{{ A.market }}</b> <span class="badge {{ 'neon' if A.live else '' }}">{{ 'LIVE' if A.live else 'paper' }}</span>{% if not A.enabled %}<span class="badge down">disabled</span>{% endif %}</header>
+<p class="muted small">Three traders on the perpetual under fixed rules; Jev ({{ A.jev }}) judges every closed 1-minute candle; the rules engine trades. Public: <a href="https://arena.dorkbot.dev/">arena.dorkbot.dev</a>.</p>
+{% if not A.round %}<p class="muted">No round yet.</p>{% else %}
+<div class="row">
+<div class="tile"><div class="k">round</div><div class="v">{{ A.round.number }}</div><div class="muted sub">since {{ A.round.started_at.strftime('%d %b %H:%M') }} UTC</div></div>
+<div class="tile"><div class="k">decisions</div><div class="v">{{ A.n_decisions }}</div><div class="muted sub">{{ A.acted }} acted on</div></div>
+<div class="tile"><div class="k">active</div><div class="v">{{ A.traders|rejectattr('benched')|list|length }} of {{ A.traders|length }}</div><div class="muted sub">bench after {{ A.losses_to_bench }} losses</div></div>
+</div>
+<div class="overflow"><table><tr><th>trader</th><th>model</th><th>equity</th><th>index</th><th>losses</th><th>status</th><th>rulebook</th><th>plan</th></tr>
+{% for t in A.traders %}<tr>
+<td><b>{{ t.name }}</b></td><td class="muted">{{ t.model }}</td>
+<td>{% if t.equity is not none %}{{ '%.2f'|format(t.equity) }} <span class="muted small">of {{ '%.0f'|format(t.start_equity or 0) }}</span>{% else %}<span class="muted">unfunded</span>{% endif %}</td>
+<td class="{{ 'up' if t.index and t.index >= 100 else 'down' }}">{{ '%.2f'|format(t.index) if t.index is not none else '–' }}</td>
+<td>{{ t.losses }} / {{ A.losses_to_bench }}</td>
+<td>{% if t.benched %}<span class="badge down">benched</span>{% elif t.open %}{{ t.open.side|side }} {{ t.open.leverage }}x at {{ t.open.entry_price|price }} <span class="muted small">tp {{ t.open.tp_price|price }} · sl {{ t.open.sl_price|price }} · since {{ t.open.opened_at.strftime('%H:%M') }}</span>{% else %}flat{% endif %}</td>
+<td>{% if t.rulebook and t.rulebook.rulebook %}<b>{{ t.rulebook.rulebook.name }}</b><br><span class="muted small">{{ t.rulebook.rulebook.thesis }}</span>{% else %}<span class="muted">none</span>{% endif %}</td>
+<td class="small">{% if t.rulebook and t.rulebook.plan %}{{ t.rulebook.plan.leverage }}x · TP {{ t.rulebook.plan.tp_net_roe_pct }}% · SL {{ t.rulebook.plan.sl_net_roe_pct }}% · conv ≥ {{ '%.2f'|format(t.rulebook.plan.min_conviction) }}{% for n in t.rulebook.plan.notes %}<br><span class="warn">{{ n }}</span>{% endfor %}{% elif t.rulebook %}<span class="down">refused by the rules</span>{% else %}–{% endif %}</td>
+</tr>{% endfor %}</table></div>
+{% for t in A.traders if t.rulebook and t.rulebook.rulebook %}
+<details class="acc"><summary><span class="t">{{ t.name }}'s rulebook</span><span class="muted small">round {{ t.rulebook.round }} · {{ t.rulebook.model }} · {{ t.rulebook.created_at.strftime('%d %b %H:%M') }}</span></summary><div class="acc-body small">
+<p><b>Long when</b> {{ t.rulebook.rulebook.entry_long }}</p>
+<p><b>Short when</b> {{ t.rulebook.rulebook.entry_short }}</p>
+<p><b>Stay flat when</b> {{ t.rulebook.rulebook.no_trade }}</p>
+{% if t.rulebook.rulebook.early_exit %}<p><b>Exit early when</b> {{ t.rulebook.rulebook.early_exit }}</p>{% endif %}
+</div></details>
+{% endfor %}
+{% endif %}
+</article>
+
+<article><header>Decisions · <b>Jev</b> <span class="muted small">latest 40; a decision acts when the signal is long or short and the conviction clears the trader's minimum</span></header>
+{% if not A.decisions %}<p class="muted">none yet</p>{% else %}<div class="overflow"><table class="decs"><tr><th>candle</th><th>trader</th><th>kind</th><th>long</th><th>short</th><th>none</th><th>conviction</th><th>min</th><th>acted</th></tr>
+{% for d in A.decisions %}<tr class="{{ 'up' if d.acted else '' }}"><td>{{ d.candle_ts.strftime('%d %H:%M') }}</td><td>{{ d.trader }}</td><td>{{ d.kind }}</td>
+{% if d.kind == 'signal' %}<td>{{ '%.2f'|format(d.probabilities.get('long', 0)) }}</td><td>{{ '%.2f'|format(d.probabilities.get('short', 0)) }}</td><td>{{ '%.2f'|format(d.probabilities.get('none', 0)) }}</td>{% else %}<td colspan="3" class="muted">close {{ '%.2f'|format(d.probabilities.get('true', 0)) }}</td>{% endif %}
+<td>{{ '%.2f'|format(d.conviction or 0) }}</td><td class="muted">{{ '%.2f'|format(d.min_conviction or 0) }}</td><td>{{ 'yes' if d.acted else '' }}</td></tr>{% endfor %}</table></div>{% endif %}
+</article>
+
+<article><header>Trades <span class="muted small">latest 30, net of both fee legs</span></header>
+{% if not A.trades %}<p class="muted">none yet</p>{% else %}<div class="overflow"><table class="positions"><tr><th>trader</th><th>round</th><th>side</th><th>lev</th><th>qty</th><th>entry</th><th>exit</th><th>tp</th><th>sl</th><th>margin</th><th>fees</th><th>pnl</th><th>net ROE</th><th>reason</th><th>opened</th><th>closed</th></tr>
+{% for x in A.trades %}<tr><td>{{ x.trader }}</td><td>{{ x.round }}</td><td>{{ x.side|side }}</td><td>{{ x.leverage }}x</td><td>{{ x.qty }}</td><td>{{ x.entry_price|price }}</td><td>{{ (x.exit_price or '-')|price }}</td><td>{{ x.tp_price|price }}</td><td>{{ x.sl_price|price }}</td><td>{{ '%.2f'|format(x.margin_usdt) }}</td><td>{{ '%.3f'|format(x.fees_usdt) if x.fees_usdt is not none else '-' }}</td><td class="{{ 'up' if x.pnl_usdt and x.pnl_usdt > 0 else 'down' if x.pnl_usdt else '' }}">{{ '%+.2f'|format(x.pnl_usdt) if x.pnl_usdt is not none else '-' }}</td><td class="{{ 'up' if x.net_roe_pct and x.net_roe_pct > 0 else 'down' if x.net_roe_pct is not none else '' }}">{{ '%+.2f'|format(x.net_roe_pct) ~ '%' if x.net_roe_pct is not none else 'open' }}</td><td>{{ x.exit_reason or '-' }}</td><td>{{ x.opened_at.strftime('%d %H:%M') }}</td><td>{{ x.closed_at.strftime('%d %H:%M') if x.closed_at else '-' }}</td></tr>{% endfor %}</table></div>{% endif %}
+</article>
+
+<article><header>Rounds and benches</header>
+<div class="two-col">
+<div>{% if not A.rounds %}<p class="muted">none</p>{% else %}<table><tr><th>round</th><th>started</th><th>ended</th><th>winner</th></tr>{% for r in A.rounds %}<tr><td>{{ r.number }}</td><td>{{ r.started_at.strftime('%d %b %H:%M') }}</td><td>{{ r.ended_at.strftime('%d %b %H:%M') if r.ended_at else '<span class="badge accent">running</span>'|safe }}</td><td>{{ r.winner or '–' }}</td></tr>{% endfor %}</table>{% endif %}</div>
+<div>{% if not A.benches %}<p class="muted">nobody benched yet</p>{% else %}<table><tr><th>when</th><th>trader</th><th>round</th><th>losses</th></tr>{% for b in A.benches %}<tr><td>{{ b.at.strftime('%d %b %H:%M') }}</td><td>{{ b.trader }}</td><td>{{ b.round }}</td><td>{{ b.loss_count }}</td></tr>{% endfor %}</table>{% endif %}</div>
+</div>
+</article>
+
+<article><header>Costs · <b>the two brains</b></header>
+<div class="overflow"><table><tr><th>task</th><th>window</th><th>calls</th><th>cost</th><th>avg latency</th><th>avg input tokens</th><th>failed</th></tr>
+{% for c in A.costs %}<tr><td>{{ 'strategy authors' if c.task == 'arena_author' else 'Jev reflex' }}</td><td>{{ c.window }}</td><td>{{ c.calls }}</td><td>${{ '%.3f'|format(c.cost) }}</td><td>{{ '%.1f'|format(c.latency_s) }} s</td><td>{{ c.tokens }}</td><td class="{{ 'down' if c.errors else '' }}">{{ c.errors }}</td></tr>{% endfor %}</table></div>
+{% if A.failures %}<p class="small" style="margin-top:.6rem"><b>Latest failures</b></p><table class="small">{% for f in A.failures %}<tr><td class="muted">{{ f.ts.strftime('%d %H:%M') }}</td><td>{{ f.task }}</td><td>{{ f.model }}</td><td class="muted">{{ (f.error or '')[:160] }}</td></tr>{% endfor %}</table>{% endif %}
+</article>
