@@ -11,7 +11,7 @@ export default function TraderPage({ id }: { id: TraderId }) {
   const books = usePoll<Rulebooks>("/rulebooks", { trader: id }, 60000);
   const equity = usePoll<Equity>("/equity", { trader: id }, 30000);
   const t = s?.traders.find((x) => x.id === id);
-  useEffect(() => { if (t) document.title = `${t.name} · ${idx(t.equity_index)} — dorkbot competition`; }, [t]);
+  useEffect(() => { if (t) document.title = `${t.name} · ${idx(t.equity_index)} — dorkbot arena`; }, [t]);
   if (s === undefined) return <p className="muted">Loading…</p>;
   if (!t) return <><h1 style={{ color: COLORS[id] }}>{cap(id)}</h1><p className="muted">Not in the arena yet. The competition has not started.</p></>;
   const row = lb?.traders.find((x) => x.id === id);

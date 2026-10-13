@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { COLORS, LOSSES_TO_BENCH, ago, cap, cls, idx, modelLabel, num, pct, type Round, type Rulebook, type Trade, type TraderId, type TraderState } from "./api";
 
-export const V = "c1"; // brand asset version for this site
+export const V = "c2"; // brand asset version for this site
 
 /** "long" in green, "short" in red, everywhere they appear. */
 export function Side({ d }: { d: string }) {
