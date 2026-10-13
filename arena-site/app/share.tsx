@@ -5,7 +5,7 @@ export default function ShareLink() {
   const [label, setLabel] = useState("share");
   async function copy(e: React.MouseEvent) {
     e.preventDefault();
-    const url = "https://competition.dorkbot.dev/";
+    const url = "https://arena.dorkbot.dev/";
     try {
       if (navigator.share) { await navigator.share({ url }); return; }
       await navigator.clipboard.writeText(url);
@@ -15,5 +15,5 @@ export default function ShareLink() {
       window.prompt("Copy this link:", url);
     }
   }
-  return <a href="https://competition.dorkbot.dev/" onClick={copy}>{label}</a>;
+  return <a href="https://arena.dorkbot.dev/" onClick={copy}>{label}</a>;
 }

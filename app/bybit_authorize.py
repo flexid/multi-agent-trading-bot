@@ -255,7 +255,7 @@ def list_accounts(token: dict[str, Any]) -> None:
         print("Or create a new one with:  make bybit-authorize ARGS=--create")
 
 
-TRADERS = ("kwikton", "kwekton", "kwakton")  # the arena's traders (competition-site/README.md)
+TRADERS = ("kwikton", "kwekton", "kwakton")  # the arena's traders (arena-site/README.md)
 
 
 def env_names(trader: str | None) -> dict[str, str]:

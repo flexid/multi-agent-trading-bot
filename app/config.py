@@ -172,6 +172,35 @@ class ServerConfig(_Section):
     keep_days: int = 14  # how long the 2-minute samples are kept
 
 
+class ArenaTraderConfig(_Section):
+    model: str  # the strategy author: an LLM id the llm layer knows
+    allocation_usdt: Decimal = Decimal(0)  # informational; the sub-account's balance rules
+
+
+class ArenaConfig(_Section):
+    """The dorkbot arena (app/arena, competition-site/): three traders on the BTCUSDT
+    perpetual under fixed rules. Its own process; off unless ``enabled``."""
+
+    enabled: bool = False
+    live: bool = False  # real orders; False = everything but the order calls (paper fills)
+    market: str = "BTCUSDT"
+    jev_model: str = "jev-1.13.0"  # pinned: a model bump mid-season changes every trader
+    max_leverage: int = Field(default=10, ge=1, le=20)
+    tp_net_roe_range: tuple[int, int] = (2, 10)
+    losses_to_bench: int = Field(default=2, ge=1, le=10)
+    taker_fee_pct: Decimal = Decimal("0.055")
+    min_conviction_floor: float = Field(default=0.5, ge=0, le=1)
+    margin_share: Decimal = Field(
+        default=Decimal("0.95"), gt=0, le=1
+    )  # of the sub-account's USDT per trade
+    api_port: int = 8787
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["https://arena.dorkbot.dev", "https://dorkbot.dev"]
+    )
+    social: bool = False  # X posts for arena trades (bot spec §7); off until asked
+    traders: dict[str, ArenaTraderConfig] = Field(default_factory=dict)  # kwikton, kwekton, kwakton
+
+
 class TriggersConfig(_Section):
     """Cycles outside the four-hour clock (v10: the bot reacts to the market, not to the
     hour). All in code; the managers are only called when something happened."""
@@ -249,6 +278,7 @@ class Config(_Section):
     catalysts: CatalystsConfig = CatalystsConfig()
     site: SiteConfig = SiteConfig()
     triggers: TriggersConfig = TriggersConfig()
+    arena: ArenaConfig = ArenaConfig()
     server: ServerConfig = ServerConfig()
     budget: BudgetConfig
     models: ModelsConfig
@@ -298,6 +328,13 @@ class Secrets(BaseSettings):
     jev_api_key: SecretStr = SecretStr("")  # TypeSafe Jev; scheduler only, never the admin
     do_access_token: SecretStr = SecretStr("")  # DigitalOcean; scheduler only, never the admin
     x_ai_api_key: SecretStr = SecretStr("")  # xAI (Grok): the shadow third manager seat
+    # the arena's three AI subaccounts (make bybit-authorize ARGS='--create --for kwikton')
+    competition_kwikton_api_key: SecretStr = SecretStr("")
+    competition_kwikton_api_secret: SecretStr = SecretStr("")
+    competition_kwekton_api_key: SecretStr = SecretStr("")
+    competition_kwekton_api_secret: SecretStr = SecretStr("")
+    competition_kwakton_api_key: SecretStr = SecretStr("")
+    competition_kwakton_api_secret: SecretStr = SecretStr("")
     fred_api_key: SecretStr = SecretStr("")
     coingecko_api_key: SecretStr = SecretStr("")
 

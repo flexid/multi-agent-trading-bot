@@ -704,3 +704,102 @@ class FetchRun(Base):
     ok: Mapped[bool | None] = mapped_column(Boolean)
     rows: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(Text)
+
+
+# --- the arena (app/arena): three traders on the BTCUSDT perpetual, bot spec §8 ------------
+
+
+class ArenaTrader(Base):
+    __tablename__ = "arena_traders"
+
+    id: Mapped[str] = mapped_column(String(10), primary_key=True)  # kwikton | kwekton | kwakton
+    display_name: Mapped[str] = mapped_column(String(20))
+    model: Mapped[str] = mapped_column(String(60))
+    start_equity: Mapped[Decimal | None]  # USDT at the first funded check; the index's 100
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ArenaRound(Base):
+    __tablename__ = "arena_rounds"
+
+    number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    winner: Mapped[str | None] = mapped_column(String(10))
+
+
+class ArenaRulebook(Base):
+    __tablename__ = "arena_rulebooks"
+    __table_args__ = (Index("ix_arena_rulebooks_trader_round", "trader", "round"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    trader: Mapped[str] = mapped_column(String(10))
+    round: Mapped[int] = mapped_column(Integer)
+    rulebook: Mapped[dict[str, Any]] = mapped_column(JSONB)  # Rulebook.public()
+    plan: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # after the rules; None = refused
+    questions_version: Mapped[int] = mapped_column(Integer)
+    model: Mapped[str] = mapped_column(String(60))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ArenaDecision(Base):
+    __tablename__ = "arena_decisions"
+    __table_args__ = (Index("ix_arena_decisions_trader_ts", "trader", "candle_ts"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    trader: Mapped[str] = mapped_column(String(10))
+    round: Mapped[int] = mapped_column(Integer)
+    candle_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    kind: Mapped[str] = mapped_column(String(12))  # signal | early_exit
+    probabilities: Mapped[dict[str, Any]] = mapped_column(JSONB)  # {long, short, none} or {true}
+    conviction: Mapped[float | None]
+    min_conviction: Mapped[float | None]
+    acted: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ArenaTrade(Base):
+    __tablename__ = "arena_trades"
+    __table_args__ = (Index("ix_arena_trades_trader_opened", "trader", "opened_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    trader: Mapped[str] = mapped_column(String(10))
+    round: Mapped[int] = mapped_column(Integer)
+    decision_id: Mapped[int | None] = mapped_column(BigInteger)
+    side: Mapped[str] = mapped_column(String(6))  # long | short
+    leverage: Mapped[int] = mapped_column(Integer)
+    qty: Mapped[Decimal]
+    entry_price: Mapped[Decimal]
+    exit_price: Mapped[Decimal | None]
+    tp_price: Mapped[Decimal]
+    sl_price: Mapped[Decimal]
+    tp_net_roe: Mapped[Decimal]
+    sl_net_roe: Mapped[Decimal]
+    margin_usdt: Mapped[Decimal]
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fees_usdt: Mapped[Decimal | None]
+    pnl_usdt: Mapped[Decimal | None]  # net of fees
+    net_roe_pct: Mapped[Decimal | None]
+    exit_reason: Mapped[str | None] = mapped_column(String(12))  # tp | sl | earlyExit | bench
+    order_link_id: Mapped[str] = mapped_column(String(36))
+    status: Mapped[str] = mapped_column(String(8), default="open")  # open | closed
+
+
+class ArenaBenchEvent(Base):
+    __tablename__ = "arena_bench_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    trader: Mapped[str] = mapped_column(String(10))
+    round: Mapped[int] = mapped_column(Integer)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    loss_count: Mapped[int] = mapped_column(Integer)
+
+
+class ArenaEquity(Base):
+    __tablename__ = "arena_equity"
+
+    trader: Mapped[str] = mapped_column(String(10), primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    equity_usdt: Mapped[Decimal]
+    equity_index: Mapped[Decimal]

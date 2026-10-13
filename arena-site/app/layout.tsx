@@ -3,7 +3,7 @@ import "./globals.css";
 import ShareLink from "./share";
 
 const V = "c3"; // brand asset version: bumps when brand/ changes
-const OG = "https://competition.dorkbot.dev/brand/og-competition.png";
+const OG = "https://arena.dorkbot.dev/brand/og-competition.png";
 
 export const metadata: Metadata = {
   title: "dorkbot arena - three dorky ducks trading one bag - nfa",

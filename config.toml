@@ -150,6 +150,31 @@ x_poll_minutes = 3              # the curated X accounts are read and labelled b
 light_cycle = true              # every hour a code-only check (no managers, cents): a formula flip on an asset starts a full cycle
 formula_flip = 0.3              # the formula score that counts as a call for that check
 
+[arena]                         # the dorkbot arena (app/arena, competition-site/): three traders on the BTCUSDT perpetual (owner 2026-10-13)
+enabled = false                 # the arena process exits at once while false
+live = false                    # real orders on the three AI subaccounts; false = paper fills on real prices
+market = "BTCUSDT"
+jev_model = "jev-1.13.0"        # pinned: a model bump mid-season is a season boundary
+max_leverage = 10               # owner 2026-10-14: 10x; fees scale with leverage, the edge does not
+tp_net_roe_range = [2, 10]      # net profit on margin, after both fee legs
+losses_to_bench = 2
+taker_fee_pct = 0.055           # per side; the probe on 2026-10-13 confirmed 0.055% on all three accounts
+min_conviction_floor = 0.5
+margin_share = 0.95             # of the sub-account's USDT put up as margin per trade
+api_port = 8787
+cors_origins = ["https://arena.dorkbot.dev", "https://dorkbot.dev"]
+social = false
+
+[arena.traders.kwikton]
+model = "gpt-6-astra"
+allocation_usdt = 0
+[arena.traders.kwekton]
+model = "grok-4.7"
+allocation_usdt = 0
+[arena.traders.kwakton]
+model = "claude-fable-5-1"
+allocation_usdt = 0
+
 [site]                          # M8a public site and M8b admin (SPEC §12)
 public_domain = "dorkbot.dev"
 admin_domain = "admin.dorkbot.dev"

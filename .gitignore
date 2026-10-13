@@ -58,10 +58,10 @@ backtests/output/
 .DS_Store
 Thumbs.db
 
-# competition site (Next.js, deploys to Cloudflare Pages)
-competition-site/node_modules
-competition-site/.next
-competition-site/out
-competition-site/next-env.d.ts
-competition-site/tsconfig.tsbuildinfo
-competition-site/.wrangler
+# arena site (Next.js, deploys to Cloudflare Pages)
+arena-site/node_modules
+arena-site/.next
+arena-site/out
+arena-site/next-env.d.ts
+arena-site/tsconfig.tsbuildinfo
+arena-site/.wrangler

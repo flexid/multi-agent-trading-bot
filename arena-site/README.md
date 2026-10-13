@@ -1,6 +1,6 @@
-# competition.dorkbot.dev
+# arena.dorkbot.dev
 
-The public, read-only site for the dorkbot trading competition: three AI traders (Kwikton,
+The public, read-only site for the dorkbot arena: three AI traders (Kwikton,
 Kwekton, Kwakton) trading BTC on Bybit under the same fixed rules. Spec: `COMPETITION_SITE_SPEC.md`
 (site) and `TRADING_COMPETITION_SPEC.md` (bot), both in the owner's hands.
 
@@ -18,9 +18,9 @@ npm install
 npm run dev            # http://localhost:3000, reads public/samples/*.json
 ```
 
-Without `NEXT_PUBLIC_COMPETITION_API` the site reads the sample files in `public/samples/`,
+Without `NEXT_PUBLIC_ARENA_API` the site reads the sample files in `public/samples/`,
 which stand in for the API while the bot is being built. With it set (for example
-`https://api.dorkbot.dev/competition/v1`) the site reads the real API.
+`https://api.dorkbot.dev/arena/v1`) the site reads the real API.
 
 ## Deploy
 
@@ -29,7 +29,7 @@ scripts/deploy.sh      # next build + wrangler pages deploy to the "competition"
 ```
 
 Needs `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in the repo's `.env` (the same ones
-dorkbot.dev deploys with) and `COMPETITION_API_URL` in that `.env`, or `NEXT_PUBLIC_COMPETITION_API`
+dorkbot.dev deploys with) and `ARENA_API_URL` in that `.env`, or `NEXT_PUBLIC_ARENA_API`
 in the environment.
 
 ## The API contract
@@ -37,7 +37,7 @@ in the environment.
 The site's only dependency on the bot is the JSON below (bot spec §6). Types live in
 `app/api.ts`; the bot publishes the same shapes as `@dorkbot/competition-types`. Percentages,
 counts and the equity index only, never USD. Times are ISO 8601 in UTC. CORS must allow
-`https://competition.dorkbot.dev` and `https://dorkbot.dev`.
+`https://arena.dorkbot.dev` and `https://dorkbot.dev`.
 
 ### `GET /state`
 ```json
