@@ -47,7 +47,13 @@ def _mask(key: str) -> str:
 
 
 def _unwrap(response: httpx.Response) -> Any:
-    body = response.json()
+    try:
+        body = response.json()
+    except ValueError:
+        raise SystemExit(
+            f"Bybit answered HTTP {response.status_code} without JSON "
+            f"({response.text[:80]!r}); the token is probably no longer valid"
+        ) from None
     if not isinstance(body, dict):
         return body
     code = body.get("retCode", body.get("ret_code", 0))
@@ -61,8 +67,16 @@ def _load_token() -> dict[str, Any]:
     if not TOKEN_PATH.exists():
         raise SystemExit("no token stored; run without --use/--create first")
     token: dict[str, Any] = json.loads(TOKEN_PATH.read_text())
-    if time.time() - token["created_at"] >= token.get("expires_in", 86400):
-        token = _refresh(token)
+    age = time.time() - token["created_at"]
+    if age >= token.get("expires_in", 86400):
+        try:
+            token = _refresh(token)
+        except SystemExit as exc:
+            raise SystemExit(
+                f"the stored token is {age / 3600:.0f} hours old and could not be refreshed "
+                f"({exc}).\nRun `make bybit-authorize` again, approve in the browser, and wait "
+                "for 'Authorized. Token stored.' before --use or --create."
+            ) from None
     return token
 
 
@@ -147,6 +161,12 @@ def authorize() -> None:
     minutes = CALLBACK_TIMEOUT_S // 60
     print(f"Open this link, log in to Bybit and click Authorize (valid {minutes} min):\n")
     print(f"{AUTHORIZE_URL}?{urlencode(params)}\n", flush=True)
+    print(
+        "Keep this terminal open: Bybit sends the browser back here. If Bybit shows a token\n"
+        "on its own page instead, save it to a file and run:\n"
+        "  make bybit-authorize ARGS='--token-file FILE'\n",
+        flush=True,
+    )
 
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
