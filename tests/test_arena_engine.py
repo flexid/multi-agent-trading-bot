@@ -225,3 +225,31 @@ def test_paper_exchange_books_fees_both_ways() -> None:
         assert t.pnl == D("0.1") * D(300) - t.fees
 
     asyncio.run(run())
+
+
+@needs_db
+async def test_a_restart_writes_the_rulebooks_the_round_still_lacks(
+    db: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A restart while the authors were writing (2026-10-13, first deploy) left the round
+    without rulebooks and the traders idle. On start, traders without a book get one."""
+    prices = Prices()
+    written: list[str] = []
+
+    async def fake_write(model: str, context: str, *, round_number: int) -> Rulebook:
+        written.append(model)
+        return RB
+
+    monkeypatch.setattr(author, "write_rulebook", fake_write)
+    with new_session() as s:
+        s.add(ArenaRound(number=1, started_at=T0))
+        s.commit()
+    engine, traders = make(prices)
+    await engine.start(T0)
+    assert engine.round_number == 1 and len(written) == 3
+    assert all(t.plan is not None for t in traders.values())
+    # a second start finds the books and writes nothing
+    written.clear()
+    engine2, _ = make(prices)
+    await engine2.start(T0)
+    assert written == []

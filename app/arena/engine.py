@@ -105,6 +105,11 @@ class Engine:
                     t.last_check = min(t.last_check, open_row.opened_at)
             s.commit()
         log.info("arena: round %d continues", self.round_number)
+        # A restart during the authors' work, or a refused book: anyone without a book in
+        # this round writes one now rather than sitting out until the next reset.
+        missing = [t for t in self.traders.values() if t.rulebook is None]
+        if missing:
+            await asyncio.gather(*(self.write_rulebook(t, now) for t in missing))
 
     async def tick(self, now: datetime | None = None) -> None:
         """One minute: candles, closes, benches, the round, entries and exits, equity."""
