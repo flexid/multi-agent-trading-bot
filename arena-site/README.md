@@ -90,6 +90,17 @@ trade's margin, never in USD.
 Points are `[milliseconds since epoch, equity index]`. Without `trader` all three series are
 returned; the arena asks for all, a trader page for one.
 
+Each trader also carries `last_decision` (`at`, `kind`, `p_long`, `p_short`, `p_none`, `p_close`,
+`conviction`, `min_conviction`, `acted`) and `judgments_this_round`, so the page can show what Jev
+saw on the last candle even when nothing was traded.
+
+### `GET /decisions?trader=&limit=`
+```json
+{ "decisions": [ { "trader": "kwakton", "round": 1, "at": "...", "kind": "signal", "p_long": 0.02,
+  "p_short": 0.02, "p_none": 0.96, "p_close": null, "conviction": 0.06, "min_conviction": 0.8, "acted": false } ] }
+```
+Jev's judgments, newest first; probabilities only, nothing a trader could be identified by beyond its name.
+
 ### `GET /rulebooks?trader=` (optional)
 ```json
 { "rulebooks": [ { "round": 12, "rulebook": { ... } } ] }

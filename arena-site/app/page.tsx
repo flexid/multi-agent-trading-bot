@@ -45,7 +45,7 @@ export default function Arena() {
 
       <section className="panel">
         <h2>Live feed</h2>
-        <Feed events={feedEvents(trades?.trades ?? [], rounds?.rounds ?? [], names)} />
+        {(() => { const ev = feedEvents(trades?.trades ?? [], rounds?.rounds ?? [], names); return ev.length ? <Feed events={ev} /> : <p className="muted">No trade yet. Every minute Jev reads the latest candle for each trader and has found no entry so far; each card above shows its last look.</p>; })()}
       </section>
     </>
   );

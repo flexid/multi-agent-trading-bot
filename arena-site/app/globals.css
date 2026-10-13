@@ -99,6 +99,7 @@ img.duck { width: 56px; height: 56px; border-radius: 50%; background: #141414; f
 .ribbon { position: absolute; top: 14px; right: -34px; transform: rotate(45deg); background: #333; color: #ddd; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; padding: 3px 40px; }
 .rb div { margin: 0 0 8px; } .rb b { color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; } .rb p { margin: 2px 0 0; line-height: 1.5; }
 .rb-round { margin-bottom: 16px; }
+.look { margin: 0 0 10px; line-height: 1.6; } .look .badge { margin-left: 6px; }
 .feed { list-style: none; margin: 0; padding: 0; } .feed li { display: grid; grid-template-columns: 70px 12px 1fr; align-items: baseline; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); } .feed .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; position: relative; top: -1px; }
 table.sortable th { cursor: pointer; user-select: none; white-space: nowrap; } table.sortable th:hover { color: var(--fg); }
 table th.num, table td.num { text-align: right; }

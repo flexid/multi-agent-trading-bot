@@ -34,6 +34,18 @@ export type Position = {
   opened_at: string;
 };
 
+export type LastDecision = {
+  at: string;
+  kind: "signal" | "early_exit";
+  p_long: number;
+  p_short: number;
+  p_none: number;
+  p_close?: number | null;
+  conviction: number;
+  min_conviction: number;
+  acted: boolean;
+};
+
 export type TraderState = {
   id: TraderId;
   name: string;
@@ -45,6 +57,8 @@ export type TraderState = {
   return_pct: number;
   position: Position | null;
   rulebook: Rulebook | null;
+  last_decision?: LastDecision | null;
+  judgments_this_round?: number;
 };
 
 export type State = {

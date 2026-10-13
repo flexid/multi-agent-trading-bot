@@ -148,6 +148,8 @@ def state_view(
                 "return_pct": _f(last[1] - 100) if last else 0.0,
                 "position": positions.get(t.id),
                 "rulebook": rb.rulebook if rb else None,
+                "last_decision": decision_public(ld) if (ld := last_decision(s, t.id)) else None,
+                "judgments_this_round": decisions_in_round(s, t.id, rnd.number) if rnd else 0,
             }
         )
     return {
@@ -159,6 +161,49 @@ def state_view(
             "active": sum(1 for x in out if not x["benched"]),
         },
         "traders": out,
+    }
+
+
+def decision_public(d: ArenaDecision) -> dict[str, Any]:
+    p = d.probabilities or {}
+    return {
+        "at": d.candle_ts.isoformat(),
+        "kind": d.kind,
+        "p_long": float(p.get("long", 0.0)),
+        "p_short": float(p.get("short", 0.0)),
+        "p_none": float(p.get("none", 0.0)),
+        "p_close": float(p.get("true", 0.0)) if d.kind == "early_exit" else None,
+        "conviction": float(d.conviction or 0.0),
+        "min_conviction": float(d.min_conviction or 0.0),
+        "acted": d.acted,
+    }
+
+
+def last_decision(s: Session, trader: str) -> ArenaDecision | None:
+    return s.scalars(
+        select(ArenaDecision)
+        .where(ArenaDecision.trader == trader)
+        .order_by(ArenaDecision.id.desc())
+    ).first()
+
+
+def decisions_in_round(s: Session, trader: str, round_number: int) -> int:
+    return int(
+        s.execute(
+            select(func.count())
+            .select_from(ArenaDecision)
+            .where(ArenaDecision.trader == trader, ArenaDecision.round == round_number)
+        ).scalar_one()
+    )
+
+
+def decisions_view(s: Session, *, trader: str | None, limit: int) -> dict[str, Any]:
+    q = select(ArenaDecision)
+    if trader:
+        q = q.where(ArenaDecision.trader == trader)
+    rows = s.scalars(q.order_by(ArenaDecision.id.desc()).limit(max(1, min(limit, 500)))).all()
+    return {
+        "decisions": [{"trader": d.trader, "round": d.round, **decision_public(d)} for d in rows]
     }
 
 

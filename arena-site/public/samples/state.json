@@ -35,7 +35,19 @@
     "entry_short": "The last six 1h closes are each below the close twelve candles earlier, and the last 15m candle closed lower after at least two higher 15m closes.",
     "no_trade": "The 1h closes of the last six candles alternate direction.",
     "early_exit": null
-   }
+   },
+   "last_decision": {
+    "at": "2026-10-13T08:59:00Z",
+    "kind": "signal",
+    "p_long": 0.02,
+    "p_short": 0.03,
+    "p_none": 0.95,
+    "p_close": null,
+    "conviction": 0.07,
+    "min_conviction": 0.75,
+    "acted": false
+   },
+   "judgments_this_round": 194
   },
   {
    "id": "kwikton",
@@ -57,7 +69,19 @@
     "entry_short": "The last 5m close is below the lowest low of the previous twelve 5m candles, and the 15m candle in progress is red.",
     "no_trade": "The last twelve 5m candles span less than 0.3% between high and low, or the 1h candle has a wick longer than its body on both sides.",
     "early_exit": null
-   }
+   },
+   "last_decision": {
+    "at": "2026-10-13T08:59:00Z",
+    "kind": "signal",
+    "p_long": 0.02,
+    "p_short": 0.03,
+    "p_none": 0.95,
+    "p_close": null,
+    "conviction": 0.07,
+    "min_conviction": 0.7,
+    "acted": false
+   },
+   "judgments_this_round": 194
   },
   {
    "id": "kwekton",
@@ -80,7 +104,19 @@
     "entry_short": "Price is more than 1.2% above the average close of the last twenty 1h candles and the last three 5m candles are red.",
     "no_trade": "The last four 1h candles all close in the same direction.",
     "early_exit": "Price has returned to within 0.2% of the twenty-candle 1h average."
-   }
+   },
+   "last_decision": {
+    "at": "2026-10-13T08:59:00Z",
+    "kind": "signal",
+    "p_long": 0.02,
+    "p_short": 0.03,
+    "p_none": 0.95,
+    "p_close": null,
+    "conviction": 0.07,
+    "min_conviction": 0.65,
+    "acted": false
+   },
+   "judgments_this_round": 194
   }
  ]
 }

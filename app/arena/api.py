@@ -68,6 +68,13 @@ def build_app(engine: Engine | None) -> FastAPI:
         with new_session() as s:
             return ledger.equity_view(s, trader=trader, since=since)
 
+    @app.get(PREFIX + "/decisions")
+    def decisions(
+        trader: str | None = None, limit: int = Query(30, ge=1, le=500)
+    ) -> dict[str, Any]:
+        with new_session() as s:
+            return ledger.decisions_view(s, trader=trader, limit=limit)
+
     @app.get(PREFIX + "/rulebooks")
     def rulebooks(trader: str) -> dict[str, Any]:
         with new_session() as s:

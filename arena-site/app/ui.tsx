@@ -37,6 +37,25 @@ export function RulebookView({ rb, open }: { rb: Rulebook; open?: boolean }) {
   );
 }
 
+/** What Jev saw on the last candle: the three probabilities and the conviction against the bar. */
+export function LastLook({ t }: { t: TraderState }) {
+  const d = t.last_decision;
+  if (!d) return <p className="muted small look">Waiting for the first closed candle.</p>;
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  const bar = d.conviction >= d.min_conviction;
+  return (
+    <p className="small look">
+      <span className="muted">Last candle, {ago(d.at)} ago:</span>{" "}
+      {d.kind === "signal" ? (
+        <><span className="long">long {pct(d.p_long)}</span> · <span className="short">short {pct(d.p_short)}</span> · none {pct(d.p_none)} · conviction <b className={bar ? "up" : ""}>{d.conviction.toFixed(2)}</b> <span className="muted">of {d.min_conviction.toFixed(2)} needed</span>{d.acted && <span className="badge neon">acted</span>}</>
+      ) : (
+        <>close {pct(d.p_close ?? 0)} · conviction <b>{d.conviction.toFixed(2)}</b> <span className="muted">of {d.min_conviction.toFixed(2)} needed</span>{d.acted && <span className="badge neon">closing</span>}</>
+      )}
+      {t.judgments_this_round != null && <span className="muted"> · {t.judgments_this_round} looks this round</span>}
+    </p>
+  );
+}
+
 export function statusLine(t: TraderState): React.ReactNode {
   if (t.benched) return <span className="muted">Benched · waiting for reset</span>;
   if (!t.position) return <span>Flat</span>;
@@ -63,6 +82,7 @@ export function TraderCard({ t, rank, showModel = true }: { t: TraderState; rank
       {t.rulebook ? (
         <>
           <div className="strategy"><b>{t.rulebook.name}</b> <span className="muted">· {t.rulebook.leverage}x</span><p>{t.rulebook.thesis}</p></div>
+          <LastLook t={t} />
           <RulebookView rb={t.rulebook} />
         </>
       ) : <p className="muted small">No rulebook yet this round.</p>}
