@@ -111,7 +111,7 @@ Every job writes a `fetch_runs` row and updates `data_sources` (last success, la
 | `make selftest` | All read-only checks. The X read costs about $0.06; skip it with `ARGS=--no-x` |
 | `make selftest ARGS="--json logs/selftest.json"` | Same, and saves the results |
 | `make selftest-live CONFIRM=yes` | Also places one minimal post-only order 10% below the bid and cancels it |
-| `make bybit-authorize` | Connects the bot to a Bybit AI Subaccount via OAuth and writes its key into `.env` (`ARGS=--list`, `--use <id>`, `--create`) |
+| `make bybit-authorize` | Connects the bot to a Bybit AI Subaccount via OAuth and writes its key into `.env` (`ARGS=--list`, `--use <id>`, `--create`; add `--for kwikton` for an arena trader's own key) |
 | `make up` / `make down` | Postgres 16 (used from M1) |
 
 Code: [`app/execution/bybit_client.py`](app/execution/bybit_client.py), [`app/data/polymarket.py`](app/data/polymarket.py), [`app/data/x.py`](app/data/x.py), [`app/selftest.py`](app/selftest.py).

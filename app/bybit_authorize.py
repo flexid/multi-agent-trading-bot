@@ -3,6 +3,10 @@
     python -m app.bybit_authorize              # print the link, wait, list AI subaccounts
     python -m app.bybit_authorize --use ID     # fetch that AI subaccount's key into .env
     python -m app.bybit_authorize --create     # create a new AI subaccount and fetch its key
+    python -m app.bybit_authorize --create --for kwikton   # one of the arena's three traders
+
+``--for`` writes the key under the trader's own names (COMPETITION_KWIKTON_API_KEY and
+_SECRET) instead of dorkbot's BYBIT_API_KEY, so each trader keeps its own sub-account.
 
 The flow follows Bybit's published agent docs: authorize on www.bybit.com, exchange the
 code at api2.bybit.com, then read the AI subaccount's HMAC API key. Tokens are stored
@@ -201,12 +205,26 @@ def list_accounts(token: dict[str, Any]) -> None:
         print("Or create a new one with:  make bybit-authorize ARGS=--create")
 
 
-def _write_env(key: str, secret: str) -> None:
+TRADERS = ("kwikton", "kwekton", "kwakton")  # the arena's traders (competition-site/README.md)
+
+
+def env_names(trader: str | None) -> dict[str, str]:
+    """The .env names a key is written under: dorkbot's own, or a trader's."""
+    if trader is None:
+        return {"key": "BYBIT_API_KEY", "secret": "BYBIT_API_SECRET", "url": "BYBIT_BASE_URL"}
+    if trader not in TRADERS:
+        raise SystemExit(f"unknown trader {trader!r}; one of {', '.join(TRADERS)}")
+    p = f"COMPETITION_{trader.upper()}"
+    return {"key": f"{p}_API_KEY", "secret": f"{p}_API_SECRET", "url": "BYBIT_BASE_URL"}
+
+
+def _write_env(key: str, secret: str, trader: str | None = None) -> None:
     text = ENV_PATH.read_text() if ENV_PATH.exists() else ""
+    names = env_names(trader)
     values = {
-        "BYBIT_API_KEY": key,
-        "BYBIT_API_SECRET": secret,
-        "BYBIT_BASE_URL": TRADING_BASE_URL,
+        names["key"]: key,
+        names["secret"]: secret,
+        names["url"]: TRADING_BASE_URL,
     }
     for name, value in values.items():
         line = f"{name}={value}"
@@ -217,19 +235,27 @@ def _write_env(key: str, secret: str) -> None:
     ENV_PATH.write_text(text)
 
 
-def fetch_credentials(*, sub_member_id: str | None, create: bool) -> None:
+def fetch_credentials(
+    *, sub_member_id: str | None, create: bool, trader: str | None = None
+) -> None:
     token = _load_token()
+    names = env_names(trader)  # validates the trader before anything is created
     params = {"is_create": "true"} if create else {"sub_member_id": sub_member_id or ""}
     accounts = _ai_accounts(token, **params)
     account = next((a for a in accounts if a.get("api_key")), None)
     if account is None:
         raise SystemExit("response carried no API key; check the account id or try again")
-    _write_env(str(account["api_key"]), str(account["api_secret"]))
+    _write_env(str(account["api_key"]), str(account["api_secret"]), trader)
+    who = f"arena trader {trader}" if trader else "dorkbot"
     print(
-        f"AI subaccount {account.get('sub_member_id')} {account.get('nickname') or ''}\n"
-        f"API key {_mask(str(account['api_key']))} written to {ENV_PATH.name}, "
+        f"AI subaccount {account.get('sub_member_id')} {account.get('nickname') or ''} for {who}\n"
+        f"API key {_mask(str(account['api_key']))} written to {ENV_PATH.name} as {names['key']}, "
         f"base URL {TRADING_BASE_URL}\n"
-        "Next: make selftest"
+        + (
+            "Next: bind the key to the server's IP in Bybit, then the arena self-test"
+            if trader
+            else "Next: make selftest"
+        )
     )
 
 
@@ -261,13 +287,21 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument(
         "--token-file", type=Path, help="file holding the access token shown by Bybit's page"
     )
+    parser.add_argument(
+        "--for",
+        dest="trader",
+        metavar="TRADER",
+        help="an arena trader: kwikton, kwekton or kwakton",
+    )
     args = parser.parse_args(argv)
+    if args.trader and not (args.use or args.create):
+        parser.error("--for goes with --use or --create")
     if args.token_file:
         store_pasted_token(args.token_file)
     elif args.list:
         list_accounts(_load_token())
     elif args.use or args.create:
-        fetch_credentials(sub_member_id=args.use, create=args.create)
+        fetch_credentials(sub_member_id=args.use, create=args.create, trader=args.trader)
     else:
         authorize()
     return 0
