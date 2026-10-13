@@ -7,11 +7,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-QUESTIONS_VERSION = 1  # bump when the compiled questions change
-CONVICTION_LEVELS = [  # the score question's rubric; Jev's score is the level index
+QUESTIONS_VERSION = 2  # 2: five conviction levels, "met" reads 0.75 (2026-10-14)
+CONVICTION_LEVELS = [  # the score question's rubric; Jev's score is the level index, /4
     "the rule is not met, or only with a generous reading",
-    "the rule is partly met; some conditions are borderline",
-    "the rule is met; the conditions are visible in the data",
+    "the rule is partly met; more than one condition is borderline or missing",
+    "the rule is mostly met; one condition is borderline",
+    "the rule is met; every condition is visible in the data",
     "a textbook example: every condition is clearly and strongly met",
 ]
 
@@ -79,7 +80,7 @@ def compile_questions(rb: Rulebook, *, side: str | None = None) -> dict[str, Any
             "conviction": Score(
                 instructions=(
                     "How clearly is the chosen entry rule satisfied by the candle data? "
-                    "0 = not at all, 1 = a textbook example."
+                    "Judge the rule you chose; if you chose none, the lowest level."
                 ),
                 criteria=CONVICTION_LEVELS,
             ),
