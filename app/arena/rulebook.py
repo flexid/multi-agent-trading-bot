@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-QUESTIONS_VERSION = 2  # 2: five conviction levels, "met" reads 0.75 (2026-10-14)
+QUESTIONS_VERSION = 3  # 3: the exit question names the position fields (2026-10-14)
 CONVICTION_LEVELS = [  # the score question's rubric; Jev's score is the level index, /4
     "the rule is not met, or only with a generous reading",
     "the rule is partly met; more than one condition is borderline or missing",
@@ -91,7 +91,9 @@ def compile_questions(rb: Rulebook, *, side: str | None = None) -> dict[str, Any
         "early_exit": Noul(
             instructions=(
                 f"The trader has an open {side.upper()} position on BTC. `candles` holds the "
-                "latest candle data, `position` the entry. Should the position be closed now?"
+                "latest candle data; `position` holds the entry price, the unrealised return "
+                "on margin in percent and the minutes the position has been open. Should the "
+                "position be closed now?"
             ),
             criteria={
                 "true": f"Close now when: {rb.early_exit}",

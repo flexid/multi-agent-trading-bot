@@ -417,12 +417,17 @@ class Engine:
 
     async def maybe_exit(self, t: Trader, pos: Position, now: datetime) -> None:
         assert t.rulebook is not None and t.plan is not None
+        with new_session() as s:
+            row = ledger.open_trade(s, t.id)
+        minutes = int((now - row.opened_at).total_seconds() // 60) if row else None
+        roe = float(pos.unrealized_pnl / pos.margin * 100) if pos.margin else 0.0
         state = self.candles.state(
             {
                 "side": pos.side,
                 "entry": float(pos.entry),
                 "leverage": pos.leverage,
-                "unrealized_pnl": float(pos.unrealized_pnl),
+                "unrealized_roe_pct": round(roe, 2),
+                "minutes_open": minutes,
             },
             now,
         )
