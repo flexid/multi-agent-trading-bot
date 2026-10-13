@@ -123,7 +123,7 @@ export type Equity = {
   series: Partial<Record<TraderId, [number, number][]>>; // [ms, index]
 };
 
-export const API_BASE = process.env.NEXT_PUBLIC_ARENA_API ?? "/samples";
+export const API_BASE = process.env.NEXT_PUBLIC_ARENA_API || "/samples"; // empty counts as unset
 const SAMPLES = API_BASE === "/samples";
 
 /** Sample files stand in for the API in local dev: /samples/state.json etc. */
