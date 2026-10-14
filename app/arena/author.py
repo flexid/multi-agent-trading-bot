@@ -23,9 +23,11 @@ def round_context(
     last_rulebook: dict[str, Any] | None,
     last_result: dict[str, Any] | None,
     hourly: list[list[float]],
+    quarter_hourly: list[list[float]] | None = None,
 ) -> str:
-    """What the author is told: its own record, last round's book and result, and the last
-    200 hourly candles. No strategy hints."""
+    """What the author is told: its own record, last round's book and result, the last
+    200 hourly candles and the last day of 15-minute candles (owner 2026-10-14: so the
+    thresholds it writes come from what the market does). No strategy hints."""
     ctx = {
         "trader": trader,
         "round": round_number,
@@ -34,6 +36,10 @@ def round_context(
         "candles_1h": [
             [int(r[0]), round(r[1], 1), round(r[2], 1), round(r[3], 1), round(r[4], 1), int(r[5])]
             for r in hourly[-200:]
+        ],
+        "candles_15m_last_day": [
+            [int(r[0]), round(r[1], 1), round(r[2], 1), round(r[3], 1), round(r[4], 1), int(r[5])]
+            for r in (quarter_hourly or [])[-96:]
         ],
         "candle_fields": "[time_ms, open, high, low, close, volume], oldest first",
     }

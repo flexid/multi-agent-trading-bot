@@ -10,7 +10,7 @@ from typing import Any
 from app.arena.exchange import Exchange
 
 INTERVALS = {"1m": "1", "5m": "5", "15m": "15", "1h": "60"}
-KEEP = 150
+KEEP = 150  # the 15m frame keeps a day for the authors (96); the rest is plenty
 # What Jev sees per timeframe: its window is small (a state of 600 full-precision candles
 # was refused on the first run, 2026-10-13), so fewer candles, prices rounded, volumes as
 # integers and times as minutes before now.

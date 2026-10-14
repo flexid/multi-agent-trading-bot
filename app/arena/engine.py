@@ -193,6 +193,7 @@ class Engine:
             last_rulebook=prev_rb,
             last_result=prev_result,
             hourly=self.candles.frames["1h"],
+            quarter_hourly=self.candles.frames["15m"],
         )
         rb = await author.write_rulebook(t.model, context, round_number=self.round_number)
         plan: R.Plan | None = None
