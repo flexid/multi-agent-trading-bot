@@ -470,7 +470,52 @@ def _p_costs(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> 
         .select_from(XPostOut)
         .where(XPostOut.posted_at >= month, XPostOut.dry_run.is_(False))
     ).scalar_one()
+    # Average per day over the last seven days (owner 2026-10-14): LLM, X, and the Bybit
+    # fees the real pilot paid and the paper book would have paid.
+    week = now - timedelta(days=7)
+    first = s.execute(select(func.min(LLMCall.ts))).scalar_one()
+    days = Decimal(
+        str(max(1.0, min(7.0, ((now - first).total_seconds() / 86400) if first else 1.0)))
+    )
+    llm_week = Decimal(
+        str(
+            s.execute(
+                select(func.coalesce(func.sum(LLMCall.cost_usd), 0)).where(LLMCall.ts >= week)
+            ).scalar_one()
+        )
+    )
+    reads_week = s.execute(
+        select(func.count()).select_from(XPostRecord).where(XPostRecord.fetched_at >= week)
+    ).scalar_one()
+    posts_week = s.execute(
+        select(func.count())
+        .select_from(XPostOut)
+        .where(XPostOut.posted_at >= week, XPostOut.dry_run.is_(False))
+    ).scalar_one()
+    x_week = Decimal(reads_week) * Decimal("0.005") + Decimal(posts_week) * Decimal("0.015")
+
+    def fees(track: str) -> Decimal:
+        return Decimal(
+            str(
+                s.execute(
+                    select(func.coalesce(func.sum(Position.fees), 0)).where(
+                        Position.track == track, Position.opened_at >= week
+                    )
+                ).scalar_one()
+            )
+        )
+
+    fees_pilot, fees_paper = fees("pilot"), fees("primary")
+    daily = {
+        "days": float(days),
+        "llm": llm_week / days,
+        "x": x_week / days,
+        "fees_pilot": fees_pilot / days,
+        "fees_paper": fees_paper / days,
+    }
+    daily["total"] = daily["llm"] + daily["x"] + daily["fees_pilot"]
     return {
+        "daily": daily,
         "llm_day": llm_day,
         "llm_month": llm_month,
         "by_model": by_model,
