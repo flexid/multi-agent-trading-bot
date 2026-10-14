@@ -53,10 +53,13 @@ async def decide_entry(
     probs = {k: float(v) for k, v in (sig.get("probabilities") or {}).items()}
     choice = str(sig.get("choice") or "none")
     score = conv.get("score")
-    # the score is the probability-weighted level index over the rubric → 0..1
-    conviction = (
-        0.0 if score is None else max(0.0, min(1.0, float(score) / (len(CONVICTION_LEVELS) - 1)))
-    )
+    # The rubric score (0..1) is logged beside the probabilities. The gate is Jev's own
+    # confidence in an entry, the probability it gives long or short: on a textbook setup
+    # that reads about 0.7 and the score about 0.5 (probe of 2026-10-14), so the score
+    # would have kept every trader flat for good.
+    if score is not None:
+        probs["score"] = max(0.0, min(1.0, float(score) / (len(CONVICTION_LEVELS) - 1)))
+    conviction = max(probs.get("long", 0.0), probs.get("short", 0.0))
     return Signal(choice=choice, probabilities=probs, conviction=conviction)
 
 

@@ -123,3 +123,43 @@ def test_jev_state_is_compact() -> None:
     last = state["candles"]["1m"][-1]
     assert last == [1, 60000.1, 60010.5, 59990.8, 60005.0, 1234]
     assert len(json.dumps(state, separators=(",", ":"))) < 20000
+
+
+def test_the_gate_is_jevs_entry_probability_and_the_score_is_kept() -> None:
+    """Probe of 2026-10-14: on a textbook setup Jev gives the entry about 0.7 and the
+    rubric score about 0.5. The gate uses the probability; the score rides along."""
+    import asyncio
+
+    from app.arena import reflex
+
+    class Fake:
+        answers = {
+            "signal": {
+                "choice": "long",
+                "probabilities": {"long": 0.69, "short": 0.01, "none": 0.30},
+            },
+            "conviction": {"score": 2.0},  # level 2 of 4 → 0.5
+        }
+
+    async def fake_judge(*a: object, **k: object) -> Fake:
+        return Fake()
+
+    orig = reflex.judge  # type: ignore[attr-defined]
+    reflex.judge = fake_judge  # type: ignore[attr-defined,assignment]
+    try:
+        rb = Rulebook(
+            name="x",
+            thesis="t",
+            leverage=5,
+            tp_net_roe_pct=3,
+            sl_net_roe_pct=3,
+            min_conviction=0.6,
+            entry_long="a",
+            entry_short="b",
+            no_trade="c",
+        )
+        sig = asyncio.run(reflex.decide_entry(rb, {"candles": {}}, model="jev-test", trader="t"))
+    finally:
+        reflex.judge = orig  # type: ignore[attr-defined]
+    assert sig is not None and sig.choice == "long"
+    assert sig.conviction == 0.69 and sig.probabilities["score"] == 0.5

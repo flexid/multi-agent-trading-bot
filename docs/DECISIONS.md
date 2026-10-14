@@ -471,3 +471,9 @@ Owner's spec (TRADING_COMPETITION_SPEC.md) assumed a TypeScript monorepo; he cho
 ## 2026-10-14 · Arena rounds also end on a time limit
 
 A round ends when all three are benched (spec rule 8). A trader that never trades can never be benched, so one selective rulebook would hold the round open for everyone. Owner chose a maximum round length over benching for inactivity: `arena.max_round_hours` (48). When it is reached the open positions are closed at market (exit reason `bench`), the round ends with its winner, and the authors write new rulebooks. A trader that went a whole round without a trade sees that in its record.
+
+## 2026-10-14 · Jev judges facts, not arrays; the gate is its entry probability
+
+Owner: "Is Jev qualified enough to decide on candles?" Measured with synthetic candles against Kwakton's rulebook: on a textbook long setup Jev gave long 0.25 and said "none" at 0.73; on the mirror short, short 0.13. It leans the right way but cannot verify a multi-condition rule from arrays of numbers (the spec's first known risk). With a `facts` block computed exactly in code (per timeframe: the last candle, the close against the prior 5/10/20 candles, volume against the average, runs of closes, ranges; plus the most recent 15m breakout and what the 1m candles did since) the same probes read long 0.69, short 0.72, flat "none" 0.96. The state is the facts plus the raw candles, about 20k characters.
+
+The separate "how clearly met" score tops out around 0.5 even on the textbook case, so it would have kept every trader flat against bars of 0.70 to 0.85. The gate is now Jev's probability for the entry it chose (about 0.7 on a textbook setup, under 0.05 flat); the score is logged beside it. The author prompt (v3) states that calibration so the next rulebooks set bars that can be met. The current round's bars stand as their authors wrote them.

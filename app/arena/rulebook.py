@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-QUESTIONS_VERSION = 3  # 3: the exit question names the position fields (2026-10-14)
+QUESTIONS_VERSION = 4  # 4: facts computed by code beside the candles (2026-10-14)
 CONVICTION_LEVELS = [  # the score question's rubric; Jev's score is the level index, /4
     "the rule is not met, or only with a generous reading",
     "the rule is partly met; more than one condition is borderline or missing",
@@ -62,11 +62,15 @@ def compile_questions(rb: Rulebook, *, side: str | None = None) -> dict[str, Any
         return {
             "signal": Choice(
                 instructions=(
-                    "You are judging whether the current BTC candle data in `candles` "
-                    "(per timeframe, arrays of [minutes before now, open, high, low, close, "
-                    "volume], oldest first, the last entry the most recent closed candle) "
-                    "satisfies a trader's entry rules. "
-                    'Judge literally. Prefer "none" unless a rule is clearly met.'
+                    "You are judging whether the current BTC market satisfies a trader's entry "
+                    "rules. `facts` holds observations computed exactly by code for each "
+                    "timeframe (1m, 5m, 15m, 1h): the last candle, where its close sits "
+                    "against the prior 5, 10 and 20 candles, volume against the average, runs "
+                    "of closes, ranges, and the most recent 15m breakout with what the 1m "
+                    "candles did since. `candles` holds the raw data ([minutes before now, "
+                    "open, high, low, close, volume], oldest first). Check each condition of a "
+                    "rule against the facts first and the candles second. Judge literally. "
+                    'Prefer "none" unless every condition of a rule is met.'
                 ),
                 criteria={
                     "long": f"Open a LONG when: {rb.entry_long}",

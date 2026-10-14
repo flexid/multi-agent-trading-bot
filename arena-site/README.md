@@ -91,7 +91,8 @@ Points are `[milliseconds since epoch, equity index]`. Without `trader` all thre
 returned; the arena asks for all, a trader page for one.
 
 Each trader also carries `last_decision` (`at`, `kind`, `p_long`, `p_short`, `p_none`, `p_close`,
-`conviction`, `min_conviction`, `acted`) and `judgments_this_round`, so the page can show what Jev
+`conviction`, `min_conviction`, `acted`; `conviction` is Jev's probability for the entry it chose, the
+gate the trader's `min_conviction` applies to) and `judgments_this_round`, so the page can show what Jev
 saw on the last candle even when nothing was traded.
 
 ### `GET /decisions?trader=&limit=`
