@@ -18,7 +18,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.arena import author, ledger, reflex
+from app.arena import author, conditions, ledger, reflex
 from app.arena import rules as R
 from app.arena.candles import CandleBuffer
 from app.arena.exchange import ClosedTrade, Exchange, Position
@@ -95,7 +95,10 @@ class Engine:
                 t.benched = ledger.benched_in_round(s, t.id, rnd.number) is not None
                 rb = ledger.latest_rulebook(s, t.id, rnd.number)
                 if rb is not None and rb.plan:
-                    t.rulebook = Rulebook.model_validate(rb.rulebook)
+                    t.rulebook = Rulebook.model_validate(
+                        rb.plan.get("source")
+                        or {k: v for k, v in rb.rulebook.items() if k != "conditions"}
+                    )
                     t.plan = R.Plan(
                         leverage=int(rb.plan["leverage"]),
                         tp_net_roe_pct=Decimal(str(rb.plan["tp_net_roe_pct"])),
@@ -238,6 +241,7 @@ class Engine:
                             "sl_net_roe_pct": str(plan.sl_net_roe_pct),
                             "min_conviction": plan.min_conviction,
                             "notes": list(plan.notes),
+                            "source": rb.model_dump(mode="json") if rb else None,
                         }
                         if plan
                         else None
@@ -347,16 +351,46 @@ class Engine:
             if not t.funded:
                 return
             await self.maybe_enter(t, now)
-        elif t.rulebook.early_exit and t.pending_exit is None:
+        elif t.pending_exit is None:
             await self.maybe_exit(t, pos, now)
 
     async def maybe_enter(self, t: Trader, now: datetime) -> None:
         assert t.rulebook is not None and t.plan is not None
-        state = self.candles.state(None, now)
-        sig = await reflex.decide_entry(t.rulebook, state, model=self.jev_model, trader=t.id)
-        if sig is None:
-            return
-        act = sig.choice in ("long", "short") and sig.conviction >= t.plan.min_conviction
+        rb = t.rulebook
+        if rb.long_conditions or rb.short_conditions:
+            # 2026-10-15: the structured rules, checked exactly in code every minute.
+            frames = self.candles.frames
+            block = conditions.evaluate(frames, rb.no_trade_conditions)
+            longs = conditions.evaluate(frames, rb.long_conditions)
+            shorts = conditions.evaluate(frames, rb.short_conditions)
+            blocked = block["count"] > 0 and block["count_met"] > 0
+            choice = "none"
+            if not blocked and longs["met"] and not shorts["met"]:
+                choice = "long"
+            elif not blocked and shorts["met"] and not longs["met"]:
+                choice = "short"
+            sig = reflex.Signal(
+                choice=choice,
+                probabilities={
+                    "long": round(longs["count_met"] / longs["count"], 2)
+                    if longs["count"]
+                    else 0.0,
+                    "short": round(shorts["count_met"] / shorts["count"], 2)
+                    if shorts["count"]
+                    else 0.0,
+                    "none": 1.0 if choice == "none" else 0.0,
+                    "blocked": float(block["count_met"]),
+                },
+                conviction=1.0 if choice != "none" else 0.0,
+            )
+            act = choice != "none"
+        else:
+            state = self.candles.state(None, now)
+            jev = await reflex.decide_entry(rb, state, model=self.jev_model, trader=t.id)
+            if jev is None:
+                return
+            sig = jev
+            act = sig.choice in ("long", "short") and sig.conviction >= t.plan.min_conviction
         ts = self.candles.last_1m[0] if self.candles.last_1m else now.timestamp() * 1000
         with new_session() as s:
             d = ArenaDecision(
@@ -438,9 +472,24 @@ class Engine:
 
     async def maybe_exit(self, t: Trader, pos: Position, now: datetime) -> None:
         assert t.rulebook is not None and t.plan is not None
+        rb = t.rulebook
+        if rb.exit_conditions or rb.max_hold_minutes:
+            with new_session() as s:
+                row = ledger.open_trade(s, t.id)
+            minutes = int((now - row.opened_at).total_seconds() // 60) if row else 0
+            res = conditions.evaluate(self.candles.frames, rb.exit_conditions)
+            hit = res["count"] > 0 and res["count_met"] > 0
+            timed = rb.max_hold_minutes is not None and minutes >= rb.max_hold_minutes
+            if hit or timed:
+                t.pending_exit = "earlyExit"
+                await t.exchange.close_market(f"arena-{t.id}-exit-{int(now.timestamp())}")
+                log.info("arena %s: early exit (%s)", t.id, "rule" if hit else f"{minutes} min")
+            return
+        if not rb.early_exit:
+            return
         with new_session() as s:
             row = ledger.open_trade(s, t.id)
-        minutes = int((now - row.opened_at).total_seconds() // 60) if row else None
+        minutes_open = int((now - row.opened_at).total_seconds() // 60) if row else None
         roe = float(pos.unrealized_pnl / pos.margin * 100) if pos.margin else 0.0
         state = self.candles.state(
             {
@@ -448,7 +497,7 @@ class Engine:
                 "entry": float(pos.entry),
                 "leverage": pos.leverage,
                 "unrealized_roe_pct": round(roe, 2),
-                "minutes_open": minutes,
+                "minutes_open": minutes_open,
             },
             now,
         )

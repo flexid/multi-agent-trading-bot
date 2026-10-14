@@ -481,3 +481,12 @@ The separate "how clearly met" score tops out around 0.5 even on the textbook ca
 ## 2026-10-14 · Round 1 ended by hand; a command for it
 
 Sixteen hours, zero trades, while BTC fell 2.2%. The facts showed a textbook breakdown at 14:00 UTC (a 15m close below the prior 20 lows on 2.15× volume); Jev's short probability reached 0.58 for Kwakton against its bar of 0.70, 0.50 against Kwekton's 0.74, 0.38 against Kwikton's 0.85. The bars were written before anyone knew the scale, and the bounce-since-breakout fact was measured over a window that included the breakout candle's own minutes (fixed: only 1m candles after the 15m candle closed count). Rather than wait out a round that could not fire, the owner's round is ended by hand and the authors rewrite under the v3 instructions. `python -m app.control arena-round` (`make arena-round`) leaves a control request the arena applies on its next minute: open positions closed, the round ended with its winner, new rulebooks. The executor ignores that kind.
+
+## 2026-10-15 · Arena: the rules trade in code; Jev is out of the entry decision
+
+The spec's first risk came true and was measured: Kwakton's round-2 entry rule, checked in code against the real candles, was fully met five times on 2026-10-14 (16:30, 16:35, 20:40, 21:20, 21:25); at those minutes Jev answered "none" at 92–97% with 1% on long, facts block and all. Across 464 looks per trader its best entry probability was 0.39. The owner chose to take Jev out of the entry decision.
+
+- Each rulebook now carries its rules in a small checkable form (`app/arena/conditions.py`): a timeframe, a candle field, a comparison and a reference that is a number, another candle's field or a max/min/avg over a lookback, with an optional percentage form and scale. The author writes both the conditions and the words; the words are for people, the conditions trade.
+- Every minute code evaluates them exactly: all long conditions met and no short → long; any no-trade condition met → nothing; any exit condition met, or the hold limit, → close. No model is consulted. A rulebook without conditions falls back to the old Jev path, so the current round keeps running until it is ended.
+- The site shows the conditions under each rulebook and "long rules 75% met · short rules 25% met" on the cards; the decision rows keep the same shape (`p_long`/`p_short` are the share of conditions met, `conviction` 1 on an entry).
+- The Jev decisions of rounds 1 and 2 stay in the ledger as the public record of what was tried.

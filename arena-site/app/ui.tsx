@@ -28,10 +28,11 @@ export function RulebookView({ rb, open }: { rb: Rulebook; open?: boolean }) {
     <details className="acc" open={open}>
       <summary><span className="t">rulebook</span><span className="muted small">{rb.leverage}x · TP {rb.tp_net_roe_pct}% · SL {rb.sl_net_roe_pct}% net · conviction ≥ {rb.min_conviction.toFixed(2)}</span></summary>
       <div className="acc-body rb">
-        <div><b>Long when</b><p>{rb.entry_long}</p></div>
-        <div><b>Short when</b><p>{rb.entry_short}</p></div>
-        <div><b>Stay flat when</b><p>{rb.no_trade}</p></div>
-        {rb.early_exit && <div><b>Exit early when</b><p>{rb.early_exit}</p></div>}
+        <div><b>Long when</b><p>{rb.entry_long}</p><Conds items={rb.conditions?.long} /></div>
+        <div><b>Short when</b><p>{rb.entry_short}</p><Conds items={rb.conditions?.short} /></div>
+        <div><b>Stay flat when</b><p>{rb.no_trade}</p><Conds items={rb.conditions?.no_trade} /></div>
+        {(rb.early_exit || rb.conditions?.exit?.length || rb.conditions?.max_hold_minutes) ? <div><b>Exit early when</b><p>{rb.early_exit}</p><Conds items={rb.conditions?.exit} />{rb.conditions?.max_hold_minutes ? <p className="muted small">or after {rb.conditions.max_hold_minutes} minutes</p> : null}</div> : null}
+        {rb.conditions && <p className="muted small">The lines in code are what trades; the words are for reading.</p>}
       </div>
     </details>
   );
@@ -43,10 +44,13 @@ export function LastLook({ t }: { t: TraderState }) {
   if (!d) return <p className="muted small look">Waiting for the first closed candle.</p>;
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   const bar = d.conviction >= d.min_conviction;
+  const coded = !!t.rulebook?.conditions?.long?.length || !!t.rulebook?.conditions?.short?.length;
   return (
     <p className="small look">
       <span className="muted">Last candle, {ago(d.at)} ago:</span>{" "}
-      {d.kind === "signal" ? (
+      {coded && d.kind === "signal" ? (
+        <><span className="long">long rules {pct(d.p_long)} met</span> · <span className="short">short rules {pct(d.p_short)} met</span>{d.acted && <span className="badge neon">entered</span>}{t.judgments_this_round != null && <span className="muted"> · {t.judgments_this_round} checks this round</span>}</>
+      ) : d.kind === "signal" ? (
         <><span className="long">long {pct(d.p_long)}</span> · <span className="short">short {pct(d.p_short)}</span> · none {pct(d.p_none)} · conviction <b className={bar ? "up" : ""}>{d.conviction.toFixed(2)}</b> <span className="muted">of {d.min_conviction.toFixed(2)} needed</span>{d.acted && <span className="badge neon">acted</span>}</>
       ) : (
         <>close {pct(d.p_close ?? 0)} · conviction <b>{d.conviction.toFixed(2)}</b> <span className="muted">of {d.min_conviction.toFixed(2)} needed</span>{d.acted && <span className="badge neon">closing</span>}</>
@@ -54,6 +58,11 @@ export function LastLook({ t }: { t: TraderState }) {
       {t.judgments_this_round != null && <span className="muted"> · {t.judgments_this_round} looks this round</span>}
     </p>
   );
+}
+
+function Conds({ items }: { items?: string[] | null }) {
+  if (!items?.length) return null;
+  return <ul className="conds">{items.map((c, i) => <li key={i} className="mono small">{c}</li>)}</ul>;
 }
 
 export function statusLine(t: TraderState): React.ReactNode {

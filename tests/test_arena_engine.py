@@ -291,3 +291,74 @@ async def test_a_round_also_ends_on_the_time_limit(
     with new_session() as s:
         first = s.query(ArenaRound).filter_by(number=1).one()
         assert first.ended_at is not None
+
+
+@needs_db
+async def test_structured_rules_trade_without_jev(
+    db: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-10-15: a rulebook with conditions is evaluated in code; Jev is not asked. A
+    5m close above the prior eight highs opens a long; a no-trade condition blocks it."""
+    from app.arena.conditions import Condition, Ref
+
+    prices = Prices()
+    engine, traders = make(prices)
+    rb = RB.model_copy(
+        update={
+            "long_conditions": [
+                Condition(
+                    timeframe="5m",
+                    field="close",
+                    op=">",
+                    ref=Ref(field="high", agg="max", lookback=8, index=1),
+                )
+            ],
+            "short_conditions": [
+                Condition(
+                    timeframe="5m",
+                    field="close",
+                    op="<",
+                    ref=Ref(field="low", agg="min", lookback=8, index=1),
+                )
+            ],
+            "no_trade_conditions": [
+                Condition(
+                    timeframe="1m",
+                    field="range",
+                    op=">",
+                    ref=Ref(field="close", index=0, scale=0.01),
+                )
+            ],
+        }
+    )
+    asked: list[str] = []
+
+    async def fake_write(model: str, context: str, *, round_number: int) -> Rulebook:
+        return rb
+
+    async def no_jev(*a: object, **k: object) -> None:
+        asked.append("jev")
+        return None
+
+    monkeypatch.setattr(author, "write_rulebook", fake_write)
+    monkeypatch.setattr(reflex, "decide_entry", no_jev)
+    now = T0
+    await engine.start(now)
+    prices.push(60000.0)
+    await engine.tick(now)
+    for _ in range(3):  # flat: no entry
+        now += timedelta(minutes=1)
+        prices.push(60000.0)
+        await engine.tick(now)
+    with new_session() as s:
+        assert s.query(ArenaTrade).count() == 0
+    # a close 1% above everything before it: all three open longs
+    now += timedelta(minutes=1)
+    prices.push(60600.0)
+    await engine.tick(now)
+    with new_session() as s:
+        opens = s.query(ArenaTrade).filter_by(status="open").all()
+        assert {x.trader for x in opens} == set(traders) and all(x.side == "long" for x in opens)
+        d = s.query(ArenaDecision).filter_by(acted=True).first()
+        assert d is not None and d.probabilities["long"] == 1.0 and d.conviction == 1.0
+    assert asked == []  # Jev was never consulted

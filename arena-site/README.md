@@ -95,6 +95,11 @@ Each trader also carries `last_decision` (`at`, `kind`, `p_long`, `p_short`, `p_
 gate the trader's `min_conviction` applies to) and `judgments_this_round`, so the page can show what Jev
 saw on the last candle even when nothing was traded.
 
+A rulebook may carry `conditions` (`long`, `short`, `no_trade`, `exit`: lists of one-line
+descriptions of the checks code runs every minute, and `max_hold_minutes`). When it does, a
+decision's `p_long` and `p_short` are the share of that rule's conditions met, `conviction` is 1
+on an entry, and no model is involved in the entry.
+
 ### `GET /decisions?trader=&limit=`
 ```json
 { "decisions": [ { "trader": "kwakton", "round": 1, "at": "...", "kind": "signal", "p_long": 0.02,

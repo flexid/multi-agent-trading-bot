@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.arena.conditions import Condition, describe
+
 QUESTIONS_VERSION = 4  # 4: facts computed by code beside the candles (2026-10-14)
 CONVICTION_LEVELS = [  # the score question's rubric; Jev's score is the level index, /4
     "the rule is not met, or only with a generous reading",
@@ -35,6 +37,13 @@ class Rulebook(BaseModel):
     entry_short: str = Field(min_length=1, max_length=400)
     no_trade: str = Field(min_length=1, max_length=400)
     early_exit: str | None = Field(default=None, max_length=400)
+    # The same rules in checkable form (2026-10-15): every condition must hold to enter;
+    # any no-trade condition holding blocks; any exit condition holding closes.
+    long_conditions: list[Condition] = Field(default_factory=list, max_length=12)
+    short_conditions: list[Condition] = Field(default_factory=list, max_length=12)
+    no_trade_conditions: list[Condition] = Field(default_factory=list, max_length=12)
+    exit_conditions: list[Condition] = Field(default_factory=list, max_length=8)
+    max_hold_minutes: int | None = Field(default=None, ge=5, le=1440)
 
     def public(self) -> dict[str, Any]:
         """The site's shape (arena-site/README.md)."""
@@ -49,6 +58,13 @@ class Rulebook(BaseModel):
             "entry_short": self.entry_short,
             "no_trade": self.no_trade,
             "early_exit": self.early_exit,
+            "conditions": {
+                "long": [describe(c) for c in self.long_conditions],
+                "short": [describe(c) for c in self.short_conditions],
+                "no_trade": [describe(c) for c in self.no_trade_conditions],
+                "exit": [describe(c) for c in self.exit_conditions],
+                "max_hold_minutes": self.max_hold_minutes,
+            },
         }
 
 

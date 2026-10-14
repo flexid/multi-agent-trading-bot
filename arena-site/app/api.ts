@@ -22,6 +22,8 @@ export type Rulebook = {
   entry_short: string;
   no_trade: string;
   early_exit?: string | null;
+  // the same rules in the form code checks every minute (2026-10-15)
+  conditions?: { long: string[]; short: string[]; no_trade: string[]; exit: string[]; max_hold_minutes: number | null } | null;
 };
 
 export type Position = {
