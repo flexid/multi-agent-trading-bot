@@ -506,14 +506,14 @@ def _p_costs(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> 
         )
 
     fees_pilot, fees_paper = fees("pilot"), fees("primary")
-    daily = {
+    daily: dict[str, Any] = {
         "days": float(days),
         "llm": llm_week / days,
         "x": x_week / days,
         "fees_pilot": fees_pilot / days,
         "fees_paper": fees_paper / days,
     }
-    daily["total"] = daily["llm"] + daily["x"] + daily["fees_pilot"]
+    daily["total"] = (llm_week + x_week + fees_pilot) / days
     return {
         "daily": daily,
         "llm_day": llm_day,
