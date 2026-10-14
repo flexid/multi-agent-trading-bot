@@ -163,3 +163,39 @@ def test_the_gate_is_jevs_entry_probability_and_the_score_is_kept() -> None:
         reflex.judge = orig  # type: ignore[attr-defined]
     assert sig is not None and sig.choice == "long"
     assert sig.conviction == 0.69 and sig.probabilities["score"] == 0.5
+
+
+def test_the_bounce_since_a_breakout_counts_only_candles_after_it_closed() -> None:
+    """2026-10-14: the window included the breakout candle's own minutes, so a 1.2%
+    'bounce' appeared at the moment of a breakdown. Only 1m candles after the 15m candle
+    closed count, and none at all right at its close."""
+    from app.arena.candles import breakout_facts
+
+    base = 83000.0
+    t15 = 1_760_400_000_000
+    f15 = [[t15 + i * 900_000, base, base + 50, base - 50, base, 100.0] for i in range(40)]
+    bo_open = t15 + 40 * 900_000
+    f15.append([bo_open, base - 40, base - 30, base - 600, base - 550, 260.0])  # a breakdown
+    bo_close = base - 550
+    # 1m candles: the breakout's own 15 minutes (prices still high), then 4 after it closed
+    f1 = [
+        [bo_open + i * 60_000, base - 100, base - 50, base - 600, base - 400, 10.0]
+        for i in range(15)
+    ]
+    f1 += [
+        [
+            bo_open + 900_000 + i * 60_000,
+            bo_close,
+            bo_close * 1.002,
+            bo_close * 0.999,
+            bo_close * 1.0015,
+            10.0,
+        ]
+        for i in range(4)
+    ]
+    facts = breakout_facts({"15m": f15, "1m": f1[:15]})["last_15m_breakout"]
+    assert facts["direction"] == "down" and facts["minutes_since_close"] == 0
+    assert facts["deepest_bounce_pct"] == 0.0
+    facts = breakout_facts({"15m": f15, "1m": f1})["last_15m_breakout"]
+    assert facts["minutes_since_close"] == 4
+    assert abs(facts["deepest_bounce_pct"] - 0.2) < 0.01  # the 0.2% high after the close, not 0.6%

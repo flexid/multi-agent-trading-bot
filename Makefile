@@ -78,3 +78,6 @@ bybit-authorize:
 
 deploy-arena-site:
 	arena-site/scripts/deploy.sh
+
+arena-round:
+	uv run python -m app.control arena-round

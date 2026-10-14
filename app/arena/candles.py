@@ -163,6 +163,7 @@ def breakout_facts(frames: dict[str, list[list[float]]]) -> dict[str, Any]:
             found = {
                 "direction": "up" if row[4] > hi else "down",
                 "candles_ago": back - 1,
+                "open_ms": row[0],
                 "close": row[4],
                 "range_pct": _pct(row[2], row[3]),
                 "volume_vs_avg_20": round(row[5] / (sum(vols) / len(vols)), 2)
@@ -173,9 +174,17 @@ def breakout_facts(frames: dict[str, list[list[float]]]) -> dict[str, Any]:
             break
     if not found or not f1:
         return {"last_15m_breakout": None}
-    minutes = (found["candles_ago"] + 1) * 15
-    since = f1[-minutes:] if minutes <= len(f1) else f1
+    # the 1m candles after the breakout candle closed (its open time plus 15 minutes); a
+    # window counted in candles included the breakout's own minutes (bug, 2026-10-14)
+    closed_at = found["open_ms"] + 15 * 60 * 1000
+    since = [r for r in f1 if r[0] >= closed_at]
+    found.pop("open_ms", None)
+    found["minutes_since_close"] = len(since)
     bo = found["close"]
+    if not since:
+        found["deepest_pullback_pct" if found["direction"] == "up" else "deepest_bounce_pct"] = 0.0
+        found["last_1m_close_vs_breakout_close_pct"] = _pct(f1[-1][4], bo)
+        return {"last_15m_breakout": found}
     if found["direction"] == "up":
         deepest = min(r[3] for r in since)
         found["deepest_pullback_pct"] = round((1 - deepest / bo) * 100, 3)

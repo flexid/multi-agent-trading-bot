@@ -300,8 +300,11 @@ class Executor:
         kill = False
         pending = session.scalars(
             select(ControlRequest)
-            # kind "cycle" is for the scheduler (app/decision/goal_cycle.py)
-            .where(ControlRequest.applied_at.is_(None), ControlRequest.kind != "cycle")
+            # "cycle" is the scheduler's (app/decision/goal_cycle.py), "arena_round" the arena's
+            .where(
+                ControlRequest.applied_at.is_(None),
+                ControlRequest.kind.not_in(["cycle", "arena_round"]),
+            )
             .order_by(ControlRequest.id)
         ).all()
         state = session.get(RiskState, 1)

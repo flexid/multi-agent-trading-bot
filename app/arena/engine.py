@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import select
+
 from app.arena import author, ledger, reflex
 from app.arena import rules as R
 from app.arena.candles import CandleBuffer
@@ -122,17 +124,20 @@ class Engine:
                 if last and new_candle:
                     await t.exchange.on_candle(Decimal(str(last[2])), Decimal(str(last[3])))
             await self.reconcile(t, now)
+        requested = self._round_requested(now)
         running = (now - self.round_started).total_seconds() / 3600 if self.round_started else None
-        if R.round_over(
+        if requested or R.round_over(
             {t.id: t.benched for t in self.traders.values()},
             hours_running=running,
             max_hours=self.cfg.max_round_hours,
         ):
             if not all(t.benched for t in self.traders.values()):
                 log.info(
-                    "arena: round %d ends on the %dh limit",
+                    "arena: round %d ends %s",
                     self.round_number,
-                    self.cfg.max_round_hours,
+                    "on the owner's request"
+                    if requested
+                    else f"on the {self.cfg.max_round_hours}h limit",
                 )
                 for t in self.traders.values():
                     if await t.exchange.position() is not None:
@@ -151,6 +156,21 @@ class Engine:
         await self.record_equity(now)
 
     # --- rounds ------------------------------------------------------------------------
+
+    def _round_requested(self, now: datetime) -> bool:
+        """The owner's `python -m app.control arena-round`: end the round now."""
+        from app.db.models import ControlRequest
+
+        with new_session() as s:
+            rows = s.scalars(
+                select(ControlRequest).where(
+                    ControlRequest.kind == "arena_round", ControlRequest.applied_at.is_(None)
+                )
+            ).all()
+            for r in rows:
+                r.applied_at, r.result = now, f"round {self.round_number} ended, new rulebooks"
+            s.commit()
+            return bool(rows)
 
     async def new_round(self, now: datetime) -> None:
         with new_session() as s:
