@@ -74,6 +74,19 @@ class Engine:
         self.jev_model = jev_model or cfg.jev_model
         self.round_number = 0
         self.round_started: datetime | None = None
+        self._authors: set[asyncio.Task[None]] = set()
+
+    def _spawn_authors(self, traders: list[Trader], now: datetime) -> None:
+        """The authors write in the background (Grok takes minutes): the minute loop goes
+        on, and a trader trades as soon as its own book lands."""
+        for t in traders:
+            task = asyncio.create_task(self.write_rulebook(t, now))
+            self._authors.add(task)
+            task.add_done_callback(self._authors.discard)
+
+    async def wait_authors(self) -> None:
+        if self._authors:
+            await asyncio.gather(*self._authors, return_exceptions=True)
 
     # --- lifecycle -------------------------------------------------------------------
 
@@ -114,7 +127,7 @@ class Engine:
         # this round writes one now rather than sitting out until the next reset.
         missing = [t for t in self.traders.values() if t.rulebook is None]
         if missing:
-            await asyncio.gather(*(self.write_rulebook(t, now) for t in missing))
+            self._spawn_authors(missing, now)
 
     async def tick(self, now: datetime | None = None) -> None:
         """One minute: candles, closes, benches, the round, entries and exits, equity."""
@@ -188,7 +201,7 @@ class Engine:
         for t in self.traders.values():
             t.losses, t.benched, t.rulebook, t.plan = 0, False, None, None
         log.info("arena: round %d starts", self.round_number)
-        await asyncio.gather(*(self.write_rulebook(t, now) for t in self.traders.values()))
+        self._spawn_authors(list(self.traders.values()), now)
 
     def _round_winner(self, s: Any, started: datetime, now: datetime) -> str | None:
         best: tuple[Decimal, str] | None = None

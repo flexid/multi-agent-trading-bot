@@ -58,6 +58,7 @@ async def write_rulebook(model: str, context: str, *, round_number: int) -> Rule
             model=model,
             cycle_id=None,
             asset=f"R{round_number}",
+            timeout_s=600,  # Grok at high effort needs minutes for the structured form
         )
     except LLMError as exc:
         log.warning("author %s failed for round %d: %s", model, round_number, exc)

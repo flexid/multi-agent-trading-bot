@@ -49,13 +49,13 @@ export function LastLook({ t }: { t: TraderState }) {
     <p className="small look">
       <span className="muted">Last candle, {ago(d.at)} ago:</span>{" "}
       {coded && d.kind === "signal" ? (
-        <><span className="long">long rules {pct(d.p_long)} met</span> · <span className="short">short rules {pct(d.p_short)} met</span>{d.acted && <span className="badge neon">entered</span>}{t.judgments_this_round != null && <span className="muted"> · {t.judgments_this_round} checks this round</span>}</>
+        <><span className="long">long rules {pct(d.p_long)} met</span> · <span className="short">short rules {pct(d.p_short)} met</span>{d.acted && <span className="badge neon">entered</span>}</>
       ) : d.kind === "signal" ? (
         <><span className="long">long {pct(d.p_long)}</span> · <span className="short">short {pct(d.p_short)}</span> · none {pct(d.p_none)} · conviction <b className={bar ? "up" : ""}>{d.conviction.toFixed(2)}</b> <span className="muted">of {d.min_conviction.toFixed(2)} needed</span>{d.acted && <span className="badge neon">acted</span>}</>
       ) : (
         <>close {pct(d.p_close ?? 0)} · conviction <b>{d.conviction.toFixed(2)}</b> <span className="muted">of {d.min_conviction.toFixed(2)} needed</span>{d.acted && <span className="badge neon">closing</span>}</>
       )}
-      {t.judgments_this_round != null && <span className="muted"> · {t.judgments_this_round} looks this round</span>}
+      {t.judgments_this_round != null && <span className="muted"> · {t.judgments_this_round} {coded ? "checks" : "looks"} this round</span>}
     </p>
   );
 }

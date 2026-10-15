@@ -138,6 +138,7 @@ async def test_a_round_of_the_arena(db: None, monkeypatch: pytest.MonkeyPatch) -
 
     now = T0
     await engine.start(now)
+    await engine.wait_authors()
     assert engine.round_number == 1 and all(t.plan is not None for t in traders.values())
     prices.push(60000.0)
     await engine.tick(now)  # first tick: equity recorded, traders funded, nothing to act on
@@ -199,6 +200,7 @@ async def test_a_round_of_the_arena(db: None, monkeypatch: pytest.MonkeyPatch) -
             prices.push(60500.0, high=61000.0)
             await engine.tick(now)
         signals.pop(tid, None)
+    await engine.wait_authors()
     assert engine.round_number == 2
     assert all(not t.benched and t.losses == 0 for t in traders.values())
     with new_session() as s:
@@ -246,12 +248,14 @@ async def test_a_restart_writes_the_rulebooks_the_round_still_lacks(
         s.commit()
     engine, traders = make(prices)
     await engine.start(T0)
+    await engine.wait_authors()
     assert engine.round_number == 1 and len(written) == 3
     assert all(t.plan is not None for t in traders.values())
     # a second start finds the books and writes nothing
     written.clear()
     engine2, _ = make(prices)
     await engine2.start(T0)
+    await engine2.wait_authors()
     assert written == []
 
 
@@ -277,6 +281,7 @@ async def test_a_round_also_ends_on_the_time_limit(
     monkeypatch.setattr(reflex, "decide_entry", fake_entry)
     now = T0
     await engine.start(now)
+    await engine.wait_authors()
     prices.push(60000.0)
     await engine.tick(now)
     assert engine.round_number == 1
@@ -344,6 +349,7 @@ async def test_structured_rules_trade_without_jev(
     monkeypatch.setattr(reflex, "decide_entry", no_jev)
     now = T0
     await engine.start(now)
+    await engine.wait_authors()
     prices.push(60000.0)
     await engine.tick(now)
     for _ in range(3):  # flat: no entry
