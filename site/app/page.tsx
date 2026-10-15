@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { DetailOverlay, EquityChart } from "./charts";
-import { cls, loadLive, loadSnapshot, monthYear, num, pct, tick, type Live, type Snapshot } from "./snapshot";
+import { cls, loadLive, loadSnapshot, monthYear, num, pct, tick, useTickers, type Live, type Snapshot } from "./snapshot";
 
 /** "long" in green, "short" in red, everywhere they appear. */
 function Side({ d }: { d: string }) {
@@ -57,6 +57,7 @@ export default function Page() {
   const [best, setBest] = useState<"wins" | "losses">("wins");
   useEffect(() => { loadSnapshot().then(setS); const t = setInterval(() => loadSnapshot().then(setS), 300000); return () => clearInterval(t); }, []);
   const [live, setLive] = useState<Live | null>(null);
+  const ticks = useTickers(((live?.open_trades ?? s?.open_trades) ?? []).map((t) => t.symbol ?? "").filter(Boolean));
   useEffect(() => {
     const pull = () => {
       if (document.hidden) return;
@@ -73,7 +74,14 @@ export default function Page() {
   if (s === null) return <p className="muted">No data right now. The bot pushes a snapshot every five minutes; this one hasn&apos;t arrived.</p>;
   const p = s.performance, st = s.stats;
   // The live feed is newer than the five-minute snapshot whenever the backend is up.
-  const openTrades = live && Date.parse(live.generated_at) > Date.parse(s.generated_at) ? live.open_trades : s.open_trades;
+  const openBase = live && Date.parse(live.generated_at) > Date.parse(s.generated_at) ? live.open_trades : s.open_trades;
+  // by the second: the browser's own price stream for the open symbols, net of both fees
+  const openTrades = openBase.map((t) => {
+    const px = t.symbol ? ticks[t.symbol] : undefined;
+    if (!px || !t.entry) return t;
+    const move = (px / t.entry - 1) * (t.direction.toLowerCase() === "long" ? 1 : -1);
+    return { ...t, price: px, unrealized_price_pct: Math.round(move * 10000) / 100, unrealized_margin_pct: Math.round((move * t.leverage * 100 - (t.fees_margin_pct ?? 0)) * 100) / 100 };
+  });
   return (
     <>
       <h1><span className={`badge ${s.mode === "live" ? "neon" : ""}`}>{s.mode}</span>{!s.heartbeat_ok && <span className="badge">stale</span>}</h1>

@@ -1,8 +1,9 @@
+import { useEffect, useState } from "react";
 export type Snapshot = {
   generated_at: string; mode: "shadow" | "live"; handle: string; heartbeat_ok: boolean;
   performance: { since: string; bot_pct: number; btc_hold_pct: number; basket_pct: number; drawdown_pct: number; equity_curve: number[][]; equity_recent: number[][]; btc_curve: number[][]; basket_curve: number[][] };
   stats: { trades: number; win_rate_pct: number | null; profit_factor: number | null; avg_holding: string | null };
-  open_trades: { asset: string; cashtag: string; direction: string; entry: number; leverage: number; stop: number; target: number; time_in_trade: string; unrealized_price_pct: number; unrealized_margin_pct: number; paper: boolean; price?: number | null }[];
+  open_trades: { asset: string; cashtag: string; direction: string; entry: number; leverage: number; stop: number; target: number; time_in_trade: string; unrealized_price_pct: number; unrealized_margin_pct: number; paper: boolean; price?: number | null; symbol?: string | null; fees_margin_pct?: number | null }[];
   closed_trades: { asset: string; cashtag: string; direction: string; entry: number; exit: number; leverage: number; price_pct: number; margin_pct: number; holding: string; opened_at: string; closed_at: string; x_url: string | null; paper: boolean }[];
   assets: { asset: string; cashtag: string; agents: { agent: string; score: number; confidence: number; valid: boolean; reasons: string[] }[]; pm_claude: string | null; pm_gpt: string | null; pm_grok?: string | null; consensus: string; consensus_score: number | null; formula_score: number | null; reason: string; macro_regime: string | null; coupling: number | null; macro_tradfi: number | null; macro_native: number | null }[];
   leaderboard: { name: string; kind: string; ic_1d: number | null; sample: number }[];
@@ -64,3 +65,25 @@ export async function shareUrl(): Promise<string> {
 export const tick = (cashtag: string) => cashtag.replace(/^\$/, "");  // tickers without the dollar sign on the site (owner, 2026-10-09)
 
 export const monthYear = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });  // "October 2026"
+
+/** Bybit's public spot ticker stream for the open symbols: a price per tick, from the browser,
+    so the open-trades table moves by the second. The backend's figures stay the record. */
+export function useTickers(symbols: string[]): Record<string, number> {
+  const [prices, setPrices] = useState<Record<string, number>>({});
+  const key = symbols.slice().sort().join(",");
+  useEffect(() => {
+    if (!key || typeof WebSocket === "undefined") return;
+    let ws: WebSocket | null = null;
+    let closed = false;
+    let ping: ReturnType<typeof setInterval> | null = null;
+    const open = () => {
+      ws = new WebSocket("wss://stream.bybit.com/v5/public/spot");
+      ws.onopen = () => { ws?.send(JSON.stringify({ op: "subscribe", args: key.split(",").map((s) => `tickers.${s}`) })); ping = setInterval(() => ws?.send(JSON.stringify({ op: "ping" })), 20000); };
+      ws.onmessage = (e) => { try { const m = JSON.parse(e.data); const d = m?.data; if (d?.symbol && d?.lastPrice) setPrices((p) => ({ ...p, [d.symbol]: Number(d.lastPrice) })); } catch {} };
+      ws.onclose = () => { if (ping) clearInterval(ping); if (!closed) setTimeout(open, 3000); };
+    };
+    open();
+    return () => { closed = true; if (ping) clearInterval(ping); ws?.close(); };
+  }, [key]);
+  return prices;
+}

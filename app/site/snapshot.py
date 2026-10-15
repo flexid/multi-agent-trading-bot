@@ -87,6 +87,8 @@ class OpenTrade(_Strict):
     unrealized_margin_pct: float
     paper: bool
     price: float | None = None  # the price now
+    symbol: str | None = None  # the exchange symbol, for the page's own price stream
+    fees_margin_pct: float | None = None  # both fee legs as a share of the margin, in percent
 
 
 class ClosedTrade(_Strict):
@@ -562,6 +564,13 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
     )
 
 
+def _fees_margin_pct(p: Position, spot: float | None) -> float:
+    """The entry fee paid plus the exit fee at the price now, as a share of the margin."""
+    if not spot or not p.margin or p.margin <= 0:
+        return 0.0
+    return (float(p.fees) + float(p.interest or 0) + spot * float(p.qty) * 0.001) / float(p.margin)
+
+
 def _net_margin_pct(p: Position, spot: float | None, price_pct: float) -> float:
     """The return on the margin put in, net of the entry fee paid and the exit fee to
     come, so the open and the closed tables say the same thing (owner 2026-10-12)."""
@@ -626,6 +635,8 @@ def open_trades_view(s: Any, cfg: Config, now: datetime) -> list[OpenTrade]:
                 unrealized_margin_pct=round(_net_margin_pct(p, spot, price_pct) * 100, 2),
                 paper=p.mode == "paper",
                 price=spot,
+                symbol=p.symbol,
+                fees_margin_pct=round(_fees_margin_pct(p, spot) * 100, 3),
             )
         )
     return out
