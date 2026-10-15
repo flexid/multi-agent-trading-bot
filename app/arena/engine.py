@@ -121,6 +121,8 @@ class Engine:
                 open_row = ledger.open_trade(s, t.id)
                 if open_row is not None:
                     t.last_check = min(t.last_check, open_row.opened_at)
+                if isinstance(t.exchange, PaperExchange):
+                    self._restore_paper(s, t, open_row)
             s.commit()
         log.info("arena: round %d continues", self.round_number)
         # A restart during the authors' work, or a refused book: anyone without a book in
@@ -170,6 +172,40 @@ class Engine:
                 except Exception:  # one trader's problem never stops the others
                     log.exception("arena %s: decision failed", t.id)
         await self.record_equity(now)
+
+    def _restore_paper(self, s: Any, t: Trader, open_row: ArenaTrade | None) -> None:
+        """The paper twin's cash and position from the ledger: the allocation plus every
+        closed trade's net result, minus the open trade's margin and entry fee."""
+        from sqlalchemy import func as fn
+
+        assert isinstance(t.exchange, PaperExchange)
+        realized = s.execute(
+            select(fn.coalesce(fn.sum(ArenaTrade.pnl_usdt), 0)).where(
+                ArenaTrade.trader == t.id, ArenaTrade.status == "closed"
+            )
+        ).scalar_one()
+        start = t.start_equity or t.exchange.cash
+        cash = start + Decimal(str(realized))
+        position = None
+        open_fee = Decimal(0)
+        if open_row is not None:
+            open_fee = open_row.entry_price * open_row.qty * t.exchange.fee
+            cash -= open_row.margin_usdt + open_fee
+            position = Position(
+                side=open_row.side,
+                qty=open_row.qty,
+                entry=open_row.entry_price,
+                leverage=open_row.leverage,
+                tp=open_row.tp_price,
+                sl=open_row.sl_price,
+                unrealized_pnl=Decimal(0),
+                margin=open_row.margin_usdt,
+            )
+        t.exchange.restore(cash, position, open_fee)
+        if position is not None:
+            log.info(
+                "arena %s: paper position restored (%s at %s)", t.id, position.side, position.entry
+            )
 
     # --- rounds ------------------------------------------------------------------------
 

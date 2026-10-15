@@ -368,3 +368,68 @@ async def test_structured_rules_trade_without_jev(
         d = s.query(ArenaDecision).filter_by(acted=True).first()
         assert d is not None and d.probabilities["long"] == 1.0 and d.conviction == 1.0
     assert asked == []  # Jev was never consulted
+
+
+@needs_db
+async def test_paper_state_survives_a_restart(db: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """2026-10-15: a deploy restarted the arena and two open paper trades had no position
+    behind them. On start the paper twin rebuilds cash and the open position from the ledger."""
+    from app.arena.conditions import Condition, Ref
+
+    prices = Prices()
+    rb = RB.model_copy(
+        update={
+            "long_conditions": [
+                Condition(
+                    timeframe="5m",
+                    field="close",
+                    op=">",
+                    ref=Ref(field="high", agg="max", lookback=8, index=1),
+                )
+            ],
+            "short_conditions": [
+                Condition(
+                    timeframe="5m",
+                    field="close",
+                    op="<",
+                    ref=Ref(field="low", agg="min", lookback=8, index=1),
+                )
+            ],
+        }
+    )
+
+    async def fake_write(model: str, context: str, *, round_number: int) -> Rulebook:
+        return rb
+
+    monkeypatch.setattr(author, "write_rulebook", fake_write)
+    engine, traders = make(prices)
+    now = T0
+    await engine.start(now)
+    await engine.wait_authors()
+    prices.push(60000.0)
+    await engine.tick(now)
+    now += timedelta(minutes=1)
+    prices.push(60600.0)
+    await engine.tick(now)  # all three long
+    before = await traders["kwikton"].exchange.position()
+    assert before is not None
+    cash_before = traders["kwikton"].exchange.cash  # type: ignore[attr-defined]
+    # a new process: fresh exchanges, same ledger
+    engine2, traders2 = make(prices)
+    await engine2.start(now)
+    await engine2.wait_authors()
+    after = await traders2["kwikton"].exchange.position()
+    assert (
+        after is not None
+        and after.side == before.side
+        and after.entry == before.entry
+        and after.tp == before.tp
+    )
+    assert abs(traders2["kwikton"].exchange.cash - cash_before) < D("0.01")  # type: ignore[attr-defined]
+    # and the restored position still closes on its take
+    now += timedelta(minutes=1)
+    prices.push(60900.0, high=61200.0)
+    await engine2.tick(now)
+    with new_session() as s:
+        closed = s.query(ArenaTrade).filter_by(trader="kwikton", status="closed").one()
+    assert closed.exit_reason == "tp" and closed.net_roe_pct is not None and closed.net_roe_pct > 0

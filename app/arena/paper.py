@@ -35,6 +35,15 @@ class PaperExchange:
             tick=Decimal("0.1"), lot=Decimal("0.001"), min_qty=Decimal("0.001")
         )
 
+    def restore(self, cash: Decimal, position: Position | None, open_fee: Decimal) -> None:
+        """Rebuild the state from the ledger after a restart (2026-10-15: two open paper
+        trades vanished with a deploy): the cash as it was, the open position with its
+        take and stop, and the entry fee already paid."""
+        self.cash = cash
+        self._pos = position
+        self._leverage = position.leverage if position else self._leverage
+        self._open_fee = open_fee if position else Decimal(0)
+
     async def instrument(self) -> Instrument:
         return self.instrument_spec
 
