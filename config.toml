@@ -76,6 +76,7 @@ delay_minutes = [1, 10]
 max_posts_per_day = 20
 post_in_shadow = true           # owner: shadow trades are posted, written and audited like live, with a marker
 highlight_margin_pct = 0.10     # a close at +10% on margin or better gets the trade card and a pleased post
+events = "closes"               # owner 2026-10-15: post closes only (all = opens too, wins = profitable closes only)
 
 [posting.cashtags]
 BTC = "$BTC"

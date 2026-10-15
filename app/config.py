@@ -134,6 +134,9 @@ class PostingConfig(_Section):
     # A close with at least this margin result gets the trade card and an openly pleased
     # post (owner, 2026-10-09).
     highlight_margin_pct: Decimal = Decimal("0.10")
+    # Which trade events are posted (owner 2026-10-15: twenty posts a day read as a bot):
+    # "all" = opens and closes, "closes" = closes only, "wins" = profitable closes only.
+    events: Literal["all", "closes", "wins"] = "closes"
 
 
 class RiskConfig(_Section):

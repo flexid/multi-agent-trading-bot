@@ -185,3 +185,11 @@ def test_a_close_post_replies_to_the_opener_that_went_out() -> None:
         assert opener_x_id(s, 987654) == "111"
         s.execute(delete(XPostOut).where(XPostOut.position_id == 987654))
         s.commit()
+
+
+def test_posting_events_setting_is_read() -> None:
+    """Owner 2026-10-15: closes only by default; opens and losing closes are configurable."""
+    from app.config import PostingConfig, get_config
+
+    assert get_config().posting.events == "closes"
+    assert PostingConfig.model_fields["events"].default == "closes"

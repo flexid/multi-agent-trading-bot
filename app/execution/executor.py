@@ -1197,6 +1197,11 @@ class Executor:
         storyline = "live" if self.mode == "live" else "primary"
         if row.mode == "pilot" or row.track != storyline:
             return  # one track tells the X story: live once live, the primary paper track before
+        events = self.cfg.posting.events
+        if kind == "open" and events != "all":
+            return
+        if kind == "close" and events == "wins" and not (row.pnl is not None and row.pnl > 0):
+            return
         try:
             await poster.enqueue(
                 session,

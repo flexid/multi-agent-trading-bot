@@ -246,6 +246,10 @@ async def test_close_post_is_queued_with_the_booked_pnl(db: None) -> None:
 
     seed_decision(stop="98")
     ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+    # this test checks both posts; the default since 2026-10-15 is closes only
+    ex.cfg = ex.cfg.model_copy(
+        update={"posting": ex.cfg.posting.model_copy(update={"events": "all"})}
+    )
     await ex.tick()
     ex.quotes[get_config().symbol(ASSET)] = quote("97", "97.1")
     await ex.tick()
