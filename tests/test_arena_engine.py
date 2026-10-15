@@ -205,7 +205,7 @@ async def test_a_round_of_the_arena(db: None, monkeypatch: pytest.MonkeyPatch) -
     assert all(not t.benched and t.losses == 0 for t in traders.values())
     with new_session() as s:
         rounds = s.query(ArenaRound).order_by(ArenaRound.number).all()
-        assert rounds[0].ended_at is not None and rounds[0].winner == "kwikton"
+        assert rounds[0].ended_at is not None and rounds[0].winner == "kwikton"  # the only gain
         assert s.query(ArenaRulebook).filter_by(round=2).count() == 3
         assert s.query(ArenaEquity).filter_by(trader="kwekton").count() > 5
 

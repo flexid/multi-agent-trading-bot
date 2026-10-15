@@ -213,7 +213,10 @@ class Engine:
             delta = end / start - 1
             if best is None or delta > best[0]:
                 best = (delta, t.id)
-        return best[1] if best else None
+            elif delta == best[0]:
+                best = (delta, "")  # a tie has no winner
+        # no winner without a gain: a round nobody traded is nobody's (2026-10-15)
+        return best[1] if best and best[1] and best[0] > 0 else None
 
     async def write_rulebook(self, t: Trader, now: datetime) -> None:
         with new_session() as s:
