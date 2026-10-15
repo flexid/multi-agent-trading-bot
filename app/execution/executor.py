@@ -947,8 +947,20 @@ class Executor:
     async def open_new(self, session: Session, now: datetime) -> None:
         if self.frozen or self.quotes_stale:
             return
+        take_profit = self._take_profit(session)
         for track, track_mode in TRACKS[self.mode].items():
+            if take_profit is not None and self._at_day_goal(session, now, track, take_profit):
+                # Owner 2026-10-15: an ENA short lived 18 seconds before the day-goal sweep
+                # closed it for its fees. Nothing opens while the book stands at the goal.
+                continue
             await self._open_track(session, now, track, track_mode)
+
+    def _at_day_goal(
+        self, session: Session, now: datetime, track: str, take_profit: Decimal
+    ) -> bool:
+        acct = self.ledger(session, now, track)
+        base = acct.goal_base or acct.day_start_equity
+        return base > 0 and acct.equity >= base * (1 + take_profit)
 
     def pilot_slot(self, asset: str) -> Decimal:
         """The pilot's size for one position. Like the paper book, a position takes a share

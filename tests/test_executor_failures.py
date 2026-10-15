@@ -701,3 +701,37 @@ async def test_a_plan_approved_while_in_the_trade_is_not_opened_after_it_closes(
     with new_session() as s:
         d = s.get(DecisionRecord, second)
         assert d is not None and "not re-entered" in str((d.exec_notes or {}).get("primary", ""))
+
+
+@needs_db
+async def test_nothing_opens_while_the_book_stands_at_the_day_goal(db: None) -> None:
+    """Owner 2026-10-15: a trade opened seconds before the day-goal sweep was closed for
+    its fees. While the ledger is at or above the goal line nothing new is opened."""
+    from app.db.models import PaperAccount, RiskState
+    from app.db.session import new_session
+
+    seed_decision()
+    ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+    await ex.tick()  # creates the ledger
+    with new_session() as s:
+        for p in s.query(Position).all():
+            s.delete(p)
+        acct = s.get(PaperAccount, 1)
+        assert acct is not None
+        acct.equity = acct.day_start_equity * D("1.02")  # already 2% up on the day
+        acct.goal_base = None
+        state = s.get(RiskState, 1) or RiskState(id=1, leverage_ceiling=D(2))
+        state.aggressive = True
+        s.merge(state)
+        s.commit()
+    try:
+        seed_decision()
+        ex2 = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+        await ex2.tick()
+        assert [p for p in positions() if p.track == "primary"] == []
+    finally:
+        with new_session() as s:
+            cur = s.get(RiskState, 1)
+            if cur is not None:
+                cur.aggressive = False
+                s.commit()
