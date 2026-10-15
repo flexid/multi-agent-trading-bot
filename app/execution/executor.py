@@ -709,6 +709,22 @@ class Executor:
             return True
         return False
 
+    @staticmethod
+    def _approved_while_in_trade(session: Session, d: DecisionRecord, track: str) -> bool:
+        """Was a position in this asset open on this track when the decision was made?"""
+        return bool(
+            session.scalar(
+                select(func.count())
+                .select_from(Position)
+                .where(
+                    Position.track == track,
+                    Position.asset == d.asset,
+                    Position.opened_at <= d.ts,
+                    (Position.closed_at.is_(None)) | (Position.closed_at >= d.ts),
+                )
+            )
+        )
+
     def _rebase_flat_ledgers(self, session: Session, now: datetime, take_profit: Decimal) -> None:
         """A ledger with nothing open that already stands a goal above its base (a target
         or a single trade banked it) counts the next goal from where it is now. Otherwise
@@ -987,6 +1003,12 @@ class Executor:
                 continue  # already executed
             if d.asset in open_assets:
                 self._note(d, track, f"already in a {d.asset} trade")
+                continue
+            if self._approved_while_in_trade(session, d, track):
+                # Owner 2026-10-15: the plan was approved as "nothing to add" while a
+                # trade in this asset was open; it does not become a fresh entry at the
+                # price that trade just closed on. The next cycle judges the market anew.
+                self._note(d, track, f"approved while in a {d.asset} trade; not re-entered")
                 continue
             sleeve = self.cfg.sleeve_of(d.asset)
             lock = locked.get(sleeve) if sleeve is not None else None

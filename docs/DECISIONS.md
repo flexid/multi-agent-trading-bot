@@ -490,3 +490,7 @@ The spec's first risk came true and was measured: Kwakton's round-2 entry rule, 
 - Every minute code evaluates them exactly: all long conditions met and no short → long; any no-trade condition met → nothing; any exit condition met, or the hold limit, → close. No model is consulted. A rulebook without conditions falls back to the old Jev path, so the current round keeps running until it is ended.
 - The site shows the conditions under each rulebook and "long rules 75% met · short rules 25% met" on the cards; the decision rows keep the same shape (`p_long`/`p_short` are the share of conditions met, `conviction` 1 on an entry).
 - The Jev decisions of rounds 1 and 2 stay in the ledger as the public record of what was tried.
+
+## 2026-10-15 · A plan approved while in the trade is not a re-entry
+
+ETH short took profit at 2,321 and four seconds later the executor opened a new ETH short at 2,321 on the plan the 02:02 cycle had approved while the first trade was open. Owner: too fast. A plan approved while a position in that asset was open on that book was approved as "nothing to add"; once the position closes it is skipped (note "approved while in a trade; not re-entered") and the next cycle judges the market anew, chase rule included.

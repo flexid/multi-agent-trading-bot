@@ -663,3 +663,37 @@ def test_the_pilot_has_a_slot_for_every_asset() -> None:
     )
     assert sum(slots.values()) <= cap
     assert ex.pilot_slot("BNB") == cap * D("0.20")  # outside the sleeves: the old share
+
+
+@needs_db
+async def test_a_plan_approved_while_in_the_trade_is_not_opened_after_it_closes(db: None) -> None:
+    """Owner 2026-10-15: ETH took profit and four seconds later the executor re-entered on
+    a plan approved half an hour earlier while that trade was open. Such a plan is skipped."""
+    from datetime import UTC, datetime
+
+    from app.db.models import DecisionRecord
+    from app.db.session import new_session
+
+    seed_decision(stop="98", target="103")
+    ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)] * 3), quote("99.9", "100"))
+    await ex.tick()
+    (pos,) = [p for p in positions() if p.track == "primary"]
+    assert pos.status == "open"
+    # a second plan for the same asset, approved now, while the first trade is open
+    second = seed_decision(stop="98", target="103")
+    with new_session() as s:
+        d = s.get(DecisionRecord, second)
+        assert d is not None
+        d.ts = datetime.now(UTC)
+        s.commit()
+    await ex.tick()
+    assert len([p for p in positions() if p.track == "primary"]) == 1  # blocked: already in it
+    symbol = get_config().symbol(ASSET)
+    ex.quotes[symbol] = quote("103.5", "103.6")  # the target: the first trade closes
+    await ex.tick()
+    await ex.tick()
+    rows = [p for p in positions() if p.track == "primary"]
+    assert [p.status for p in rows] == ["closed"]  # and no re-entry on the second plan
+    with new_session() as s:
+        d = s.get(DecisionRecord, second)
+        assert d is not None and "not re-entered" in str((d.exec_notes or {}).get("primary", ""))
