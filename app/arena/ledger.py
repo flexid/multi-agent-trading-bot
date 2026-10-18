@@ -147,7 +147,7 @@ def state_view(
                 "equity_index": _f(last[1]) if last else 100.0,
                 "return_pct": _f(last[1] - 100) if last else 0.0,
                 "position": positions.get(t.id),
-                "rulebook": rb.rulebook if rb else None,
+                "rulebook": rb.rulebook if rb and rb.rulebook else None,  # {} = the author failed
                 "last_decision": decision_public(ld) if (ld := last_decision(s, t.id)) else None,
                 "judgments_this_round": decisions_in_round(s, t.id, rnd.number) if rnd else 0,
             }
@@ -378,7 +378,7 @@ def rulebooks_view(s: Session, trader: str) -> dict[str, Any]:
     seen: set[int] = set()
     out = []
     for r in rows:
-        if r.round in seen:
+        if r.round in seen or not r.rulebook:
             continue
         seen.add(r.round)
         out.append({"round": r.round, "rulebook": r.rulebook})

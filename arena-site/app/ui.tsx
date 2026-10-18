@@ -26,7 +26,7 @@ export function Pips({ losses }: { losses: number }) {
 export function RulebookView({ rb, open }: { rb: Rulebook; open?: boolean }) {
   return (
     <details className="acc" open={open}>
-      <summary><span className="t">rulebook</span><span className="muted small">{rb.leverage}x · TP {rb.tp_net_roe_pct}% · SL {rb.sl_net_roe_pct}% net · conviction ≥ {rb.min_conviction.toFixed(2)}</span></summary>
+      <summary><span className="t">rulebook</span><span className="muted small">{rb.leverage}x · TP {rb.tp_net_roe_pct}% · SL {rb.sl_net_roe_pct}% net · conviction ≥ {(rb.min_conviction ?? 0).toFixed(2)}</span></summary>
       <div className="acc-body rb">
         <div><b>Long when</b><p>{rb.entry_long}</p><Conds items={rb.conditions?.long} /></div>
         <div><b>Short when</b><p>{rb.entry_short}</p><Conds items={rb.conditions?.short} /></div>
@@ -51,9 +51,9 @@ export function LastLook({ t }: { t: TraderState }) {
       {coded && d.kind === "signal" ? (
         <><span className="long">long rules {pct(d.p_long)} met</span> · <span className="short">short rules {pct(d.p_short)} met</span>{d.acted && <span className="badge neon">entered</span>}</>
       ) : d.kind === "signal" ? (
-        <><span className="long">long {pct(d.p_long)}</span> · <span className="short">short {pct(d.p_short)}</span> · none {pct(d.p_none)} · conviction <b className={bar ? "up" : ""}>{d.conviction.toFixed(2)}</b> <span className="muted">of {d.min_conviction.toFixed(2)} needed</span>{d.acted && <span className="badge neon">acted</span>}</>
+        <><span className="long">long {pct(d.p_long)}</span> · <span className="short">short {pct(d.p_short)}</span> · none {pct(d.p_none)} · conviction <b className={bar ? "up" : ""}>{(d.conviction ?? 0).toFixed(2)}</b> <span className="muted">of {(d.min_conviction ?? 0).toFixed(2)} needed</span>{d.acted && <span className="badge neon">acted</span>}</>
       ) : (
-        <>close {pct(d.p_close ?? 0)} · conviction <b>{d.conviction.toFixed(2)}</b> <span className="muted">of {d.min_conviction.toFixed(2)} needed</span>{d.acted && <span className="badge neon">closing</span>}</>
+        <>close {pct(d.p_close ?? 0)} · conviction <b>{(d.conviction ?? 0).toFixed(2)}</b> <span className="muted">of {(d.min_conviction ?? 0).toFixed(2)} needed</span>{d.acted && <span className="badge neon">closing</span>}</>
       )}
       {t.judgments_this_round != null && <span className="muted"> · {t.judgments_this_round} {coded ? "checks" : "looks"} this round</span>}
     </p>
@@ -88,7 +88,7 @@ export function TraderCard({ t, rank, showModel = true }: { t: TraderState; rank
         <div className="tile"><div className="k">equity index</div><div className="v">{idx(t.equity_index)}</div></div>
         <div className="tile"><div className="k">total return</div><div className={`v ${cls(t.return_pct)}`}>{pct(t.return_pct, 2)}</div></div>
       </div>
-      {t.rulebook ? (
+      {t.rulebook?.name ? (
         <>
           <div className="strategy"><b>{t.rulebook.name}</b> <span className="muted">· {t.rulebook.leverage}x</span><p>{t.rulebook.thesis}</p></div>
           <LastLook t={t} />
@@ -152,7 +152,7 @@ export function TradeRow({ t }: { t: Trade }) {
             <div className="tile"><div className="k">round</div><div className="v small">{t.round}</div></div>
           </div>
           <p className="small" style={{ margin: "10px 0 0" }}>
-            <b>Jev at entry:</b> P(long) {d.p_long.toFixed(2)} · P(short) {d.p_short.toFixed(2)} · P(none) {d.p_none.toFixed(2)} · conviction <b>{d.conviction.toFixed(2)}</b> against a minimum of {d.min_conviction.toFixed(2)}
+            <b>Jev at entry:</b> P(long) {(d.p_long ?? 0).toFixed(2)} · P(short) {(d.p_short ?? 0).toFixed(2)} · P(none) {(d.p_none ?? 0).toFixed(2)} · conviction <b>{(d.conviction ?? 0).toFixed(2)}</b> against a minimum of {(d.min_conviction ?? 0).toFixed(2)}
           </p>
         </td></tr>
       )}
