@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -43,6 +43,7 @@ class Trader:
     benched: bool = False
     start_equity: Decimal | None = None
     pending_exit: str | None = None  # earlyExit | bench: the reason for a close we sent
+    author_failed_at: datetime | None = None  # retried hourly (2026-10-18: Astra out of credits)
     last_check: datetime = field(default_factory=lambda: datetime.now(UTC))
     funded: bool = False
 
@@ -163,6 +164,19 @@ class Engine:
                         await t.exchange.close_market(f"arena-{t.id}-round-{int(now.timestamp())}")
                         await self.reconcile(t, now)
             await self.new_round(now)
+        # an author that failed (a provider out of credits, a timeout) is retried hourly
+        retry = [
+            t
+            for t in self.traders.values()
+            if t.rulebook is None
+            and t.author_failed_at is not None
+            and now - t.author_failed_at >= timedelta(hours=1)
+            and not any(not task.done() for task in self._authors)
+        ]
+        if retry:
+            for t in retry:
+                t.author_failed_at = now
+            self._spawn_authors(retry, now)
         if new_candle:
             for t in self.traders.values():
                 if t.benched or t.plan is None or t.rulebook is None:
@@ -280,6 +294,7 @@ class Engine:
             except R.RulesError as exc:
                 log.warning("arena %s: rulebook refused: %s", t.id, exc)
         t.rulebook, t.plan = rb, plan
+        t.author_failed_at = now if rb is None else None
         with new_session() as s:
             s.add(
                 ArenaRulebook(
