@@ -1,4 +1,4 @@
-.PHONY: up down deploy deploy-site deploy-arena-site snapshot golive costs selftest-live-full test lint migrate fetch-once scheduler cycle executor kill resume indicators backtest selftest selftest-live bybit-authorize
+.PHONY: up down deploy deploy-site deploy-arena-site deploy-dex-site snapshot golive costs selftest-live-full test lint migrate fetch-once scheduler cycle executor kill resume indicators backtest selftest selftest-live bybit-authorize
 
 up:
 	docker compose up -d postgres
@@ -78,6 +78,9 @@ bybit-authorize:
 
 deploy-arena-site:
 	arena-site/scripts/deploy.sh
+
+deploy-dex-site:
+	dex-site/scripts/deploy.sh
 
 arena-round:
 	uv run python -m app.control arena-round

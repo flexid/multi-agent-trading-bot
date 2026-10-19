@@ -11,6 +11,7 @@ dependencies = [
     "boto3>=1.35",
     "fastapi>=0.115",
     "httpx>=0.27",
+    "hyperliquid-python-sdk>=0.24.0",
     "itsdangerous>=2.2",
     "jinja2>=3.1",
     "mplfinance>=0.12.10b0",
@@ -63,5 +64,5 @@ plugins = ["pydantic.mypy"]
 files = ["app", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["apscheduler.*", "mplfinance.*", "pandas_ta.*", "boto3.*", "PIL.*", "qrcode.*"]
+module = ["apscheduler.*", "mplfinance.*", "pandas_ta.*", "boto3.*", "PIL.*", "qrcode.*", "hyperliquid.*", "eth_account.*"]
 ignore_missing_imports = true

@@ -102,3 +102,18 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+
+  dex:
+    # dorkbot on a DEX (app/dex): a mirror of the main book on Hyperliquid, paper → testnet → live.
+    profiles: ["bot"]
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://bot:bot@postgres:5432/bot
+    command: ["python", "-m", "app.dex.main"]
+    volumes:
+      - ./config.toml:/app/config.toml
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped

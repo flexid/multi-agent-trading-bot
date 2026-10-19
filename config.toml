@@ -177,6 +177,17 @@ allocation_usdt = 0
 model = "claude-fable-5-1"
 allocation_usdt = 0
 
+[dex]                           # dorkbot on a DEX (app/dex, docs/DEX_PLAN.md; owner 2026-10-19): a mirror of the main book on Hyperliquid perps
+enabled = true
+mode = "paper"                  # paper = simulated fills on the venue's prices; testnet = signed on the testnet; live = real
+follow_track = "primary"        # the book whose record is mirrored
+assets = []                     # empty = every asset of the book the venue lists (testnet lacks XRP and ENA)
+paper_equity = 1000
+taker_fee_pct = 0.035
+leverage_max = 10
+tick_seconds = 5
+publish_seconds = 15
+
 [site]                          # M8a public site and M8b admin (SPEC §12)
 public_domain = "dorkbot.dev"
 admin_domain = "admin.dorkbot.dev"

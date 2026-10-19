@@ -805,3 +805,53 @@ class ArenaEquity(Base):
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     equity_usdt: Mapped[Decimal]
     equity_index: Mapped[Decimal]
+
+
+# --- the DEX mirror (app/dex): the main book's record on a perpetuals DEX ---------------
+
+
+class DexTrade(Base):
+    __tablename__ = "dex_trades"
+    __table_args__ = (Index("ix_dex_trades_status", "status"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    asset: Mapped[str] = mapped_column(String(10))
+    side: Mapped[str] = mapped_column(String(6))
+    leverage: Mapped[int] = mapped_column(Integer)
+    qty: Mapped[Decimal]  # venue units
+    entry_price: Mapped[Decimal]
+    exit_price: Mapped[Decimal | None]
+    tp_price: Mapped[Decimal]
+    sl_price: Mapped[Decimal]
+    margin_usdt: Mapped[Decimal]
+    main_position_id: Mapped[int] = mapped_column(BigInteger)  # the main book's position
+    main_entry: Mapped[Decimal]  # the main book's fill, for the divergence
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fees_usdt: Mapped[Decimal | None]
+    pnl_usdt: Mapped[Decimal | None]  # net of fees
+    net_roe_pct: Mapped[Decimal | None]
+    exit_reason: Mapped[str | None] = mapped_column(String(24))  # mirror:<reason> | tp | sl
+    tx: Mapped[str | None] = mapped_column(String(80))
+    cloid: Mapped[str] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(8), default="open")
+
+
+class DexEquity(Base):
+    __tablename__ = "dex_equity"
+
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    equity_usdt: Mapped[Decimal]
+    equity_index: Mapped[Decimal]
+
+
+class DexState(Base):
+    """One row: the mirror's memory across restarts."""
+
+    __tablename__ = "dex_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    start_equity: Mapped[Decimal | None]
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_fill_check: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    mismatch: Mapped[str | None] = mapped_column(Text)  # reconciliation: why nothing new opens

@@ -65,3 +65,10 @@ arena-site/out
 arena-site/next-env.d.ts
 arena-site/tsconfig.tsbuildinfo
 arena-site/.wrangler
+# dex site
+dex-site/node_modules
+dex-site/.next
+dex-site/out
+dex-site/next-env.d.ts
+dex-site/tsconfig.tsbuildinfo
+dex-site/.wrangler

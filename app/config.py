@@ -208,6 +208,22 @@ class ArenaConfig(_Section):
     traders: dict[str, ArenaTraderConfig] = Field(default_factory=dict)  # kwikton, kwekton, kwakton
 
 
+class DexConfig(_Section):
+    """dorkbot on a DEX (app/dex, docs/DEX_PLAN.md): a mirror of the main book on
+    Hyperliquid perpetuals. Off unless ``enabled``; ``mode`` paper | testnet | live."""
+
+    enabled: bool = False
+    mode: Literal["paper", "testnet", "live"] = "paper"
+    follow_track: str = "primary"  # the book whose record is mirrored
+    assets: list[str] = Field(default_factory=list)  # empty = whatever the venue lists
+    paper_equity: Decimal = Decimal(1000)
+    taker_fee_pct: Decimal = Decimal("0.035")
+    leverage_max: int = Field(default=10, ge=1, le=50)
+    tick_seconds: int = Field(default=5, ge=2, le=60)
+    publish_seconds: int = Field(default=15, ge=5, le=300)
+    explorer: str = "https://app.hyperliquid.xyz/explorer"
+
+
 class TriggersConfig(_Section):
     """Cycles outside the four-hour clock (v10: the bot reacts to the market, not to the
     hour). All in code; the managers are only called when something happened."""
@@ -286,6 +302,7 @@ class Config(_Section):
     site: SiteConfig = SiteConfig()
     triggers: TriggersConfig = TriggersConfig()
     arena: ArenaConfig = ArenaConfig()
+    dex: DexConfig = DexConfig()
     server: ServerConfig = ServerConfig()
     budget: BudgetConfig
     models: ModelsConfig
@@ -342,6 +359,10 @@ class Secrets(BaseSettings):
     competition_kwekton_api_secret: SecretStr = SecretStr("")
     competition_kwakton_api_key: SecretStr = SecretStr("")
     competition_kwakton_api_secret: SecretStr = SecretStr("")
+    # the DEX mirror (app/dex): the account's address and an API (agent) key that may trade
+    # but never withdraw; empty in paper mode
+    dex_address: str = ""
+    dex_private_key: SecretStr = SecretStr("")
     fred_api_key: SecretStr = SecretStr("")
     coingecko_api_key: SecretStr = SecretStr("")
 
