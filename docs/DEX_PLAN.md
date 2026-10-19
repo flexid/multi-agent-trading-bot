@@ -153,6 +153,19 @@ My recommendation: build the DEX mirror, run it in public on a small wallet, and
 record decide. If it earns, the vault is the product and it needs no coin. A coin comes up
 again only if there is a reason beyond raising money, and then route 2, with advice.
 
+## 5b. The service fee
+
+Both models carry a fee the protocol enforces, so no billing of our own is needed:
+
+- **Vault:** the leader's share of depositors' profits, calculated and paid by the protocol on
+  withdrawal; the leader keeps a minimum stake. Earned only when depositors earn.
+- **Per-user delegation:** a builder fee per fill, approved once by the user with a cap when
+  they connect, paid to the builder address; a performance fee can sit beside it.
+
+Outside Hyperliquid the fee is ours to build: a pool contract that enforces the share, or a
+subscription for access, which is weaker. The plan's choice is the vault with the profit share
+as the only fee.
+
 ## 6. Open questions for the owner
 
 - Which assets: the ten of today, bluechips only, or whatever Hyperliquid lists of them?
