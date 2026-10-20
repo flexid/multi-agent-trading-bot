@@ -217,6 +217,10 @@ class DexConfig(_Section):
     follow_track: str = "primary"  # the book whose record is mirrored
     assets: list[str] = Field(default_factory=list)  # empty = whatever the venue lists
     paper_equity: Decimal = Decimal(1000)
+    # Hyperliquid account abstraction: "unified" (one USDC balance for spot and perps, the
+    # default for new accounts) reads the balance from the spot clearinghouse; "standard"
+    # from the perps clearinghouse (2026-10-19: the owner's account is unified).
+    account_mode: Literal["unified", "standard"] = "unified"
     taker_fee_pct: Decimal = Decimal("0.035")
     leverage_max: int = Field(default=10, ge=1, le=50)
     # The most margin one mirror trade may put up, whatever the equity (owner 2026-10-19:

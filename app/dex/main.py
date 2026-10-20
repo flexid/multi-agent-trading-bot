@@ -28,7 +28,10 @@ async def serve() -> None:
     address = secrets.dex_address
     key = secrets.dex_private_key.get_secret_value() or None
     venue = HyperliquidExchange(
-        address=address, private_key=key if mode != "paper" else None, testnet=testnet
+        address=address,
+        private_key=key if mode != "paper" else None,
+        testnet=testnet,
+        unified=cfg.dex.account_mode == "unified",
     )
     ex: DexExchange
     if mode == "paper":

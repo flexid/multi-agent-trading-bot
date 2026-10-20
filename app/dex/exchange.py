@@ -83,7 +83,10 @@ class HyperliquidExchange:
     """Signed trading through the official SDK with an API (agent) key; public reads
     without one. ``testnet`` picks the network."""
 
-    def __init__(self, *, address: str, private_key: str | None, testnet: bool) -> None:
+    def __init__(
+        self, *, address: str, private_key: str | None, testnet: bool, unified: bool = True
+    ) -> None:
+        self.unified = unified
         from hyperliquid.info import Info
         from hyperliquid.utils.constants import MAINNET_API_URL, TESTNET_API_URL
 
@@ -133,9 +136,29 @@ class HyperliquidExchange:
         return out
 
     async def equity(self) -> tuple[Decimal, Decimal]:
+        """(equity, free). In unified mode the USDC balance lives in the spot clearinghouse
+        and the perps state carries only the positions; in standard mode the perps account
+        value is the whole story."""
         st = self.info.user_state(self.address)
         ms = st.get("marginSummary", {})
-        return Decimal(str(ms.get("accountValue", "0"))), Decimal(str(st.get("withdrawable", "0")))
+        perps_value = Decimal(str(ms.get("accountValue", "0")))
+        if not self.unified:
+            return perps_value, Decimal(str(st.get("withdrawable", "0")))
+        spot = self.info.spot_user_state(self.address)
+        usdc: dict[str, Any] = next(
+            (b for b in spot.get("balances", []) if b.get("coin") == "USDC"), {}
+        )
+        total = Decimal(str(usdc.get("total", "0")))
+        hold = Decimal(str(usdc.get("hold", "0")))
+        unreal = sum(
+            (
+                Decimal(str(r.get("position", {}).get("unrealizedPnl", "0")))
+                for r in st.get("assetPositions", [])
+            ),
+            Decimal(0),
+        )
+        margin_used = Decimal(str(ms.get("totalMarginUsed", "0")))
+        return total + unreal, max(Decimal(0), total - hold - margin_used)
 
     async def positions(self) -> dict[str, Position]:
         st = self.info.user_state(self.address)
@@ -181,16 +204,22 @@ class HyperliquidExchange:
         is_buy = side == "long"
         r = ex.market_open(coin, is_buy, float(qty), cloid=Cloid.from_str(cloid))
         _check(r, "open")
-        for kind, px in (("tp", tp * unit), ("sl", sl * unit)):
-            r = ex.order(
-                coin,
-                not is_buy,
-                float(qty),
-                round_price(px),
-                {"trigger": {"triggerPx": round_price(px), "isMarket": True, "tpsl": kind}},
-                reduce_only=True,
-            )
-            _check(r, kind)
+        try:
+            for kind, px in (("tp", tp * unit), ("sl", sl * unit)):
+                r = ex.order(
+                    coin,
+                    not is_buy,
+                    float(qty),
+                    round_price(px),
+                    {"trigger": {"triggerPx": round_price(px), "isMarket": True, "tpsl": kind}},
+                    reduce_only=True,
+                )
+                _check(r, kind)
+        except Exception:
+            # Never leave a filled entry without its stop: close it at market and report.
+            log.error("hyperliquid: %s filled but its triggers failed; closing it", coin)
+            ex.market_close(coin)
+            raise
 
     async def close_market(self, asset: str, cloid: str) -> None:
         from hyperliquid.utils.types import Cloid
