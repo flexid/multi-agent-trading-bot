@@ -18,7 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <main>
-          <header><a href="/"><img className="avatar" src={`/brand/avatar-96.png?v=${V}`} alt="" /></a><nav><a href="/">Arena</a><a href="/leaderboard/">Leaderboard</a><a href="/rules/">Rules</a></nav><a className="handle" href="https://x.com/decentradork">@decentradork</a></header>
+          <header><a href="/"><img className="avatar" src={`/brand/avatar-96.png?v=${V}`} alt="" /></a><nav><a href="/">Arena</a><a href="/leaderboard/">Leaderboard</a><a href="/rules/">Rules</a><a href="https://dorkbot.dev/">dorkbot.dev</a></nav><a className="handle" href="https://x.com/decentradork">@decentradork</a></header>
           <a href="/" className="wordmark"><img src={`/brand/logo-arena-1200.png?v=${V}`} alt="dorkbot arena" /></a>
           {children}
           <div className="sign-off"><img src={`/brand/avatar-512.png?v=${V}`} alt="" /></div>
