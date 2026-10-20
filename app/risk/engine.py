@@ -230,7 +230,9 @@ def assess(
     if placed.moved:
         hits.append(RuleHit("stop_buffer", placed.reason, "adjust"))
     stop, hard_stop = placed.soft, placed.hard
-    stop_distance = abs(entry - hard_stop) / entry
+    # v12: the size follows the soft stop, the one that fires on a close; the hard stop is
+    # the touch backup half an ATR further. Sizing on the hard stop forced 1x everywhere.
+    stop_distance = abs(entry - stop) / entry
     target_distance = abs(target - entry) / entry
 
     if c.direction is Direction.SHORT and not (mkt.margin_enabled and mkt.short_allowed):

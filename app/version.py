@@ -1,6 +1,11 @@
 """Logic version: bumped when the decision logic changes in a way that makes earlier
 decisions not comparable. Stored on every cycle row.
 
+12 2026-10-20  v11 did not reach 2x: the stop-hunt placement chained past up to three
+              levels and put the soft stop at twice the managers' distance, and the size
+              followed the hard stop half an ATR further still. Now the placement moves at
+              most once and at most half an ATR from the managers' stop, and the size
+              follows the soft stop. Owner's decision; the week restarts (2026-10-27).
 11 2026-10-19  the week's review (owner): stops where the managers put them (stop_room 1.0)
               and the hard stop half an ATR beyond the soft one, so the 4% stop cap allows
               about 2x instead of forcing 1x (107 of the v10 week's plans); no Polymarket
@@ -58,6 +63,6 @@ decisions not comparable. Stored on every cycle row.
 1  2026-10-08  initial logic (SPEC §6-§9).
 """
 
-LOGIC_VERSION = 11
+LOGIC_VERSION = 12
 # v10 (owner 2026-10-12): one week untouched, then judge; the 4-week review stays 2026-11-07
-FROZEN_UNTIL = "2026-10-26"
+FROZEN_UNTIL = "2026-10-27"

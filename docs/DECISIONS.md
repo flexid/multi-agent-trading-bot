@@ -508,3 +508,7 @@ The v10 week: 34 trades, 71% winners, the main book +4.4% (about 0.6% a day), sh
 - One paper book: the max and inverse tracks open nothing new; their open positions run out under their stops. The shadow comparisons from v6-v8 are no longer computed.
 
 Deferred to v12 after a week: fold aggressive mode into the only mode (drop the locks except the emergency brake, drop risk-per-trade as a parameter, decide the day goal on a count of what its sweeps closed), remove the Polymarket agent, collapse the config to one trading section.
+
+## 2026-10-20 · Logic v12: the stop placement that forced 1x
+
+Every plan since v11 still came out at 1x. The managers set stops at 1.4 to 1.8 ATR (2 to 2.8%); the stop-hunt placement then moved the soft stop past up to three levels with half an ATR beyond each, to 4.4 to 5.1%, and the hard stop sat half an ATR further; the cap divided 4% by 5.5% and landed on 1x. The wick-out record meant to judge that placement holds seven stopped trades and no verdict. Owner: ok. The placement now moves at most once and never further than half an ATR from the managers' stop, and the size follows the soft stop, the one that fires on a close; the hard stop stays the touch backup half an ATR further, so a touch-stop loss can exceed the cap by that half ATR. The cap still floors at 1x: an alt whose stop is wider than 4% at 1x still trades and still loses more than 4% (PUMP today, -12.4%); blocking those is a separate decision. The untouched week restarts to 2026-10-27.

@@ -90,20 +90,21 @@ def place_stop(
     pad = buffer * atr
     soft = stop
     moved: list[str] = []
-    for _ in range(3):  # beyond one level can be on the next
-        if direction is Direction.LONG:
-            near = [lv for lv in levels if lv <= entry and abs(lv - soft) <= pad]
-            if not near:
-                break
+    # One move at most, and never further than ``buffer`` ATR from the managers' stop (v12,
+    # 2026-10-20): chaining past up to three levels put the stop at twice the managers'
+    # distance and forced every plan to 1x under the stop cap.
+    if direction is Direction.LONG:
+        near = [lv for lv in levels if lv <= entry and abs(lv - soft) <= pad]
+        if near:
             lv = min(near)
-            soft = lv - pad
-        else:
-            near = [lv for lv in levels if lv >= entry and abs(lv - soft) <= pad]
-            if not near:
-                break
+            soft = max(lv - pad, stop - pad)
+            moved.append(f"{lv:f}")
+    else:
+        near = [lv for lv in levels if lv >= entry and abs(lv - soft) <= pad]
+        if near:
             lv = max(near)
-            soft = lv + pad
-        moved.append(f"{lv:f}")
+            soft = min(lv + pad, stop + pad)
+            moved.append(f"{lv:f}")
     limit = MAX_ATR * atr
     if abs(entry - soft) > limit:
         soft = entry - limit if direction is Direction.LONG else entry + limit

@@ -39,12 +39,14 @@ def test_swing_levels_are_pivots() -> None:
 
 def test_stop_moves_beyond_a_level_with_the_buffer_and_the_hard_stop_sits_an_atr_further() -> None:
     atr = D("1000")
-    # long from 82,500 with a stop at 80,100: 80,000 is a round number within 0.5 ATR
+    # long from 82,500 with a stop at 80,100: 80,000 is a round number within 0.5 ATR.
+    # v12: the move is at most half an ATR from the managers' stop (79,600), not past the
+    # level plus the buffer (79,500)
     placed = place_stop(Direction.LONG, D("82500"), D("80100"), atr, [D("80000")])
-    assert placed.moved and placed.soft == D("79500") and placed.hard == D("78500")
+    assert placed.moved and placed.soft == D("79600") and placed.hard == D("78600")
     # short: the mirror image
     placed = place_stop(Direction.SHORT, D("82500"), D("84900"), atr, [D("85000")])
-    assert placed.soft == D("85500") and placed.hard == D("86500")
+    assert placed.soft == D("85400") and placed.hard == D("86400")
     # clear of levels: untouched, hard stop still an ATR beyond
     placed = place_stop(Direction.LONG, D("82500"), D("80100"), atr, [D("70000")])
     assert not placed.moved and placed.soft == D("80100") and placed.hard == D("79100")
