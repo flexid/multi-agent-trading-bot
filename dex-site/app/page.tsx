@@ -11,7 +11,7 @@ export default function Mirror() {
   return (
     <>
       <h1><span className={`badge ${d.mode === "live" ? "neon" : "warn"}`} style={{ fontSize: 14, padding: "4px 12px" }}>{label}</span><span className="badge">{d.venue}</span>{d.mismatch && <span className="badge down">paused: mismatch</span>}</h1>
-      <p className="muted">dorkbot&apos;s record, mirrored trade for trade on a decentralised perpetuals exchange. {d.mode === "live" ? "Real funds on a public address." : d.mode === "testnet" ? "Testnet funds: real orders on the test network, no money at stake." : "Paper fills on the venue's prices, no orders placed."} The decisions come from <a href="https://dorkbot.dev/">dorkbot.dev</a>; nothing is decided here. <a href="/how/">How it works</a>.</p>
+      <p className="muted">dorkbot&apos;s record, mirrored trade for trade on a decentralised perpetuals exchange. {d.mode === "live" ? "Real funds on a public address." : d.mode === "testnet" ? "Testnet funds: real orders on the test network, no money at stake." : "Paper fills on the venue's prices, no orders placed."} The decisions come from <a href="https://dorkbot.dev/">dorkbot.dev</a>; nothing is decided here. The ambition, once the record is there, is a Hyperliquid vault anyone can deposit into. <a href="/how/">How it works</a>.</p>
       <div className="row">
         <div className="tile"><div className="k">equity index</div><div className="v">{d.equity_index.toFixed(2)}</div><div className="muted small">100 at start{d.since ? `, ${new Date(d.since).toUTCString().slice(5, 16)}` : ""}</div></div>
         <div className="tile"><div className="k">return</div><div className={`v ${cls(d.return_pct)}`}>{pct(d.return_pct)}</div></div>
