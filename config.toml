@@ -196,6 +196,8 @@ public_domain = "dorkbot.dev"
 admin_domain = "admin.dorkbot.dev"
 snapshot_interval_minutes = 5   # sanitized JSON pushed to Cloudflare for the public site
 live_interval_seconds = 15      # open trades with the price now (live.json)
+record_since = 2026-10-12T19:33:00Z   # the public record starts at logic v10 (owner 2026-10-19); earlier trades stay in the admin
+record_note = "record since 12 Oct 2026, logic v10"
 
 [server]                        # the DigitalOcean droplet (owner 2026-10-10); metrics on the admin's System page
 droplet_id = 607481266

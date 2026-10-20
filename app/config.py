@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tomllib
+from datetime import datetime
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
@@ -256,6 +257,11 @@ class SiteConfig(_Section):
     admin_domain: str = "admin.dorkbot.dev"
     snapshot_interval_minutes: int = 5
     live_interval_seconds: int = Field(default=15, ge=5, le=300)  # open trades, price now
+    # The public record starts here (owner 2026-10-19): the index rebases to 100 at this
+    # moment and earlier trades stay in the ledger and the admin. None = from the first
+    # equity point. Changing it moves the line; nothing is deleted.
+    record_since: datetime | None = None
+    record_note: str = ""  # shown next to the performance heading
 
 
 class BudgetConfig(_Section):

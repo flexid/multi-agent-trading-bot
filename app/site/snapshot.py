@@ -191,6 +191,7 @@ class Leader(_Strict):
 
 class Snapshot(_Strict):
     generated_at: datetime
+    record_note: str | None = None  # the record's starting line, for the heading
     mode: str  # shadow | live
     performance: Performance
     stats: Stats
@@ -347,13 +348,19 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
             select(func.min(EquitySnapshot.ts)).where(EquitySnapshot.mode == _record_mode(s))
         ).scalar_one()
         since = first or since
+        if cfg.site.record_since is not None:
+            since = max(since, cfg.site.record_since)  # the public record's starting line
         curve, recent_curve, bot_pct, dd = _pct_curve(cfg, s, since, now)
         btc_pct, basket_pct = _benchmarks(cfg, s, since)
         btc_curve, basket_curve = _benchmark_curves(cfg, s, since)
         history = _history(cfg, s, now - timedelta(days=7))
         closed = s.scalars(
             select(Position)
-            .where(Position.track == _record_track(s), Position.status == "closed")
+            .where(
+                Position.track == _record_track(s),
+                Position.status == "closed",
+                Position.closed_at >= since,
+            )
             .order_by(Position.closed_at.desc(), Position.id.desc())  # stable among ties
             .limit(500)
         ).all()
@@ -536,6 +543,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
         ]
     return Snapshot(
         generated_at=now,
+        record_note=cfg.site.record_note or None,
         mode="live" if cfg.trading.live_allowed else "shadow",
         performance=Performance(
             since=since,
@@ -699,6 +707,7 @@ def verify_dict(data: dict[str, Any]) -> list[str]:
                 ".x_url",
                 ".generated_at",
                 ".snapshot_at",
+                ".record_note",
                 ".explorer",
                 ".address",
                 ".tx",
