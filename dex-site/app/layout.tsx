@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import ShareLink from "./share";
 
-const V = "d2";
+const V = "d3";
 
 export const metadata: Metadata = {
   title: "dorkbot DEX - the same bot, on-chain - nfa",
