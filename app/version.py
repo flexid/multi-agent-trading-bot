@@ -1,6 +1,11 @@
 """Logic version: bumped when the decision logic changes in a way that makes earlier
 decisions not comparable. Stored on every cycle row.
 
+13 2026-10-20  the managers see the book (owner): each asset carries its open position
+              (side, leverage, entry, stop, target, hours open, net result on margin) and
+              the pack carries the book's longs, shorts and open result, with a rule in
+              pm.md v11 not to re-enter a held asset and to justify a book that is long
+              one side of the market and short the rest. The week restarts (2026-10-28).
 12 2026-10-20  v11 did not reach 2x: the stop-hunt placement chained past up to three
               levels and put the soft stop at twice the managers' distance, and the size
               followed the hard stop half an ATR further still. Now the placement moves at
@@ -63,6 +68,6 @@ decisions not comparable. Stored on every cycle row.
 1  2026-10-08  initial logic (SPEC §6-§9).
 """
 
-LOGIC_VERSION = 12
+LOGIC_VERSION = 13
 # v10 (owner 2026-10-12): one week untouched, then judge; the 4-week review stays 2026-11-07
-FROZEN_UNTIL = "2026-10-27"
+FROZEN_UNTIL = "2026-10-28"

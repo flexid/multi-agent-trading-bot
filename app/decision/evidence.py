@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.schema import AgentOutput
-from app.db.models import Candle, DecisionRecord
+from app.db.models import Candle, DecisionRecord, Position
 
 RECENT_DECISIONS = 10
 
@@ -41,6 +41,9 @@ class PastDecision(BaseModel):
 
 
 class OpenPosition(BaseModel):
+    """The trade already open in this asset on this book (v13): what the managers would be
+    adding to, or calling against."""
+
     model_config = ConfigDict(frozen=True)
 
     direction: str
@@ -49,7 +52,19 @@ class OpenPosition(BaseModel):
     stop: float
     target: float
     hours_open: float
-    unrealized_pct: float
+    net_pct: float  # return on the margin put in, net of fees and interest, at spot
+
+
+class BookView(BaseModel):
+    """The whole book as it stands (v13): the managers see what they are already long and
+    short before they call the next trade."""
+
+    model_config = ConfigDict(frozen=True)
+
+    positions: int
+    long: list[str]
+    short: list[str]
+    net_pct: float  # the open result on the margin in use, net
 
 
 class AssetPack(BaseModel):
@@ -77,6 +92,7 @@ class EvidencePack(BaseModel):
     mode: str
     day_pnl_pct: float
     max_hold_hours: int = 168  # the longest a trade may be held; 48 in aggressive mode
+    book: BookView = BookView(positions=0, long=[], short=[], net_pct=0.0)
     assets: list[AssetPack] = Field(min_length=1)
 
 
@@ -114,6 +130,63 @@ def spot_and_atr(session: Session, symbol: str) -> tuple[float, float | None]:
         for (h, lo, _), (_, _, pc) in zip(rows[:-1], rows[1:], strict=False)
     ]
     return spot, (sum(trs) / len(trs) if trs else None)
+
+
+EXIT_FEE = 0.001  # spot taker fee; the same assumption the site's open table makes
+
+
+def net_margin_pct(p: Position, spot: float) -> float:
+    """The open result as a share of the margin put in, net of the entry fee paid, the
+    interest so far and the exit fee to come; the site's open table says the same."""
+    entry = float(p.entry_price or 0)
+    if not entry or not spot or not p.margin or p.margin <= 0:
+        return 0.0
+    price_pct = (spot - entry) / entry * (1 if p.direction == "long" else -1)
+    exit_fee = spot * float(p.qty) * EXIT_FEE
+    net = price_pct * float(p.notional) - float(p.fees) - float(p.interest or 0) - exit_fee
+    return net / float(p.margin)
+
+
+def open_positions(
+    session: Session, mode: str, now: datetime, spots: dict[str, float]
+) -> tuple[dict[str, OpenPosition], BookView]:
+    """The open trades of the primary book in this mode, one per asset, and the book's
+    totals (v13). An asset without a spot is listed at a zero result."""
+    rows = (
+        session.execute(
+            select(Position).where(
+                Position.mode == mode,
+                Position.track == "primary",
+                Position.status.in_(("open", "closing")),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_asset: dict[str, OpenPosition] = {}
+    margin = net = 0.0
+    for p in rows:
+        spot = spots.get(p.asset, 0.0)
+        pct = net_margin_pct(p, spot)
+        opened = p.opened_at or now
+        by_asset[p.asset] = OpenPosition(
+            direction=p.direction,
+            entry=float(p.entry_price or 0),
+            leverage=float(p.leverage),
+            stop=float(p.stop),
+            target=float(p.target),
+            hours_open=round(max(0.0, (now - opened).total_seconds() / 3600), 1),
+            net_pct=round(pct * 100, 2),
+        )
+        margin += float(p.margin)
+        net += pct * float(p.margin)
+    book = BookView(
+        positions=len(rows),
+        long=sorted(a for a, o in by_asset.items() if o.direction == "long"),
+        short=sorted(a for a, o in by_asset.items() if o.direction == "short"),
+        net_pct=round(net / margin * 100, 2) if margin else 0.0,
+    )
+    return by_asset, book
 
 
 def recent_decisions(
@@ -158,8 +231,10 @@ def build_pack(
 ) -> EvidencePack:
     now = now or datetime.now(UTC)
     assets = []
+    priced = {asset: spot_and_atr(session, symbols[asset]) for asset in outputs}
+    held, book = open_positions(session, mode, now, {a: s for a, (s, _) in priced.items()})
     for asset, outs in outputs.items():
-        spot, atr = spot_and_atr(session, symbols[asset])
+        spot, atr = priced[asset]
         d4 = price_change(session, symbols[asset], spot, now, 4)
         chart = next((o for o in outs if o.agent == "chart_patterns"), None)
         regime = None
@@ -193,12 +268,17 @@ def build_pack(
                 valid_agents=sum(v.valid for v in views),
                 macro_regime=macro_regime,
                 coupling=couplings.get(asset),
-                open_position=None,  # positions arrive with the executor (M6)
+                open_position=held.get(asset),
                 recent_decisions=recent_decisions(session, asset, now, spot),
             )
         )
     return EvidencePack(
-        as_of=now, mode=mode, day_pnl_pct=0.0, max_hold_hours=max_hold_hours, assets=assets
+        as_of=now,
+        mode=mode,
+        day_pnl_pct=0.0,
+        max_hold_hours=max_hold_hours,
+        book=book,
+        assets=assets,
     )
 
 
@@ -206,4 +286,13 @@ def as_of_window(now: datetime) -> datetime:
     return now - timedelta(hours=4)
 
 
-__all__ = ["AgentView", "AssetPack", "EvidencePack", "OpenPosition", "build_pack", "Decimal"]
+__all__ = [
+    "AgentView",
+    "AssetPack",
+    "BookView",
+    "EvidencePack",
+    "OpenPosition",
+    "build_pack",
+    "open_positions",
+    "Decimal",
+]
