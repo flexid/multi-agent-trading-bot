@@ -202,7 +202,11 @@ class ArenaConfig(_Section):
     )  # of the sub-account's USDT per trade
     api_port: int = 8787
     cors_origins: list[str] = Field(
-        default_factory=lambda: ["https://arena.dorkbot.dev", "https://dorkbot.dev"]
+        default_factory=lambda: [
+            "https://arena.dorkbot.dev",
+            "https://dorkbot.dev",
+            "https://dex.dorkbot.dev",
+        ]
     )
     social: bool = False  # X posts for arena trades (bot spec §7); off until asked
     traders: dict[str, ArenaTraderConfig] = Field(default_factory=dict)  # kwikton, kwekton, kwakton

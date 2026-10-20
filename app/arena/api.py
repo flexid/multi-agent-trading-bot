@@ -15,6 +15,7 @@ from app.config import get_config
 from app.db.session import new_session
 
 PREFIX = "/arena/v1"
+_feed_cache: dict[str, Any] = {"at": 0.0, "body": None}
 
 
 def build_app(engine: Engine | None) -> FastAPI:
@@ -79,6 +80,37 @@ def build_app(engine: Engine | None) -> FastAPI:
     def rulebooks(trader: str) -> dict[str, Any]:
         with new_session() as s:
             return ledger.rulebooks_view(s, trader)
+
+    @app.get("/dex/v1/feed")
+    def dex_feed() -> Any:
+        """dex.json from R2, served here because the data bucket's CORS allows only
+        dorkbot.dev (2026-10-20). Cached a few seconds; the mirror writes it every 15."""
+        import json as _json
+        import time as _time
+
+        from fastapi.responses import JSONResponse
+
+        from app.config import get_secrets
+
+        now = _time.monotonic()
+        if _feed_cache["at"] + 5 > now and _feed_cache["body"] is not None:
+            return JSONResponse(content=_feed_cache["body"])
+        s = get_secrets()
+        import boto3
+
+        client = boto3.client(
+            "s3",
+            endpoint_url=f"https://{s.cloudflare_account_id}.r2.cloudflarestorage.com",
+            aws_access_key_id=s.r2_access_key_id.get_secret_value(),
+            aws_secret_access_key=s.r2_secret_access_key.get_secret_value(),
+            region_name="auto",
+        )
+        try:
+            body = _json.loads(client.get_object(Bucket=s.r2_bucket, Key="dex.json")["Body"].read())
+        except Exception:
+            return JSONResponse(content={"error": "feed unavailable"}, status_code=503)
+        _feed_cache["at"], _feed_cache["body"] = now, body
+        return JSONResponse(content=body)
 
     @app.get("/health")
     def health() -> dict[str, Any]:

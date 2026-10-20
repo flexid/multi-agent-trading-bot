@@ -164,7 +164,7 @@ taker_fee_pct = 0.055           # per side; the probe on 2026-10-13 confirmed 0.
 min_conviction_floor = 0.5
 margin_share = 0.95             # of the sub-account's USDT put up as margin per trade
 api_port = 8787
-cors_origins = ["https://arena.dorkbot.dev", "https://dorkbot.dev"]
+cors_origins = ["https://arena.dorkbot.dev", "https://dorkbot.dev", "https://dex.dorkbot.dev"]
 social = false
 
 [arena.traders.kwikton]
