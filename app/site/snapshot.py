@@ -359,7 +359,7 @@ def build(cfg: Config | None = None, now: datetime | None = None) -> Snapshot:
             .where(
                 Position.track == _record_track(s),
                 Position.status == "closed",
-                Position.closed_at >= since,
+                Position.opened_at >= since,  # the record counts trades this config made
             )
             .order_by(Position.closed_at.desc(), Position.id.desc())  # stable among ties
             .limit(500)
