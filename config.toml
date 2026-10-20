@@ -32,7 +32,7 @@ net_beta_exposure_max = 3.0     # × equity, per sleeve and across both
 max_hold_hours = 48             # no trade is held longer (24 until 2026-10-12)
 goal_cycle = true               # after the day goal is banked, start a new decision cycle at once
 goal_cycle_min_gap_minutes = 30 # ... unless the regular cycle starts within this many minutes
-stop_room = 1.5                 # stops 1.5× further from the entry than the managers put them; size shrinks to match (1 to 3)
+stop_room = 1.0                 # v11: stops where the managers put them (1.5 forced 1x on 107 plans in the v10 week)
 
 [sleeves.bluechips]             # owner 2026-10-10 (logic v4): two sleeves, each its own budget and limits
 assets = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
@@ -98,6 +98,7 @@ SPX6900 = "$SPX"                # history only
 # self-test (M9). See DECISIONS.
 maintenance_margin_rate = 0.03
 chase_max_atr = 2.0             # no new trade in the direction of a 24h move larger than this many ATR (owner 2026-10-12, v9); 0 = off
+hard_stop_atr = 0.5             # v11: the hard stop half an ATR beyond the soft one (was a whole ATR)
 
 [agents]
 chart_vision = false            # v10: the chart agent runs on code alone; the vision read confirmed it at a third of the agent budget

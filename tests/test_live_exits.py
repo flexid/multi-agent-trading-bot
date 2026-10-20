@@ -252,7 +252,6 @@ async def test_rejected_exit_is_not_booked_as_closed(db: None) -> None:  # noqa:
     gw = ScriptedGateway(
         opens=[OrderOutcome(Outcome.FILLED)],
         closes=[
-            OrderOutcome(Outcome.FILLED),  # the comparison track
             OrderOutcome(Outcome.REJECTED, detail="nothing filled"),
             OrderOutcome(Outcome.FILLED),
         ],
@@ -261,10 +260,9 @@ async def test_rejected_exit_is_not_booked_as_closed(db: None) -> None:  # noqa:
     await executor.tick()
     executor.quotes[get_config().symbol(ASSET)] = quote("97", "97.1")
     await executor.tick()
-    by_status = {p.status for p in positions("primary") + positions("max")}
-    assert by_status == {"closed", "closing"}  # one landed, the refused one is still open
+    assert {p.status for p in positions("primary")} == {"closing"}  # refused: still open
     await executor.tick()
-    assert {p.status for p in positions("primary") + positions("max")} == {"closed"}
+    assert {p.status for p in positions("primary")} == {"closed"}
 
 
 @needs_db
@@ -281,7 +279,7 @@ async def test_partial_exit_keeps_closing_and_books_once_at_the_average(db: None
     await executor.tick()
     executor.quotes[get_config().symbol(ASSET)] = quote("97", "97.1")
     await executor.tick()
-    first = next(p for p in positions("primary") + positions("max") if p.status == "closing")
+    first = next(p for p in positions("primary") if p.status == "closing")
     assert first.exit_filled_qty == D(5) and first.pnl is None  # nothing booked yet
     await executor.tick()
     from app.db.session import new_session
@@ -346,7 +344,7 @@ async def test_live_mode_books_on_its_own_ledger_seeded_from_real_equity(db: Non
     (pos,) = positions("live")
     assert pos.mode == "live"
     # the paper tracks keep running beside live as the control group; no pilot in live
-    assert len(positions("primary")) == 1 and len(positions("max")) == 1
+    assert len(positions("primary")) == 1
     assert positions("primary")[0].mode == "paper" and positions("pilot") == []
     with new_session() as s:
         live = s.get(PaperAccount, 4)

@@ -462,7 +462,8 @@ def test_aggressive_mode_gives_stops_more_room_at_the_same_risk() -> None:
     from app.risk.apply import widen_stop
 
     agg = get_config().aggressive
-    assert agg.stop_room == D("1.5")
+    assert agg.stop_room == D("1.0")  # v11: stops where the managers put them
+    agg = AggressiveConfig(stop_room=D("1.5"))  # the widening itself, tested at 1.5
     long_ = cons(stop=98.0)  # entry zone 99-101, middle 100: the stop is 2 away
     wide = widen_stop(long_, agg)
     assert wide.proposal is not None and wide.proposal.stop == pytest.approx(97.0)  # 3 away

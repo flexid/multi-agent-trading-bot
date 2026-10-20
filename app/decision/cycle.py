@@ -31,7 +31,6 @@ from app.db.models import AgentOutputRecord, Cycle, DecisionRecord, LLMCall, PMP
 from app.db.session import new_session
 from app.decision.consensus import (
     Consensus,
-    charts_first_score,
     consensus,
     formula_score,
     weights_for,
@@ -310,7 +309,8 @@ async def run_cycle(
                     log.info("light cycle: %s; full cycle follows", go)
                     return await run_cycle(cfg, kind="triggered", trigger=go)
             return {}
-        store_shadow_outputs(cfg, cycle_id)
+        # v11: the shadow comparisons (alt labeller, charts-first, solo calls, three rules)
+        # are decided and no longer computed; their modules stay for the record.
         symbols = {a: cfg.symbol(a) for a in cfg.trading.assets}
         with new_session() as session:
             pack = build_pack(
@@ -370,14 +370,7 @@ async def run_cycle(
             for asset in cfg.trading.assets
         }
         # Logged only: the same formula with price leading and X confirming (review input).
-        shadow_scores = {
-            asset: charts_first_score(
-                by_asset[asset],
-                couplings.get(asset),
-                weights_for(weights, asset_overrides(cfg, asset)),
-            )
-            for asset in cfg.trading.assets
-        }
+        shadow_scores: dict[str, float | None] = {}
         store_decisions(cycle_id, now, results, spots, pm1, pm2, shadow_scores, pm3)
         with new_session() as session:
             assessments = apply_risk(session, cfg, cycle_id, mode, now)

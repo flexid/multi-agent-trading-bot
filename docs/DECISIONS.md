@@ -498,3 +498,13 @@ ETH short took profit at 2,321 and four seconds later the executor opened a new 
 ## 2026-10-19 · The DEX mirror, paper mode, labelled
 
 Owner: build and deploy dorkbot on a DEX now, testnet first, with a clear label; assets, account and the legal check follow. Built (docs/DEX_PLAN.md): `app/dex/` with the Hyperliquid adapter behind an interface, a paper twin, the mirror loop (follows the main book's open and closed positions, sizes by the same margin share of its own equity at the plan's leverage, the stop and take at the main book's distances from its own fill, the venue's trigger orders as the safety net, reconciliation every pass, a mismatch blocks entries), tables `dex_*`, a compose service `dex`, `dex.json` every 15 seconds to R2, and dex.dorkbot.dev with the mode as a badge: PAPER now, TESTNET once a key is in `.env`, LIVE later. Hyperliquid lists all ten assets on the mainnet (PEPE as kPEPE, in thousands); the testnet lacks XRP and ENA, which are skipped there. No key, no address and no funds exist yet: the mirror runs on paper over the testnet's prices.
+
+## 2026-10-19 · Logic v11: the week's review, and the first step toward one mode
+
+The v10 week: 34 trades, 71% winners, the main book +4.4% (about 0.6% a day), shorts 32 for +292, the two longs -150, 32 of 34 trades at 1x because the stop cap met stops 6-9% from the entry. Owner: one bot, one config that mostly stays; aggressive mode was a test. v11 changes decisions in two places and removes dead weight:
+
+- `aggressive.stop_room` 1.5 → 1.0 and `risk.hard_stop_atr` 1.0 → 0.5: the same plans run at about 2x inside the 4% cap, so a 2% take needs a 1% move and half the time. The loss at the stop stays capped.
+- No Polymarket trigger: the daily markets fired most of the week's 32 triggered cycles ($26) for a reading that weighs almost nothing.
+- One paper book: the max and inverse tracks open nothing new; their open positions run out under their stops. The shadow comparisons from v6-v8 are no longer computed.
+
+Deferred to v12 after a week: fold aggressive mode into the only mode (drop the locks except the emergency brake, drop risk-per-trade as a parameter, decide the day goal on a count of what its sweeps closed), remove the Polymarket agent, collapse the config to one trading section.

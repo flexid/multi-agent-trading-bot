@@ -213,11 +213,9 @@ def check(
     ).scalar_one()
     if last and now - last < timedelta(minutes=cfg.triggers.min_gap_minutes):
         return None  # a cycle just ran; its decisions stand
-    reason = reason or (
-        price_trigger(session, cfg, now)
-        or polymarket_trigger(session, now)
-        or x_shock_trigger(session, now)
-    )
+    # v11: no Polymarket trigger; its daily markets fired most of the v10 week's 32
+    # triggered cycles ($26) for a reading that weighs almost nothing.
+    reason = reason or (price_trigger(session, cfg, now) or x_shock_trigger(session, now))
     if reason and triggered_today(session, now) >= cfg.triggers.max_per_day:
         log_suppressed(session, cfg, now, reason)  # the cap stands; only the log changes
         return None

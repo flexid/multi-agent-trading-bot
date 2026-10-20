@@ -206,8 +206,7 @@ async def test_gap_through_stop_fills_at_the_market_not_at_the_stop(db: None) ->
 @needs_db
 async def test_exchange_unreachable_retries_the_exit_until_it_lands(db: None) -> None:
     seed_decision()
-    # Both shadow tracks open; on the exit tick the primary's close is unreachable, the
-    # comparison track's lands; the primary retries on the next tick and then closes.
+    # On the exit tick the close is unreachable; the executor retries on the next tick.
     gw = ScriptedGateway(
         opens=[OrderOutcome(Outcome.FILLED)],
         closes=[OrderOutcome(Outcome.UNREACHABLE), OrderOutcome(Outcome.FILLED)],
@@ -218,13 +217,10 @@ async def test_exchange_unreachable_retries_the_exit_until_it_lands(db: None) ->
     await ex.tick()
     (pos,) = positions()
     assert pos.status == "closing" and pos.close_reason == "stop"  # armed, venue down
-    assert positions("max")[0].status == "closed"
     await ex.tick()
     (pos,) = positions()
     assert pos.status == "closed" and pos.close_reason == "stop"
-    # three paper tracks open (primary, max, inverse); the inverse short does not stop out
-    # at 97, so the closes are: primary (unreachable), max, primary again
-    assert [c[0] for c in gw.calls] == ["open", "open", "open", "close", "close", "close"]
+    assert [c[0] for c in gw.calls] == ["open", "close", "close"]  # one book since v11
 
 
 @needs_db
@@ -279,14 +275,14 @@ async def test_self_test_kill_spares_the_paper_tracks_an_admin_kill_does_not(db:
     seed_decision()
     ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
     await ex.tick()
-    assert len(positions()) == 1 and len(positions("max")) == 1
+    assert len(positions()) == 1
     _kill("live_selftest")
     await ex.tick()
     assert ex.frozen
-    assert {p.status for p in positions() + positions("max")} == {"open"}
+    assert {p.status for p in positions()} == {"open"}
     _kill("admin")
     await ex.tick()
-    assert {p.close_reason for p in positions() + positions("max")} == {"kill"}
+    assert {p.close_reason for p in positions()} == {"kill"}
 
 
 def test_timeline_helper() -> None:
@@ -312,6 +308,7 @@ async def test_entry_is_sized_down_to_free_cash_instead_of_skipped(db: None) -> 
     assert pos.margin <= D("600")
 
 
+@pytest.mark.skip(reason="v11: the inverse book is retired; it opens nothing new")
 @needs_db
 async def test_inverse_track_takes_the_other_side_with_mirrored_levels(db: None) -> None:
     seed_decision(direction="long", entry="100", stop="98", target="106")
@@ -477,7 +474,7 @@ async def test_hold_command_lengthens_open_trades_and_never_shortens(db: None) -
 
     result = await hold(str(before + 24))
     assert result is not None and result.endswith(f"held {before + 24} hours")
-    assert {p.max_hold_hours for p in positions() + positions("max")} == {before + 24}
+    assert {p.max_hold_hours for p in positions()} == {before + 24}
     await hold("1")  # shorter: nothing changes
     assert positions()[0].max_hold_hours == before + 24
     assert (await hold("999") or "").startswith("rejected")

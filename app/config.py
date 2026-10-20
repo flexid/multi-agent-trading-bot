@@ -141,6 +141,9 @@ class PostingConfig(_Section):
 
 class RiskConfig(_Section):
     maintenance_margin_rate: Decimal = Decimal("0.03")
+    # The hard (touch) stop sits this many ATR beyond the soft, close-based one. v11: half
+    # an ATR; a whole one pushed the hard stop 6-9% from the entry and the leverage to 1x.
+    hard_stop_atr: Decimal = Field(default=Decimal("0.5"), ge=0, le=3)
     # No new trade in the direction of a move already larger than this many ATR (14 × 4h)
     # over the last 24 hours: that is chasing (owner 2026-10-12, logic v9). 0 switches it off.
     chase_max_atr: Decimal = Field(default=Decimal("2"), ge=0, le=10)

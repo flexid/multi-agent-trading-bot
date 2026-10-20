@@ -71,12 +71,14 @@ TRACKS: dict[str, dict[str, str]] = {
     # "inverse" (owner, for fun, 2026-10-09): the opposite of every primary trade, on paper,
     # with the stop and target mirrored around the entry. Tells whether the bot's reasoning
     # has an edge, no edge, or the reverse of one.
-    "paper": {"primary": "paper", "max": "paper", "inverse": "paper"},
-    "pilot": {"primary": "paper", "max": "paper", "pilot": "pilot", "inverse": "paper"},
+    # v11: one paper book. The max (leveraged) and inverse (mirror) books answered their
+    # questions; their open positions run out under their stops, nothing new opens there.
+    "paper": {"primary": "paper"},
+    "pilot": {"primary": "paper", "pilot": "pilot"},
     # One real-money track; the paper tracks keep running beside it as the control group
     # (same decisions at the live rules and at risk_per_trade_max), which is the evidence
     # for stepping live risk up toward the owner's goal.
-    "live": {"primary": "paper", "max": "paper", "live": "live", "inverse": "paper"},
+    "live": {"primary": "paper", "live": "live"},
 }
 LEDGER_IDS = {"primary": 1, "max": 2, "pilot": 3, "live": 4, "inverse": 5}
 TAKER_FEE = {"USDT": Decimal("0.001"), "USDC": Decimal("0.0005")}

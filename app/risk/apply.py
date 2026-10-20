@@ -205,6 +205,7 @@ def limits_from_config(cfg: Config) -> engine.Limits:
         drawdown_pause=t.drawdown_pause,
         emergency_brake=t.emergency_brake,
         chase_max_atr=cfg.risk.chase_max_atr,
+        hard_stop_atr=cfg.risk.hard_stop_atr,
     )
 
 

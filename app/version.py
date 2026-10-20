@@ -1,6 +1,11 @@
 """Logic version: bumped when the decision logic changes in a way that makes earlier
 decisions not comparable. Stored on every cycle row.
 
+11 2026-10-19  the week's review (owner): stops where the managers put them (stop_room 1.0)
+              and the hard stop half an ATR beyond the soft one, so the 4% stop cap allows
+              about 2x instead of forcing 1x (107 of the v10 week's plans); no Polymarket
+              trigger; one paper book (max and inverse stop opening); the v6-v8 logged
+              comparisons no longer computed. One week untouched (FROZEN_UNTIL 2026-10-26).
 10 2026-10-12  the radical review (owner): (1) regime-aware charts: ADX(14) on the 4h splits
               trend from range; in a range the edges score against the move, a breakout
               earns nothing until ADX confirms, and the managers see the regime in the
@@ -53,6 +58,6 @@ decisions not comparable. Stored on every cycle row.
 1  2026-10-08  initial logic (SPEC §6-§9).
 """
 
-LOGIC_VERSION = 10
+LOGIC_VERSION = 11
 # v10 (owner 2026-10-12): one week untouched, then judge; the 4-week review stays 2026-11-07
-FROZEN_UNTIL = "2026-10-19"
+FROZEN_UNTIL = "2026-10-26"
