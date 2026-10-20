@@ -835,6 +835,7 @@ class DexTrade(Base):
     tx: Mapped[str | None] = mapped_column(String(80))
     cloid: Mapped[str] = mapped_column(String(40))
     status: Mapped[str] = mapped_column(String(8), default="open")
+    mode: Mapped[str] = mapped_column(String(8), default="paper")  # paper | testnet | live
 
 
 class DexEquity(Base):
@@ -843,6 +844,7 @@ class DexEquity(Base):
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     equity_usdt: Mapped[Decimal]
     equity_index: Mapped[Decimal]
+    mode: Mapped[str] = mapped_column(String(8), default="paper")
 
 
 class DexState(Base):
@@ -855,3 +857,4 @@ class DexState(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_fill_check: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     mismatch: Mapped[str | None] = mapped_column(Text)  # reconciliation: why nothing new opens
+    mode: Mapped[str | None] = mapped_column(String(8))  # the mode this state belongs to

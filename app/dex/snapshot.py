@@ -34,7 +34,7 @@ async def build(
     with new_session() as s:
         st = s.get(DexState, 1)
         last = s.execute(
-            select(DexEquity).order_by(DexEquity.ts.desc()).limit(1)
+            select(DexEquity).where(DexEquity.mode == mode).order_by(DexEquity.ts.desc()).limit(1)
         ).scalar_one_or_none()
         curve = [
             [int(r.ts.timestamp() * 1000), float(r.equity_index)]
@@ -45,7 +45,9 @@ async def build(
             ).all()
         ]
         open_rows = s.scalars(
-            select(DexTrade).where(DexTrade.status == "open").order_by(DexTrade.opened_at)
+            select(DexTrade)
+            .where(DexTrade.status == "open", DexTrade.mode == mode)
+            .order_by(DexTrade.opened_at)
         ).all()
         closed_rows = s.scalars(
             select(DexTrade)

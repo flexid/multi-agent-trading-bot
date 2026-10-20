@@ -44,8 +44,18 @@ class Mirror:
         with new_session() as s:
             st = s.get(DexState, 1)
             if st is None:
-                st = DexState(id=1, started_at=now)
+                st = DexState(id=1, started_at=now, mode=self.mode)
                 s.add(st)
+            if st.mode != self.mode:
+                # a new mode is a new record: fresh start, fresh index; old rows keep their mode
+                log.info("dex: mode %s -> %s, new record", st.mode, self.mode)
+                st.mode, st.started_at, st.start_equity, st.last_fill_check, st.mismatch = (
+                    self.mode,
+                    now,
+                    None,
+                    now,
+                    None,
+                )
             self.start_equity, self.last_fill_check = st.start_equity, st.last_fill_check or now
             if isinstance(self.ex, PaperDex):
                 self._restore_paper(s)
@@ -69,7 +79,9 @@ class Mirror:
         )
         cash = (self.start_equity or self.cfg.dex.paper_equity) + realized
         positions = {}
-        for row in s.scalars(select(DexTrade).where(DexTrade.status == "open")).all():
+        for row in s.scalars(
+            select(DexTrade).where(DexTrade.status == "open", DexTrade.mode == self.mode)
+        ).all():
             fee = row.entry_price * row.qty * self.ex.fee
             cash -= row.margin_usdt + fee
             positions[row.asset] = (
@@ -113,7 +125,11 @@ class Mirror:
         with new_session() as s:
             for f in fills:
                 row = s.scalars(
-                    select(DexTrade).where(DexTrade.asset == f.asset, DexTrade.status == "open")
+                    select(DexTrade).where(
+                        DexTrade.asset == f.asset,
+                        DexTrade.status == "open",
+                        DexTrade.mode == self.mode,
+                    )
                 ).first()
                 if row is None:
                     continue
@@ -156,7 +172,9 @@ class Mirror:
         with new_session() as s:
             ledger = {
                 r.asset: r
-                for r in s.scalars(select(DexTrade).where(DexTrade.status == "open")).all()
+                for r in s.scalars(
+                    select(DexTrade).where(DexTrade.status == "open", DexTrade.mode == self.mode)
+                ).all()
             }
             problems = []
             for asset in venue:
@@ -189,7 +207,9 @@ class Mirror:
             }
             mirrored = {
                 r.asset: r
-                for r in s.scalars(select(DexTrade).where(DexTrade.status == "open")).all()
+                for r in s.scalars(
+                    select(DexTrade).where(DexTrade.status == "open", DexTrade.mode == self.mode)
+                ).all()
             }
             # closes first: the main book left a trade the mirror still holds
             for asset, r in mirrored.items():
@@ -210,7 +230,11 @@ class Mirror:
             for asset, main in main_open.items():
                 if asset in mirrored or asset not in allowed or asset not in instruments:
                     continue
-                if s.scalars(select(DexTrade).where(DexTrade.main_position_id == main.id)).first():
+                if s.scalars(
+                    select(DexTrade).where(
+                        DexTrade.main_position_id == main.id, DexTrade.mode == self.mode
+                    )
+                ).first():
                     continue  # mirrored before and already closed on the venue
                 await self.open_like(s, main, instruments[asset], now)
             s.commit()
@@ -273,6 +297,7 @@ class Mirror:
                 opened_at=now,
                 cloid=cloid,
                 status="open",
+                mode=self.mode,
             )
         )
         log.info(
@@ -302,6 +327,7 @@ class Mirror:
                         ts=now,
                         equity_usdt=equity,
                         equity_index=(equity / self.start_equity * 100).quantize(Decimal("0.0001")),
+                        mode=self.mode,
                     )
                 )
             s.commit()
