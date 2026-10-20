@@ -219,6 +219,10 @@ class DexConfig(_Section):
     paper_equity: Decimal = Decimal(1000)
     taker_fee_pct: Decimal = Decimal("0.035")
     leverage_max: int = Field(default=10, ge=1, le=50)
+    # The most margin one mirror trade may put up, whatever the equity (owner 2026-10-19:
+    # the first live run is small by construction). 0 = no cap.
+    max_margin_usdt: Decimal = Field(default=Decimal(25), ge=0)
+    min_notional_usdt: Decimal = Decimal(10)  # Hyperliquid's minimum order value
     tick_seconds: int = Field(default=5, ge=2, le=60)
     publish_seconds: int = Field(default=15, ge=5, le=300)
     explorer: str = "https://app.hyperliquid.xyz/explorer"

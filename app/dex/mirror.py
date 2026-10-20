@@ -221,7 +221,17 @@ class Mirror:
             return
         sleeve = self.cfg.sleeve_of(main.asset) or "bluechips"
         margin = equity * SHARE.get(sleeve, SHARE["bluechips"])
+        if self.cfg.dex.max_margin_usdt > 0:
+            margin = min(margin, self.cfg.dex.max_margin_usdt)
         leverage = max(1, min(int(main.leverage), self.cfg.dex.leverage_max, inst.max_leverage))
+        if margin * leverage < self.cfg.dex.min_notional_usdt:
+            log.info(
+                "dex: %s skipped, %s USDT at %dx is under the venue minimum",
+                main.asset,
+                margin,
+                leverage,
+            )
+            return
         mids = await self.ex.mids()
         px = mids.get(main.asset)
         if px is None or px <= 0 or main.entry_price is None:

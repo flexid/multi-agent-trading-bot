@@ -87,7 +87,9 @@ def close_main(pid: int, reason: str) -> None:
 async def test_the_mirror_follows_the_main_book(db: None) -> None:
     venue = Venue()
     ex = PaperDex(equity=D(1000), taker_fee_pct=D("0.035"), prices=venue)
-    m = Mirror(get_config(), ex, "paper")
+    cfg = get_config()
+    cfg = cfg.model_copy(update={"dex": cfg.dex.model_copy(update={"max_margin_usdt": D(0)})})
+    m = Mirror(cfg, ex, "paper")
     await m.start(T0)
     await m.tick(T0)
     assert m.start_equity == D(1000)
@@ -145,3 +147,18 @@ def test_venue_rounding() -> None:
     assert round_size(D("0.0035678"), 5) == D("0.00356")
     assert round_price(D("81234.567")) == 81235.0 or round_price(D("81234.567")) == 81234.0
     assert round_price(D("0.0041083")) == 0.004108
+
+
+@needs_db
+async def test_the_margin_cap_bounds_every_mirror_trade(db: None) -> None:
+    """Owner 2026-10-19: the first live run is small by construction. 25 USDT at 2x on
+    80,000 is 0.000625 BTC, whatever the equity; an alt under the $10 minimum is skipped."""
+    venue = Venue()
+    ex = PaperDex(equity=D(10000), taker_fee_pct=D("0.035"), prices=venue)
+    m = Mirror(get_config(), ex, "paper")
+    await m.start(T0)
+    main_position("BTC", "long", "80000", "78400", "83200", lev="2")
+    await m.tick(T0 + timedelta(seconds=5))
+    with new_session() as s:
+        (row,) = s.query(DexTrade).all()
+    assert row.qty == D("0.00062") and row.margin_usdt <= D(25)

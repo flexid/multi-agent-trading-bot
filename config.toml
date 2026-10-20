@@ -185,6 +185,7 @@ assets = []                     # empty = every asset of the book the venue list
 paper_equity = 1000
 taker_fee_pct = 0.035
 leverage_max = 10
+max_margin_usdt = 25            # the most margin per mirror trade, whatever the equity; 0 = no cap
 tick_seconds = 5
 publish_seconds = 15
 
