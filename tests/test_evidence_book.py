@@ -103,7 +103,7 @@ def test_pack_carries_positions_and_book() -> None:
         }
         pack = build_pack(
             s,
-            mode="paper",
+            mode="shadow",  # the cycle's mode; the paper book's positions carry "paper"
             outputs=outs,
             symbols={"BTC": "BTCUSDT", "ETH": "ETHUSDT"},
             macro_regime=None,

@@ -232,7 +232,10 @@ def build_pack(
     now = now or datetime.now(UTC)
     assets = []
     priced = {asset: spot_and_atr(session, symbols[asset]) for asset in outputs}
-    held, book = open_positions(session, mode, now, {a: s for a, (s, _) in priced.items()})
+    # the cycle runs in "shadow" or "live"; the primary book's positions carry "paper" or
+    # "live" (v13 fix: the first two v13 cycles matched on "shadow" and saw an empty book)
+    book_mode = "live" if mode == "live" else "paper"
+    held, book = open_positions(session, book_mode, now, {a: s for a, (s, _) in priced.items()})
     for asset, outs in outputs.items():
         spot, atr = priced[asset]
         d4 = price_change(session, symbols[asset], spot, now, 4)
