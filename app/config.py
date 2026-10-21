@@ -238,6 +238,14 @@ class DexConfig(_Section):
     tick_seconds: int = Field(default=5, ge=2, le=60)
     publish_seconds: int = Field(default=15, ge=5, le=300)
     explorer: str = "https://app.hyperliquid.xyz/explorer"
+    # The take order on the venue (owner 2026-10-21: off). On, the venue closes a winner on
+    # touch before the main book's trailing take does and the mirror diverges; off, every
+    # exit comes from the main book through the mirror, and only the stop rests on the venue.
+    venue_take: bool = True
+    # The public record starts here (owner 2026-10-21): trades opened before it stay in the
+    # ledger and the admin but not in the feed, the stats or the index.
+    record_since: datetime | None = None
+    record_note: str = ""
 
 
 class TriggersConfig(_Section):

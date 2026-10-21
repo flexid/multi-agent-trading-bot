@@ -282,7 +282,14 @@ class Mirror:
         cloid = f"0x{int(now.timestamp() * 1000):024x}{main.id:08x}"[:34]
         try:
             await self.ex.set_leverage(main.asset, leverage)
-            await self.ex.open_market(main.asset, main.direction, qty, tp, sl, cloid)
+            await self.ex.open_market(
+                main.asset,
+                main.direction,
+                qty,
+                tp if self.cfg.dex.venue_take else None,  # the target is kept for the record
+                sl,
+                cloid,
+            )
         except Exception as exc:
             log.error("dex: open %s failed: %s", main.asset, exc)
             return

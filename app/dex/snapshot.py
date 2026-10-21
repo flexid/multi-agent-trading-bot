@@ -49,12 +49,13 @@ async def build(
             .where(DexTrade.status == "open", DexTrade.mode == mode)
             .order_by(DexTrade.opened_at)
         ).all()
-        closed_rows = s.scalars(
-            select(DexTrade)
-            .where(DexTrade.status == "closed")
-            .order_by(DexTrade.closed_at.desc())
-            .limit(200)
-        ).all()
+        since = cfg.dex.record_since
+        closed_q = select(DexTrade).where(DexTrade.status == "closed", DexTrade.mode == mode)
+        if since is not None:  # the public record: trades the mirror opened after the line
+            closed_q = closed_q.where(DexTrade.opened_at >= since)
+            open_rows = [r for r in open_rows if r.opened_at >= since]
+        all_closed = s.scalars(closed_q.order_by(DexTrade.closed_at)).all()
+        closed_rows = list(reversed(all_closed))[:200]
         main_ids = [r.main_position_id for r in [*open_rows, *closed_rows]]
         mains = (
             {p.id: p for p in s.scalars(select(Position).where(Position.id.in_(main_ids))).all()}
@@ -62,9 +63,11 @@ async def build(
             else {}
         )
         opens = []
+        unrealised = Decimal(0)
         for r in open_rows:
             px = mids.get(r.asset)
             move = (float(px / r.entry_price - 1) if px else 0.0) * (1 if r.side == "long" else -1)
+            unrealised += Decimal(str(move)) * r.leverage * r.margin_usdt
             opens.append(
                 {
                     "asset": r.asset,
@@ -100,9 +103,26 @@ async def build(
                     "main_margin_pct": _f(Decimal(str(m.pnl_margin_pct)) * 100)
                     if m is not None and m.pnl_margin_pct is not None
                     else None,
+                    "main_entry": float(r.main_entry),
+                    "entry_divergence_pct": round(float(r.entry_price / r.main_entry - 1) * 100, 3)
+                    if r.main_entry
+                    else None,
                     "tx": r.tx,
                 }
             )
+        if since is not None:
+            # the index moves with the record's trades only: 100 at the line, each close a
+            # step, the open trades' unrealised result as the last point
+            base = (st.start_equity if st and st.start_equity else None) or cfg.dex.paper_equity
+            index, curve = Decimal(100), [[int(since.timestamp() * 1000), 100.0]]
+            for r in all_closed:
+                index += (r.pnl_usdt or Decimal(0)) / base * 100
+                curve.append([int((r.closed_at or now).timestamp() * 1000), float(round(index, 2))])
+            index += unrealised / base * 100
+            curve.append([int(now.timestamp() * 1000), float(round(index, 2))])
+            index_now = float(round(index, 2))
+        else:
+            index_now = float(round(last.equity_index, 2)) if last else 100.0
     return {
         "generated_at": now.isoformat(),
         "mode": mode,
@@ -112,16 +132,19 @@ async def build(
         if address and mode != "paper"
         else None,
         "follows": cfg.dex.follow_track,
-        "since": st.started_at.isoformat() if st and st.started_at else None,
-        "equity_index": _f(last.equity_index) if last else 100.0,
-        "return_pct": _f(last.equity_index - 100) if last else 0.0,
+        "since": since.isoformat()
+        if since is not None
+        else (st.started_at.isoformat() if st and st.started_at else None),
+        "record_note": cfg.dex.record_note or None,
+        "equity_index": index_now,
+        "return_pct": round(index_now - 100, 2),
         "mismatch": st.mismatch if st else None,
         "equity_curve": curve,
         "open_trades": opens,
         "closed_trades": closed,
         "stats": {
-            "trades": len(closed_rows),
-            "wins": sum(1 for r in closed_rows if (r.net_roe_pct or 0) > 0),
+            "trades": len(all_closed),
+            "wins": sum(1 for r in all_closed if (r.net_roe_pct or 0) > 0),
         },
     }
 

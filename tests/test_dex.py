@@ -179,3 +179,72 @@ def test_close_cloid_is_a_valid_venue_id() -> None:
     assert close_id != open_id and len(close_id) == 34
     assert Cloid.from_str(close_id).to_raw() == close_id
     assert close_cloid(open_id) == close_id  # idempotent per trade
+
+
+@needs_db
+async def test_no_venue_take_means_the_main_book_closes_the_winner(db: None) -> None:
+    """Owner 2026-10-21: the venue's take closed BTC before the main book's trailing take
+    did. With `venue_take` off only the stop rests on the venue."""
+    venue = Venue()
+    ex = PaperDex(equity=D(1000), taker_fee_pct=D("0.035"), prices=venue)
+    cfg = get_config()
+    cfg = cfg.model_copy(update={"dex": cfg.dex.model_copy(update={"venue_take": False})})
+    m = Mirror(cfg, ex, "paper")
+    await m.start(T0)
+    pid = main_position("ETH", "long", "2400", "2350", "2500", lev="3")
+    await m.tick(T0 + timedelta(seconds=5))
+    venue.px["ETH"] = D(2520)  # through the target: nothing fires on the venue
+    await m.tick(T0 + timedelta(seconds=10))
+    await m.tick(T0 + timedelta(seconds=15))
+    with new_session() as s:
+        (row,) = s.query(DexTrade).all()
+        assert row.status == "open" and abs(row.tp_price - 2500) < D("1e-9")  # the target, kept
+    venue.px["ETH"] = D(2300)  # the stop still does
+    await m.tick(T0 + timedelta(seconds=20))
+    await m.tick(T0 + timedelta(seconds=25))
+    with new_session() as s:
+        (row,) = s.query(DexTrade).all()
+        assert row.status == "closed" and row.exit_reason == "sl"
+    close_main(pid, "stop")
+
+
+@needs_db
+async def test_the_public_record_starts_at_the_line(db: None) -> None:
+    """Owner 2026-10-21: the go-live join and the close-bug trades stay out of the feed."""
+    from app.dex.snapshot import build
+
+    venue = Venue()
+    ex = PaperDex(equity=D(1000), taker_fee_pct=D("0.035"), prices=venue)
+    cfg = get_config()
+    m = Mirror(cfg, ex, "paper")
+    await m.start(T0)
+    old = main_position("BTC", "short", "80000", "81600", "77600", lev="2")
+    await m.tick(T0 + timedelta(seconds=5))
+    venue.px["BTC"] = D(79000)
+    close_main(old, "take_profit")
+    await m.tick(T0 + timedelta(seconds=10))  # a winner, before the line
+    line = T0 + timedelta(hours=1)
+    new = main_position("ETH", "long", "2400", "2350", "2500", lev="3")
+    with new_session() as s:
+        p = s.get(Position, new)
+        assert p is not None
+        p.opened_at = line + timedelta(seconds=1)
+        s.commit()
+    await m.tick(line + timedelta(seconds=5))
+    with new_session() as s:
+        for r in s.query(DexTrade).filter(DexTrade.asset == "ETH").all():
+            r.opened_at = line + timedelta(seconds=5)
+        s.commit()
+    venue.px["ETH"] = D(2424)  # +1% at 3x on the open trade
+    cfg = cfg.model_copy(
+        update={"dex": cfg.dex.model_copy(update={"record_since": line, "record_note": "test"})}
+    )
+    feed = await build(cfg, ex, "paper", "")
+    assert feed["stats"] == {"trades": 0, "wins": 0}
+    assert [t["asset"] for t in feed["open_trades"]] == ["ETH"]
+    assert feed["closed_trades"] == [] and feed["record_note"] == "test"
+    assert feed["since"] == line.isoformat()
+    assert feed["equity_curve"][0][1] == 100.0 and feed["equity_index"] > 100  # the open gain only
+    cfg = cfg.model_copy(update={"dex": cfg.dex.model_copy(update={"record_since": None})})
+    feed = await build(cfg, ex, "paper", "")
+    assert feed["stats"]["trades"] == 1 and feed["closed_trades"][0]["main_entry"] == 80000.0

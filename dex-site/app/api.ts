@@ -6,7 +6,7 @@ export type OpenTrade = { asset: string; side: string; leverage: number; entry: 
 export type ClosedTrade = { asset: string; side: string; leverage: number; entry: number; exit: number | null; opened_at: string; closed_at: string | null; net_roe_pct: number | null; exit_reason: string | null; main_margin_pct: number | null; tx: string | null };
 export type Dex = {
   generated_at: string; mode: "paper" | "testnet" | "live"; venue: string; address: string | null; explorer: string | null; follows: string; since: string | null;
-  equity_index: number; return_pct: number; mismatch: string | null; equity_curve: [number, number][]; open_trades: OpenTrade[]; closed_trades: ClosedTrade[]; stats: { trades: number; wins: number };
+  record_note?: string | null; equity_index: number; return_pct: number; mismatch: string | null; equity_curve: [number, number][]; open_trades: OpenTrade[]; closed_trades: ClosedTrade[]; stats: { trades: number; wins: number };
 };
 
 export const DATA_URL = process.env.NEXT_PUBLIC_DEX_DATA || "/samples/dex.json";

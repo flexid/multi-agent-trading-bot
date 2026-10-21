@@ -190,6 +190,9 @@ leverage_max = 10
 max_margin_usdt = 25            # the most margin per mirror trade, whatever the equity; 0 = no cap
 tick_seconds = 5
 publish_seconds = 15
+venue_take = false              # owner 2026-10-21: only the stop rests on the venue; every exit comes from the main book through the mirror
+record_since = 2026-10-20T12:00:00Z   # the public record: trades the mirror opened after this line (owner 2026-10-21); the go-live join of 20 Oct 02:49 stays in the ledger and the admin
+record_note = "record since 20 Oct 2026, 12:00 UTC"
 
 [site]                          # M8a public site and M8b admin (SPEC §12)
 public_domain = "dorkbot.dev"

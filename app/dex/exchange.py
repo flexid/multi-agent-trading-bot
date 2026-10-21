@@ -59,7 +59,7 @@ class DexExchange(Protocol):
     async def positions(self) -> dict[str, Position]: ...
     async def set_leverage(self, asset: str, leverage: int) -> None: ...
     async def open_market(
-        self, asset: str, side: str, qty: Decimal, tp: Decimal, sl: Decimal, cloid: str
+        self, asset: str, side: str, qty: Decimal, tp: Decimal | None, sl: Decimal, cloid: str
     ) -> None: ...
     async def close_market(self, asset: str, cloid: str) -> None: ...
     async def closing_fills(self, since: datetime) -> list[Fill]: ...
@@ -192,10 +192,10 @@ class HyperliquidExchange:
         self._need_signer().update_leverage(leverage, coin_of(asset), is_cross=False)
 
     async def open_market(
-        self, asset: str, side: str, qty: Decimal, tp: Decimal, sl: Decimal, cloid: str
+        self, asset: str, side: str, qty: Decimal, tp: Decimal | None, sl: Decimal, cloid: str
     ) -> None:
-        """A market entry, then the take and the stop as reduce-only trigger orders that
-        the exchange holds (the mirror's safety net)."""
+        """A market entry, then the stop (and the take, when the mirror wants one on the
+        venue) as reduce-only trigger orders that the exchange holds: the safety net."""
         from hyperliquid.utils.types import Cloid
 
         ex = self._need_signer()
@@ -205,7 +205,8 @@ class HyperliquidExchange:
         r = ex.market_open(coin, is_buy, float(qty), cloid=Cloid.from_str(cloid))
         _check(r, "open")
         try:
-            for kind, px in (("tp", tp * unit), ("sl", sl * unit)):
+            triggers = [("sl", sl * unit)] + ([("tp", tp * unit)] if tp is not None else [])
+            for kind, px in triggers:
                 r = ex.order(
                     coin,
                     not is_buy,

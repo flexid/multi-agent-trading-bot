@@ -18,7 +18,7 @@ class PaperDex:
         self._prices = prices
         self._lev: dict[str, int] = {}
         self._pos: dict[str, Position] = {}
-        self._tpsl: dict[str, tuple[Decimal, Decimal]] = {}
+        self._tpsl: dict[str, tuple[Decimal | None, Decimal]] = {}
         self._open_fee: dict[str, Decimal] = {}
         self._fills: list[Fill] = []
         self.now: datetime | None = None
@@ -53,7 +53,7 @@ class PaperDex:
         self._lev[asset] = leverage
 
     async def open_market(
-        self, asset: str, side: str, qty: Decimal, tp: Decimal, sl: Decimal, cloid: str
+        self, asset: str, side: str, qty: Decimal, tp: Decimal | None, sl: Decimal, cloid: str
     ) -> None:
         if asset in self._pos:
             raise RuntimeError(f"paper: {asset} already open")
@@ -85,11 +85,11 @@ class PaperDex:
             if p.side == "long":
                 if px <= sl:
                     await self._settle(asset, sl)
-                elif px >= tp:
+                elif tp is not None and px >= tp:
                     await self._settle(asset, tp)
             elif px >= sl:
                 await self._settle(asset, sl)
-            elif px <= tp:
+            elif tp is not None and px <= tp:
                 await self._settle(asset, tp)
 
     async def _settle(self, asset: str, price: Decimal) -> None:
