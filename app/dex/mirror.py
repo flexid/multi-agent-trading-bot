@@ -24,6 +24,14 @@ from app.db.session import new_session
 from app.dex.exchange import DexExchange, Fill, round_size
 from app.dex.paper import PaperDex
 
+
+def close_cloid(open_cloid: str) -> str:
+    """The close order's id: the open's 16-byte id with its low bit flipped, so it is
+    distinct, idempotent per trade and still a valid venue id. ("<cloid>-x" was not: the
+    live venue rejected every mirrored close with "cloid is not 16 bytes", 2026-10-21.)"""
+    return f"0x{int(open_cloid, 16) ^ 1:032x}"
+
+
 log = logging.getLogger("dex")
 SHARE = {"bluechips": Decimal("0.14"), "alts": Decimal("0.06")}  # of equity, as the main book
 
@@ -216,7 +224,7 @@ class Mirror:
                 main = s.get(Position, r.main_position_id)
                 if main is not None and main.status == "closed":
                     try:
-                        await self.ex.close_market(asset, f"{r.cloid}-x")
+                        await self.ex.close_market(asset, close_cloid(r.cloid))
                     except Exception as exc:
                         log.error("dex: close %s failed: %s", asset, exc)
                         continue

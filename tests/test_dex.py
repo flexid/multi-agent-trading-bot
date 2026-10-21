@@ -162,3 +162,20 @@ async def test_the_margin_cap_bounds_every_mirror_trade(db: None) -> None:
     with new_session() as s:
         (row,) = s.query(DexTrade).all()
     assert row.qty == D("0.00062") and row.margin_usdt <= D(25)
+
+
+def test_close_cloid_is_a_valid_venue_id() -> None:
+    """2026-10-21: the live venue rejected every mirrored close for a day because the
+    close id was "<open id>-x". The derived id must be 16 bytes and differ from the open."""
+    from datetime import UTC, datetime
+
+    from hyperliquid.utils.types import Cloid
+
+    from app.dex.mirror import close_cloid
+
+    now = datetime(2026, 10, 21, 16, 0, tzinfo=UTC)
+    open_id = f"0x{int(now.timestamp() * 1000):024x}{175:08x}"[:34]
+    close_id = close_cloid(open_id)
+    assert close_id != open_id and len(close_id) == 34
+    assert Cloid.from_str(close_id).to_raw() == close_id
+    assert close_cloid(open_id) == close_id  # idempotent per trade
