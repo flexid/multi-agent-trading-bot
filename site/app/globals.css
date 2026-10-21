@@ -85,4 +85,3 @@ details.acc .scroll-x { margin: 0 -14px; padding: 0 14px; }
 /* the top-5 toggle on its own line, the five pills together on the next */
 .best-toggle { margin: 2px 0 8px; }
 .best { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; } .best .badge { white-space: nowrap; flex: 0 0 auto; }
-h2.perf { display: flex; align-items: center; gap: 8px; white-space: nowrap; min-width: 0; } h2.perf > span:first-child { flex: 0 0 auto; } h2.perf .badge { margin-left: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
