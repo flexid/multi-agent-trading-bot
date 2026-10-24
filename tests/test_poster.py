@@ -1,6 +1,8 @@
 import random
 from decimal import Decimal as D
 
+import pytest
+
 from app.social import templates as tpl
 from app.social.whitelist import check
 
@@ -193,3 +195,143 @@ def test_posting_events_setting_is_read() -> None:
 
     assert get_config().posting.events == "closes"
     assert PostingConfig.model_fields["events"].default == "closes"
+
+
+def test_sentences_do_not_split_on_decimals() -> None:
+    from app.social.poster import sentences
+
+    out = sentences("Closed $DOGE at 0.08195 after 15 hours. Paper trade, so nobody noticed.")
+    assert "closed $doge at 0.08195 after 15 hours." in out
+    assert not any(s.endswith(" 0.") for s in out)
+
+
+def test_a_draft_with_the_shape_of_a_recent_post_is_caught() -> None:
+    """Owner 2026-10-24: X flagged the account for near-identical posts. Same skeleton,
+    other numbers and cashtag, is still the same post."""
+    from app.social.poster import resembles_recent
+
+    recent = [
+        "Closed $DOGE at 0.07827 after 15 hours. +2.2% on price, +2.0% on margin. dorking...",
+        "Out of $ENA at 0.21196. +2.2% on price, +2.0% on margin, 39 hours. still dorking around",
+    ]
+    assert resembles_recent(
+        "Closed $XRP at 1.3368 after 41 hours. -2.1% on price, -2.3% on margin. dorking...", recent
+    )
+    assert (
+        resembles_recent(
+            "Forty-one hours of $XRP going the wrong way, slowly. -2.3% on margin, on paper,"
+            " which is the only reason I can still joke about it.",
+            recent,
+        )
+        is None
+    )
+
+
+def test_record_prices_pass_the_whitelist_in_any_context() -> None:
+    from app.social.poster import known_numbers
+
+    known = known_numbers(FACTS)
+    assert check("$SOL: 74.10 was the entry, 77.60 the exit.", known=known).ok
+    assert not check("$SOL: 74.10 was the entry, 99.99 something else.", known=known).ok
+
+
+async def test_compose_rewrites_a_lookalike_and_skips_after_three(
+    monkeypatch: "pytest.MonkeyPatch",
+) -> None:
+    from types import SimpleNamespace
+
+    from app.config import get_config
+    from app.social import poster
+
+    recent = ["Closed $DOGE at 0.07827 after 15 hours. +2.2% on price, +2.0% on margin. dorking..."]
+    drafts = iter(
+        [
+            "Closed $SOL at 77.60 after 9 hours. +4.7% on price, +13.6% on margin. dorking...",
+            "Nine hours in $SOL and the range finally gave way. +13.6% on margin, paper money,"
+            " so the only thing compounding is my confidence.",
+        ]
+    )
+    calls: list[str] = []
+
+    async def fake_complete(task: str, schema: type, **kw: object) -> SimpleNamespace:
+        calls.append(task)
+        if task == "post_writer":
+            return SimpleNamespace(parsed=poster.Draft(text=next(drafts)))
+        return SimpleNamespace(parsed=poster.Audit(ok=True))
+
+    monkeypatch.setattr(poster, "complete", fake_complete)
+    monkeypatch.setattr(poster, "recent_posts", lambda session, n: recent)
+    monkeypatch.setattr(poster, "repeats_archive", lambda session, cfg, text: None)
+    text, source, ok, notes = await poster.compose(
+        "close",
+        FACTS,
+        "plain",
+        session=object(),
+        cfg=get_config(),  # type: ignore[arg-type]
+    )
+    assert source == "writer" and ok and text and text.startswith("Nine hours")
+    assert notes is not None and "same shape as a recent post" in notes
+    assert calls.count("post_writer") == 2
+
+    # every draft a lookalike: no post, no template
+    lookalikes = iter(["Closed $SOL at 77.60 after 9 hours. +4.7% on price, +13.6% on margin."] * 3)
+    monkeypatch.setattr(
+        poster,
+        "complete",
+        lambda task, schema, **kw: _resolve(
+            SimpleNamespace(parsed=poster.Draft(text=next(lookalikes)))
+            if task == "post_writer"
+            else SimpleNamespace(parsed=poster.Audit(ok=True))
+        ),
+    )
+    text, source, ok, notes = await poster.compose(
+        "close",
+        FACTS,
+        "plain",
+        session=object(),
+        cfg=get_config(),  # type: ignore[arg-type]
+    )
+    assert text is None and source == "skipped" and not ok and "no draft passed" in (notes or "")
+
+
+async def _resolve(value: object) -> object:
+    return value
+
+
+async def test_the_writer_model_audits_when_the_auditor_is_down(
+    monkeypatch: "pytest.MonkeyPatch",
+) -> None:
+    from types import SimpleNamespace
+
+    from app.config import get_config
+    from app.llm import LLMError
+    from app.social import poster
+
+    models: list[object] = []
+
+    async def fake_complete(task: str, schema: type, **kw: object) -> SimpleNamespace:
+        if task == "post_writer":
+            return SimpleNamespace(
+                parsed=poster.Draft(
+                    text="$SOL done, +13.6% on margin after nine hours. Paper, but I'll take the"
+                    " practice."
+                )
+            )
+        models.append(kw.get("model"))
+        if kw.get("model") is None:
+            raise LLMError("auditor out of credits")
+        return SimpleNamespace(parsed=poster.Audit(ok=True))
+
+    monkeypatch.setattr(poster, "complete", fake_complete)
+    monkeypatch.setattr(poster, "recent_posts", lambda session, n: [])
+    monkeypatch.setattr(poster, "repeats_archive", lambda session, cfg, text: None)
+    cfg = get_config()
+    text, source, ok, _ = await poster.compose(
+        "close",
+        FACTS,
+        "plain",
+        session=object(),
+        cfg=cfg,  # type: ignore[arg-type]
+    )
+    assert ok and source == "writer" and text
+    assert models == [None, cfg.models.post_writer]

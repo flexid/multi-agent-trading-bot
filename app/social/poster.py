@@ -1,10 +1,13 @@
 """X poster (SPEC §11): post after a fill, never before; open = new post, close = reply.
 
 Pipeline per event: facts from the trade record → writer (claude-sonnet-5-5) → auditor
-(gpt-5.6-terra) → number whitelist → on any failure a template. The post is queued with
-a random 1–10 minute delay and sent by ``flush`` from the executor loop. Above
-``max_posts_per_day`` closes are bundled into one daily summary. Dry-run unless
-``posting.enabled`` and (live mode or ``post_in_shadow``).
+(gpt-5.6-terra) → number whitelist → archive and similarity checks → up to three drafts,
+then nothing (owner 2026-10-24: X flagged the account for near-identical posts; the
+templates that used to catch every failed draft were the duplicates). Templates remain
+for dry-run posts, which nobody sees. The post is queued with a random 1–10 minute delay
+and sent by ``flush`` from the executor loop. Above ``max_posts_per_day`` closes are
+bundled into one daily summary. Dry-run unless ``posting.enabled`` and (live mode or
+``post_in_shadow``).
 """
 
 from __future__ import annotations
@@ -34,6 +37,9 @@ from app.social.whitelist import check
 
 log = logging.getLogger("poster")
 MAX_LEN = 270
+DRAFTS_MAX = 3  # drafts per post before giving up on it
+RECENT_POSTS = 12  # shown to the writer: do not resemble these
+SIMILAR_MAX = 0.45  # word-bigram overlap with any recent post, numbers and cashtags masked
 
 
 class Draft(BaseModel):
@@ -84,37 +90,143 @@ async def compose(
     *,
     use_models: bool = True,
     highlight: bool = False,
-) -> tuple[str, str, bool, str | None]:
-    """Returns (text, source, audit_ok, notes). Falls back to a template on any failure.
-    Dry-run posts (nobody sees them) are templates only: no model spend."""
+    session: Session | None = None,
+    cfg: Config | None = None,
+) -> tuple[str | None, str, bool, str | None]:
+    """Returns (text, source, audit_ok, notes). ``text`` is None when no draft passed:
+    the post is skipped, never templated (owner 2026-10-24). Dry-run posts (nobody sees
+    them) are templates only: no model spend."""
     if not use_models:
         fallback = tpl.render_open(facts) if kind == "open" else tpl.render_close(facts)
         return fallback, "template", True, "dry-run: template only"
     record = {k: (str(v) if isinstance(v, Decimal) else v) for k, v in facts.__dict__.items()}
+    known = known_numbers(facts)
+    recent = recent_posts(session, RECENT_POSTS) if session is not None else []
+    notes = ""
     try:
-        notes = ""
-        for attempt in (1, 2):  # one rewrite with the auditor's objections, then a template
-            request = {"kind": kind, "record": record, "style": style, "highlight": highlight}
+        for attempt in range(1, DRAFTS_MAX + 1):
+            request: dict[str, object] = {
+                "kind": kind,
+                "record": record,
+                "style": style,
+                "highlight": highlight,
+                "recent_posts": recent,
+                "shape": SHAPES[(len(recent) + attempt) % len(SHAPES)],
+            }
             if notes:
                 request["previous_draft_rejected_because"] = notes
             draft = await complete(
                 "post_writer", Draft, prompt=load_prompt("post_writer"), user_text=str(request)
             )
             text = tpl.enforce_marker(draft.parsed.text.strip(), facts.paper)
-            audit = await complete(
-                "post_auditor",
-                Audit,
-                prompt=load_prompt("post_auditor"),
-                user_text=f'{{"draft": {text!r}, "record": {record}}}',
-            )
-            wl = check(text)
-            if audit.parsed.ok and wl.ok and len(text) <= MAX_LEN:
-                return text, "writer", True, None if attempt == 1 else f"rewrite after: {notes}"
-            notes = "; ".join(audit.parsed.violations + wl.problems) or "too long"
+            audit = await audit_draft(text, record, cfg)
+            wl = check(text, known=known)
+            problems = list(audit.violations) + list(wl.problems)
+            if len(text) > MAX_LEN:
+                problems.append("too long")
+            if session is not None and cfg is not None:
+                repeated = repeats_archive(session, cfg, text)
+                if repeated:
+                    problems.append(f"a sentence already used: {repeated!r}")
+                alike = resembles_recent(text, recent)
+                if alike:
+                    problems.append(f"same shape as a recent post: {alike!r}")
+            if audit.ok and not problems:
+                return text, "writer", True, None if attempt == 1 else f"draft {attempt}: {notes}"
+            notes = "; ".join(problems)[:400]
     except LLMError as exc:
         notes = f"writer/auditor failed: {exc}"[:300]
-    fallback = tpl.render_open(facts) if kind == "open" else tpl.render_close(facts)
-    return fallback, "template", False, notes
+    return None, "skipped", False, f"no draft passed: {notes}"
+
+
+async def audit_draft(text: str, record: dict[str, object], cfg: Config | None) -> Audit:
+    """The auditor, and when its provider is down (2026-10-15: out of credits for a day,
+    eight templated posts went out) the writer's model audits instead, noted as such."""
+    user_text = f'{{"draft": {text!r}, "record": {record}}}'
+    try:
+        done = await complete(
+            "post_auditor", Audit, prompt=load_prompt("post_auditor"), user_text=user_text
+        )
+        return done.parsed
+    except LLMError as exc:
+        if cfg is None:
+            raise
+        log.warning("post auditor unavailable (%s); the writer's model audits", exc)
+        done = await complete(
+            "post_auditor",
+            Audit,
+            prompt=load_prompt("post_auditor"),
+            user_text=user_text,
+            model=cfg.models.post_writer,
+        )
+        return done.parsed
+
+
+SHAPES = (
+    "lead with the result, one sentence, then one dry line",
+    "lead with what the market did, the result at the end",
+    "one line only: the cashtag, the result and a verdict",
+    "start from the reason the trade was taken, then how it ended",
+    "a question to yourself, answered by the number",
+    "an understatement first, the numbers second",
+    "the holding time as the story, the result in passing",
+    "a comparison to something mundane, then the result",
+)
+
+
+def known_numbers(facts: tpl.TradeFacts) -> set[str]:
+    """The record's prices in the spellings a writer uses: plain, with thousands commas,
+    trailing zeros trimmed."""
+    out: set[str] = set()
+    for v in (facts.entry, facts.exit, facts.stop, facts.target):
+        if v is None:
+            continue
+        for t in (f"{v:f}", f"{v:,f}", f"{v:.6g}", f"{v:,.2f}", tpl.fmt(v)):
+            t = t.replace(",", "")
+            out.add(t)
+            if "." in t:
+                out.add(t.rstrip("0").rstrip("."))
+    return out
+
+
+def recent_posts(session: Session, n: int) -> list[str]:
+    rows = session.scalars(
+        select(XPostOut.text)
+        .where(XPostOut.x_id.is_not(None), XPostOut.dry_run.is_(False))
+        .order_by(XPostOut.id.desc())
+        .limit(n)
+    ).all()
+    return list(rows)
+
+
+_NUM = re.compile(r"[-+]?\$?\d[\d,]*(?:\.\d+)?%?")
+_TAG = re.compile(r"\$[A-Za-z]{2,10}\b")
+
+
+def _shape(text: str) -> set[tuple[str, str]]:
+    """Word bigrams with the numbers and cashtags masked: what is left is the sentence
+    shape, which is what X compares."""
+    t = _TAG.sub("$x", text.lower())
+    t = _NUM.sub("#", t)
+    for m in tpl.SHADOW_MARKERS:
+        t = t.replace(m, "")
+    words = re.findall(r"[a-z#$']+", t)
+    return set(zip(words, words[1:], strict=False))
+
+
+def resembles_recent(text: str, recent: list[str]) -> str | None:
+    """The recent post whose shape this draft shares beyond ``SIMILAR_MAX``, if any."""
+    mine = _shape(text)
+    if len(mine) < 4:
+        return None
+    for other in recent:
+        theirs = _shape(other)
+        if not theirs:
+            continue
+        overlap = len(mine & theirs) / len(mine | theirs)
+        if overlap >= SIMILAR_MAX:
+            return other
+    return None
 
 
 def opener_x_id(session: Session, position_id: int) -> str | None:
@@ -150,24 +262,21 @@ async def enqueue(
     paper = pos.mode == "paper"
     facts = facts_for(pos, cfg, reason, paper)
     text, source, audit_ok, notes = await compose(
-        kind, facts, style, use_models=not dry_run, highlight=is_highlight(kind, facts, cfg)
+        kind,
+        facts,
+        style,
+        use_models=not dry_run,
+        highlight=is_highlight(kind, facts, cfg),
+        session=session,
+        cfg=cfg,
     )
-    text = tpl.enforce_marker(text, paper)
-    repeated = repeats_archive(session, cfg, text) if source == "writer" else None
-    if repeated:
-        notes = f"{notes + '; ' if notes else ''}repeats archive: {repeated!r}"
-        text, source, audit_ok = (
-            tpl.enforce_marker(
-                tpl.render_open(facts_for(pos, cfg, reason, paper))
-                if kind == "open"
-                else tpl.render_close(facts_for(pos, cfg, reason, paper)),
-                paper,
-            ),
-            "template",
-            False,
-        )
-    wl = check(text)
-    if tpl.has_marker(text) != paper:  # belt and braces: never leaks either way
+    skipped = text is None
+    text = tpl.enforce_marker(text or "", paper) if not skipped else ""
+    wl = check(text, known=known_numbers(facts))
+    if skipped:
+        wl = type(wl)(False, ["no draft passed"])
+        log.warning("post for position %d skipped: %s", pos.id, notes)
+    elif tpl.has_marker(text) != paper:  # belt and braces: never leaks either way
         wl = type(wl)(False, [*wl.problems, "shadow marker mismatch"])
     lo, hi = cfg.posting.delay_minutes
     reply_to = None
@@ -185,6 +294,8 @@ async def enqueue(
         reply_to_x_id=reply_to,
         dry_run=dry_run,
         created_at=now,
+        error="skipped: no draft passed" if skipped else None,
+        posted_at=now if skipped else None,  # never due
     )
     session.add(row)
     session.commit()
@@ -192,11 +303,15 @@ async def enqueue(
 
 
 _SENTENCE = re.compile(r"[^.!?\n]+[.!?]?")
+_DECIMAL = re.compile(r"(\d)\.(\d)")
 
 
 def sentences(text: str) -> set[str]:
+    """Sentences of a post, lower-cased; a decimal point is not a sentence end (until
+    2026-10-24 "closed $doge at 0.08" split into "closed $doge at 0." and matched)."""
     out = set()
-    for s in _SENTENCE.findall(text):
+    for s in _SENTENCE.findall(_DECIMAL.sub("\\1\u00b7\\2", text)):
+        s = s.replace("\u00b7", ".")
         s = s.strip().lower()
         s = re.sub(r"\s+", " ", s)
         if len(s) >= 20:

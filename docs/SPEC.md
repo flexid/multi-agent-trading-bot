@@ -198,7 +198,7 @@ Backtesting: only the indicator agent and the risk engine on historical candles.
 - Tone: casual, nonchalant, lowercase is fine, rare emoji, no hashtags, no links (a post with a URL costs $0.20 instead of $0.015), no mention of automation, no advice language ("buy", price promises).
 - Style profile from about 200 recent own posts (owned reads); check against the archive so no sentence repeats.
 - Random delay of 1 to 10 minutes after the fill. Above `max_posts_per_day`, bundle closes into one daily summary.
-- Audit fails: fall back to one of about 20 casual templates filled from the trade log.
+- Audit, whitelist, archive or similarity fails: up to three drafts with the objections, then the post is skipped. Templates only for dry-run posts (owner 2026-10-24: X flagged the account for near-identical posts, and the templated fallbacks were those posts).
 - Shadow mode posts nothing unless `post_in_shadow = true`; then every post carries a casual test-mode marker picked at random ("dorking...", "just dorking", "still dorking around"), enforced in code; no live post ever carries one (owner, 2026-10-09). The site shows the shadow badge.
 - Own copy of the existing X keys. No shared database with retweet-mirror.
 

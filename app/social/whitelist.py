@@ -22,7 +22,8 @@ DURATION = re.compile(
 )
 PRICE_CONTEXT = re.compile(
     r"\b(?:at|entry|stop|target|exit|closed at|took|from|to|for|above|below|under|over|near|"
-    r"around|@)\s*$",
+    r"around|off|hit|touched|reached|crossed|through|into|toward|towards|back to|since|was|"
+    r"is|@)\s*$",
     re.I,
 )
 URL = re.compile(r"https?://|www\.|\.(?:com|io|xyz|dev|net|org)\b", re.I)
@@ -64,7 +65,9 @@ def _kind(token: str, before: str, after: str) -> str | None:
 SITE_ALLOWED = {"nfa", "bot"}  # the public site is openly a bot; X posts never say so
 
 
-def check(text: str, *, site: bool = False) -> WhitelistResult:
+def check(text: str, *, site: bool = False, known: set[str] | None = None) -> WhitelistResult:
+    """``known``: numbers from the trade record (its prices, in a few spellings) that count
+    as prices wherever they stand (2026-10-24: "from 0.2419" failed on context alone)."""
     problems: list[str] = []
     if URL.search(text):
         problems.append("contains a link")
@@ -74,6 +77,8 @@ def check(text: str, *, site: bool = False) -> WhitelistResult:
         before, after = clean[: m.start()], clean[m.end() :]
         kind = _kind(token, before, after)
         if kind is None:
+            if known and token.lstrip("$+-").replace(",", "") in known:
+                continue
             problems.append(f"number without allowed context: {token!r}")
     for w in FORBIDDEN_WORDS.finditer(text):
         if site and w.group(0).lower() in SITE_ALLOWED:
