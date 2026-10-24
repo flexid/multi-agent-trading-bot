@@ -200,6 +200,11 @@ class ArenaConfig(_Section):
     # round open for everyone. 0 = no limit.
     max_round_hours: int = Field(default=48, ge=0, le=720)
     taker_fee_pct: Decimal = Decimal("0.055")
+    # Owner 2026-10-24 ("make it winnable"): two of three traders were gross positive and
+    # fees took it all, a trade every two hours at 3-4x. No new entry within this long of
+    # a close, and at most this many entries per trader per 24 hours.
+    entry_cooldown_minutes: int = Field(default=60, ge=0, le=1440)
+    max_entries_per_day: int = Field(default=4, ge=1, le=100)
     min_conviction_floor: float = Field(default=0.5, ge=0, le=1)
     margin_share: Decimal = Field(
         default=Decimal("0.95"), gt=0, le=1

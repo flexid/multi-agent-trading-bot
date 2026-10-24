@@ -343,10 +343,17 @@ class Engine:
         if not rows:
             return {"trades": 0}
         rets = [float(x.net_roe_pct or 0) for x in rows]
+        fees = sum(float(x.fees_usdt or 0) for x in rows)
+        net = sum(float(x.pnl_usdt or 0) for x in rows)
         return {
             "trades": len(rows),
             "wins": sum(1 for r in rets if r > 0),
             "net_roe_pct_sum": round(sum(rets), 2),
+            # the fee bill (owner 2026-10-24): what the trades made before fees, what the
+            # fees took, what was left
+            "gross_usdt": round(net + fees, 2),
+            "fees_usdt": round(fees, 2),
+            "net_usdt": round(net, 2),
             "benched": ledger.benched_in_round(s, trader, round_number) is not None,
         }
 
@@ -466,6 +473,18 @@ class Engine:
                 return
             sig = jev
             act = sig.choice in ("long", "short") and sig.conviction >= t.plan.min_conviction
+        # the cadence rules (owner 2026-10-24): a signal right after a close, or past the
+        # day's entry budget, is recorded but not acted on
+        with new_session() as s:
+            last_close = ledger.last_close_at(s, t.id)
+            today = ledger.entries_since(s, t.id, now - timedelta(hours=24))
+        cooldown = timedelta(minutes=self.cfg.entry_cooldown_minutes)
+        if act and last_close is not None and now - last_close < cooldown:
+            sig.probabilities["cooldown"] = 1.0
+            act = False
+        elif act and today >= self.cfg.max_entries_per_day:
+            sig.probabilities["daily_cap"] = 1.0
+            act = False
         ts = self.candles.last_1m[0] if self.candles.last_1m else now.timestamp() * 1000
         with new_session() as s:
             d = ArenaDecision(

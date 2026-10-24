@@ -162,6 +162,8 @@ tp_net_roe_range = [2, 10]      # net profit on margin, after both fee legs
 losses_to_bench = 2
 max_round_hours = 48            # a round also ends after this long, benched or not (owner 2026-10-14); 0 = never
 taker_fee_pct = 0.055           # per side; the probe on 2026-10-13 confirmed 0.055% on all three accounts
+entry_cooldown_minutes = 60     # owner 2026-10-24 (make it winnable): no new entry within an hour of a close
+max_entries_per_day = 4         # and at most this many entries per trader per 24 hours; fees were eating the gross
 min_conviction_floor = 0.5
 margin_share = 0.95             # of the sub-account's USDT put up as margin per trade
 api_port = 8787

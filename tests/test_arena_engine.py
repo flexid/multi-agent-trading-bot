@@ -97,6 +97,9 @@ def make(prices: Prices, *, equity: D = D(1000)) -> tuple[Engine, dict[str, Trad
         traders={
             k: ArenaTraderConfig(model="test-model") for k in ("kwikton", "kwekton", "kwakton")
         },
+        # the scripted rounds here re-enter within minutes; the cadence rules have their own test
+        entry_cooldown_minutes=0,
+        max_entries_per_day=100,
     )
     traders = {
         k: Trader(
@@ -513,3 +516,86 @@ async def test_a_fill_is_booked_once_even_when_the_next_trade_opens_the_same_min
     # the two fills of the paper twin carry distinct ids
     fills = await ex.closed_trades(T0)
     assert len(fills) == 1 and fills[0].order_id.startswith("paper-sl-")
+
+
+@needs_db
+async def test_cooldown_and_daily_cap_gate_entries(
+    db: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Owner 2026-10-24: fees ate the gross. No entry within the cooldown of a close, and
+    at most the day's budget of entries; a gated signal is recorded, not acted on."""
+    prices = Prices()
+    engine, traders = make(prices)
+    engine.cfg = engine.cfg.model_copy(
+        update={"entry_cooldown_minutes": 60, "max_entries_per_day": 2}
+    )
+    signals: dict[str, Signal] = {}
+
+    async def fake_write(model: str, context: str, *, round_number: int) -> Rulebook:
+        return RB
+
+    async def fake_entry(
+        rb: Rulebook, state: dict[str, object], *, model: str, trader: str
+    ) -> Signal:
+        return signals.get(trader, Signal("none", {"none": 1.0}, 0.0))
+
+    async def fake_exit(
+        rb: Rulebook, state: dict[str, object], *, side: str, model: str, trader: str
+    ) -> EarlyExit:
+        return EarlyExit(close=False, probability=0.1)
+
+    monkeypatch.setattr(author, "write_rulebook", fake_write)
+    monkeypatch.setattr(reflex, "decide_entry", fake_entry)
+    monkeypatch.setattr(reflex, "decide_exit", fake_exit)
+    now = T0
+    await engine.start(now)
+    await engine.wait_authors()
+    prices.push(60000.0)
+    await engine.tick(now)
+
+    def trades() -> list[ArenaTrade]:
+        with new_session() as s:
+            return s.query(ArenaTrade).filter_by(trader="kwikton").order_by(ArenaTrade.id).all()
+
+    signals["kwikton"] = Signal("long", {"long": 0.9, "short": 0.0, "none": 0.1}, 0.9)
+    now += timedelta(minutes=1)
+    prices.push(60000.0)
+    await engine.tick(now)  # entry 1
+    assert len(trades()) == 1
+    now += timedelta(minutes=1)
+    prices.push(60400.0, high=60400.0)
+    await engine.tick(now)  # the take fires; the same tick's signal is inside the cooldown
+    rows = trades()
+    assert len(rows) == 1 and rows[0].status == "closed"
+    for _ in range(58):  # still inside the hour: recorded, not acted on
+        now += timedelta(minutes=1)
+        prices.push(60000.0)
+        await engine.tick(now)
+    assert len(trades()) == 1
+    with new_session() as s:
+        d = (
+            s.query(ArenaDecision)
+            .filter_by(trader="kwikton")
+            .order_by(ArenaDecision.id.desc())
+            .first()
+        )
+        assert d is not None and not d.acted and d.probabilities.get("cooldown") == 1.0
+    now += timedelta(minutes=2)
+    prices.push(60000.0)
+    await engine.tick(now)  # the hour has passed: entry 2
+    assert len(trades()) == 2
+    now += timedelta(minutes=1)
+    prices.push(60400.0, high=60400.0)
+    await engine.tick(now)  # closes
+    now += timedelta(minutes=61)
+    prices.push(60000.0)
+    await engine.tick(now)  # past the cooldown but at the day's cap of 2: no entry 3
+    assert len(trades()) == 2
+    with new_session() as s:
+        d = (
+            s.query(ArenaDecision)
+            .filter_by(trader="kwikton")
+            .order_by(ArenaDecision.id.desc())
+            .first()
+        )
+        assert d is not None and not d.acted and d.probabilities.get("daily_cap") == 1.0

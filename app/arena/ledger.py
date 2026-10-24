@@ -89,6 +89,25 @@ def open_trade(s: Session, trader: str) -> ArenaTrade | None:
     ).first()
 
 
+def last_close_at(s: Session, trader: str) -> datetime | None:
+    return s.scalar(
+        select(func.max(ArenaTrade.closed_at)).where(
+            ArenaTrade.trader == trader, ArenaTrade.status == "closed"
+        )
+    )
+
+
+def entries_since(s: Session, trader: str, since: datetime) -> int:
+    return int(
+        s.scalar(
+            select(func.count(ArenaTrade.id)).where(
+                ArenaTrade.trader == trader, ArenaTrade.opened_at >= since
+            )
+        )
+        or 0
+    )
+
+
 def latest_rulebook(s: Session, trader: str, round_number: int) -> ArenaRulebook | None:
     return s.scalars(
         select(ArenaRulebook)
