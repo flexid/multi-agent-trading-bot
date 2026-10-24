@@ -45,6 +45,7 @@ class Trader:
     pending_exit: str | None = None  # earlyExit | bench: the reason for a close we sent
     author_failed_at: datetime | None = None  # retried hourly (2026-10-18: Astra out of credits)
     last_check: datetime = field(default_factory=lambda: datetime.now(UTC))
+    booked: set[str] = field(default_factory=set)  # closes booked already, by order id
     funded: bool = False
 
     @property
@@ -356,7 +357,14 @@ class Engine:
         bench. A benched trader with a position still open is closed at market."""
         closed = await t.exchange.closed_trades(t.last_check)
         for c in closed:
+            # `closed_trades(since)` is inclusive, so a fill at the second of the last check
+            # comes back once more; booking it again closed the next trade (2026-10-23)
+            if c.order_id in t.booked:
+                continue
+            t.booked.add(c.order_id)
             await self.book_close(t, c, now)
+        if len(t.booked) > 1000:
+            t.booked = set(list(t.booked)[-500:])
         t.last_check = now
         if t.benched:
             pos = await t.exchange.position()

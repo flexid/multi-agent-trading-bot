@@ -126,7 +126,9 @@ class PaperExchange:
         self.cash += p.margin + gross - close_fee
         self._closed.append(
             ClosedTrade(
-                order_id=order_id,
+                # unique per fill: "paper-sl" alone let the engine book one stop twice
+                # (2026-10-23, Kwakton: a phantom loss on the trade opened the same minute)
+                order_id=f"{order_id}-{int(self._now().timestamp() * 1000)}",
                 side=p.side,
                 qty=p.qty,
                 entry=p.entry,

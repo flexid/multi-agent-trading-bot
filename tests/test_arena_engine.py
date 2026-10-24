@@ -174,8 +174,12 @@ async def test_a_round_of_the_arena(db: None, monkeypatch: pytest.MonkeyPatch) -
     )
     assert traders["kwikton"].losses == 0
 
-    # two stops in a row bench Kwekton; its third signal is ignored
-    for _ in range(3):
+    # two stops bench Kwekton. Each stop tick also re-opens on the signal at 59500, and
+    # that trade takes profit when price is back at 60000, so the sequence is stop, take,
+    # stop: three trades, two losses, benched, the fourth signal ignored. (Until 2026-10-24
+    # the second trade was closed by a phantom booking of the first stop, and this test
+    # expected two trades; the engine now books every fill once.)
+    for _ in range(4):
         signals["kwekton"] = Signal("long", {"long": 0.9, "short": 0.0, "none": 0.1}, 0.9)
         now += timedelta(minutes=1)
         prices.push(60000.0)
@@ -185,9 +189,10 @@ async def test_a_round_of_the_arena(db: None, monkeypatch: pytest.MonkeyPatch) -
         await engine.tick(now)  # the stop fires
     assert traders["kwekton"].benched and traders["kwekton"].losses == 2
     with new_session() as s:
-        assert s.query(ArenaTrade).filter_by(trader="kwekton").count() == 2
+        rows = s.query(ArenaTrade).filter_by(trader="kwekton").order_by(ArenaTrade.id).all()
+        assert [r.exit_reason for r in rows] == ["sl", "tp", "sl"]
         assert s.query(ArenaBenchEvent).filter_by(trader="kwekton").count() == 1
-        assert s.query(ArenaDecision).filter_by(trader="kwekton", acted=True).count() == 2
+        assert s.query(ArenaDecision).filter_by(trader="kwekton", acted=True).count() == 3
 
     # bench the other two the same way: the round resets, everyone is back in
     for tid in ("kwikton", "kwakton"):
@@ -205,7 +210,8 @@ async def test_a_round_of_the_arena(db: None, monkeypatch: pytest.MonkeyPatch) -
     assert all(not t.benched and t.losses == 0 for t in traders.values())
     with new_session() as s:
         rounds = s.query(ArenaRound).order_by(ArenaRound.number).all()
-        assert rounds[0].ended_at is not None and rounds[0].winner == "kwikton"  # the only gain
+        # everyone ended the round below its start (Kwikton least, -0.6): no winner without a gain
+        assert rounds[0].ended_at is not None and rounds[0].winner is None
         assert s.query(ArenaRulebook).filter_by(round=2).count() == 3
         assert s.query(ArenaEquity).filter_by(trader="kwekton").count() > 5
 
@@ -433,3 +439,77 @@ async def test_paper_state_survives_a_restart(db: None, monkeypatch: pytest.Monk
     with new_session() as s:
         closed = s.query(ArenaTrade).filter_by(trader="kwikton", status="closed").one()
     assert closed.exit_reason == "tp" and closed.net_roe_pct is not None and closed.net_roe_pct > 0
+
+
+@needs_db
+async def test_a_fill_is_booked_once_even_when_the_next_trade_opens_the_same_minute(
+    db: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-10-23: Kwakton's stop fired and a new long opened in the same tick; the next
+    tick fetched the same fill again (the since-filter is inclusive) and booked it onto
+    the new trade: a phantom -18.5 and a bench. Fills carry unique ids and are booked once."""
+    from app.arena import ledger
+
+    prices = Prices()
+    engine, traders = make(prices)
+
+    async def fake_write(model: str, context: str, *, round_number: int) -> Rulebook:
+        return RB
+
+    monkeypatch.setattr(author, "write_rulebook", fake_write)
+    now = T0
+    await engine.start(now)
+    await engine.wait_authors()
+    t = traders["kwakton"]
+    ex = t.exchange
+    assert isinstance(ex, PaperExchange)
+    ex.now = now
+    await ex.set_leverage(3)
+
+    def open_row(entry: str, sl: str, at: datetime) -> None:
+        with new_session() as s:
+            s.add(
+                ArenaTrade(
+                    trader=t.id,
+                    round=engine.round_number,
+                    side="long",
+                    leverage=3,
+                    qty=D("0.01"),
+                    entry_price=D(entry),
+                    tp_price=D(entry) * D("1.02"),
+                    sl_price=D(sl),
+                    tp_net_roe=D(2),
+                    sl_net_roe=D(2),
+                    margin_usdt=D(200),
+                    opened_at=at,
+                    order_link_id=f"t-{int(at.timestamp())}",
+                    status="open",
+                )
+            )
+            s.commit()
+
+    # trade 1 opens, its stop fires on the next candle
+    await ex.open_market("long", D("0.01"), D(61200), D(59600), "one")
+    open_row("60000", "59600", now)
+    now += timedelta(minutes=1)
+    ex.now = now
+    await ex.on_candle(D(60000), D(59500))
+    await engine.reconcile(t, now)
+    # trade 2 opens in the same minute, at the same `now`
+    prices.push(59800.0)
+    await ex.open_market("long", D("0.01"), D(61000), D(59400), "two")
+    open_row("59800", "59400", now)
+    # the next tick: nothing new closed, the old fill comes back from the inclusive filter
+    now += timedelta(minutes=1)
+    ex.now = now
+    await ex.on_candle(D(59900), D(59700))
+    await engine.reconcile(t, now)
+    with new_session() as s:
+        rows = s.query(ArenaTrade).filter_by(trader=t.id).order_by(ArenaTrade.id).all()
+        assert [r.status for r in rows] == ["closed", "open"]
+        assert rows[0].exit_reason == "sl" and rows[0].exit_price == D(59600)
+        assert ledger.losses_in_round(s, t.id, engine.round_number) == 1
+    assert t.losses == 1 and not t.benched
+    # the two fills of the paper twin carry distinct ids
+    fills = await ex.closed_trades(T0)
+    assert len(fills) == 1 and fills[0].order_id.startswith("paper-sl-")
