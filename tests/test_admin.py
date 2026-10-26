@@ -169,3 +169,17 @@ def test_the_decision_log_says_why_an_agreed_call_did_not_trade() -> None:
     assert old == "approved, never opened (reason not recorded)"
     held = dec(action="open", exec_notes={"pilot": "already in a DOGE trade"})
     assert why_no_trade(held, ["primary"]) == "opened on primary · already in a DOGE trade (pilot)"
+
+
+def test_every_editable_parameter_exists_in_the_config() -> None:
+    """2026-10-26: /params returned 500 after v14 because the editable table still named
+    the aggressive section and the day-loss stop. Every key must resolve."""
+    from app.admin.app import EDITABLE, _get_param, aggressive_view
+    from app.config import get_config
+
+    cfg = get_config()
+    for key in EDITABLE:
+        assert _get_param(cfg, key) is not None, key
+    view = aggressive_view(cfg, None)
+    assert view["on"] and view["lev"] == 3 and view["assets"] == cfg.trading.assets
+    assert view["risk"] == cfg.trading.capital_share_per_asset * cfg.trading.stop_max_margin_pct

@@ -133,14 +133,12 @@ EDITABLE: dict[str, tuple[Decimal, Decimal]] = {
     "trading.capital_share_per_asset": (Decimal("0.05"), Decimal("0.5")),
     "trading.gross_exposure_max": (Decimal(1), Decimal(3)),
     "trading.net_beta_exposure_max": (Decimal("0.5"), Decimal(5)),  # beta-weighted, × equity
-    "trading.day_loss_stop": (Decimal("-0.05"), Decimal("-0.005")),
     "trading.depth_cap": (Decimal("0.01"), Decimal("0.1")),
+    "trading.stop_max_margin_pct": (Decimal("0.01"), Decimal("0.2")),  # the stop cap on margin
+    "trading.take_profit_trade_pct": (Decimal(0), Decimal("0.5")),  # on margin, net; 0 = off
+    "trading.take_profit_keep": (Decimal(0), Decimal(1)),  # share of the gain above the level kept
+    "trading.take_profit_equity_pct": (Decimal(0), Decimal("0.1")),  # the day goal
     "risk.chase_max_atr": (Decimal(0), Decimal(10)),  # 0 = off (v9)
-    "aggressive.take_profit_trade_pct": (Decimal(0), Decimal("0.5")),  # on margin, net; 0 = off
-    "aggressive.take_profit_giveback": (
-        Decimal(0),
-        Decimal("0.9"),
-    ),  # share of the best return given back
     "budget.api_usd_per_month": (Decimal(50), Decimal(5000)),
     "posting.max_posts_per_day": (Decimal(1), Decimal(100)),
 }
@@ -1389,84 +1387,28 @@ def params_post(
     return RedirectResponse("/params", status_code=303)
 
 
-@app.post("/params/aggressive")
-def aggressive_post(
-    request: Request,
-    on: str = Form(),
-    csrf: str = Form(),
-    user: str = Depends(current_user),
-) -> Response:
-    """The aggressive-mode switch (owner 2026-10-11). It only flips a flag in the risk
-    state; the profile itself is in config.toml and the risk engine applies it, inside
-    hard bounds, from the next cycle on. Needs the step-up code like every action."""
-    check_csrf(request, csrf)
-    _require_step_up(request)
-    want = on == "1"
-    now = datetime.now(UTC)
-    with new_session() as s:
-        state = s.get(RiskState, 1)
-        if state is None:
-            state = RiskState(id=1, leverage_ceiling=Decimal(2))
-            s.add(state)
-        before = bool(state.aggressive)
-        state.aggressive = want
-        state.aggressive_since = now if want else None
-        if want:
-            state.day_locked_sleeves = {}  # no locks in this mode: clear what was set
-        s.add(
-            ParamChange(
-                ts=now,
-                key="aggressive mode",
-                old_value="on" if before else "off",
-                new_value="on" if want else "off",
-                requested_by=user,
-                applied_at=now,
-                result="applied",
-            )
-        )
-        auth.audit(s, user, "aggressive_mode", _ip(request), {"on": want})
-        s.commit()
-    notify.send(
-        f"dorkbot admin: aggressive mode {'ON' if want else 'off'}",
-        f"{user} switched aggressive mode {'on' if want else 'off'}. It applies from the next "
-        "cycle. Open positions keep the terms they were opened with.",
-    )
-    return RedirectResponse("/params", status_code=303)
-
-
 def aggressive_view(cfg: Config, state: RiskState | None) -> dict[str, Any]:
-    """What the switch changes, normal next to aggressive, for the parameters page."""
-    from app.risk.apply import RISK_HARD_MAX, sleeve_values
+    """The one mode (v14): what the bot does, for the parameters page."""
+    from app.risk.apply import RISK_HARD_MAX
 
-    agg = cfg.profile
-    rows = []
-    for name, s_cfg in cfg.sleeves.items():
-        risk, stop, beta = sleeve_values(s_cfg, agg)
-        rows.append(
-            {
-                "sleeve": name,
-                "risk": (s_cfg.risk_per_trade, risk),
-                "stop": (s_cfg.day_loss_stop, stop),
-                "beta": (s_cfg.net_beta_exposure_max, beta),
-                "lev": (
-                    min(
-                        Decimal(s_cfg.leverage_max), state.leverage_ceiling if state else Decimal(2)
-                    ),
-                    min(Decimal(s_cfg.leverage_max), Decimal(agg.leverage_ceiling)),
-                ),
-            }
-        )
+    t = cfg.profile
     return {
-        "on": bool(state and state.aggressive),
+        "on": True,
         "since": state.aggressive_since if state else None,
-        "rows": rows,
-        "hold": agg.max_hold_hours,
+        "assets": list(cfg.trading.assets),
+        "lev": t.leverage_max,
+        "share": t.capital_share_per_asset,
+        "risk": t.capital_share_per_asset * t.stop_max_margin_pct,
         "risk_cap": RISK_HARD_MAX,
-        "take_profit": agg.take_profit_equity_pct,
-        "goal_gap": agg.goal_cycle_min_gap_minutes,
-        "take_trade": agg.take_profit_trade_pct,
-        "keep": agg.take_profit_keep,
-        "stop_room": agg.stop_room,
+        "stop_cap": t.stop_max_margin_pct,
+        "stop_room": t.stop_room,
+        "hold": t.max_hold_hours,
+        "take_profit": t.take_profit_equity_pct,
+        "goal_gap": t.goal_cycle_min_gap_minutes,
+        "take_trade": t.take_profit_trade_pct,
+        "keep": t.take_profit_keep,
+        "brake": t.emergency_brake,
+        "beta": t.net_beta_exposure_max,
     }
 
 
