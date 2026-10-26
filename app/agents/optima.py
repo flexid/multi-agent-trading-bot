@@ -30,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import memo
 from app.config import Config, get_config
 from app.db.models import (
     DecisionRecord,
@@ -426,10 +427,24 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
         "cost_value": cost_value_facts(session, cfg, now),
         "execution": execution_facts(session, cfg, now),
         "budget": budget_facts(session, cfg, now),
-        "charts_first": _charts_first(session, cfg, now),
-        "solo_calls": _solo(session, cfg, now),
-        "three_seat": _three(session, cfg, now),
+        "logic": memo.logic_facts(*memo.active_books(session, now)),
+        "tasks_called_last_7_days": tasks_called(session, now),
+        # v11: the charts-first, solo-call and three-seat comparisons are no longer computed
     }
+
+
+def tasks_called(session: Session, now: datetime) -> dict[str, dict[str, Any]]:
+    """Which tasks ran on which model this week, with their cost: a task absent here made
+    no calls and costs nothing, whatever the month-to-date table says about it."""
+    rows = session.execute(
+        select(LLMCall.task, LLMCall.model, func.count(), func.sum(LLMCall.cost_usd))
+        .where(LLMCall.ts >= now - timedelta(days=7))
+        .group_by(LLMCall.task, LLMCall.model)
+    ).all()
+    out: dict[str, dict[str, Any]] = {}
+    for task, model, n, usd in rows:
+        out.setdefault(task, {})[model] = {"calls": int(n), "usd": round(float(usd or 0), 2)}
+    return out
 
 
 # --- the adviser --------------------------------------------------------------------

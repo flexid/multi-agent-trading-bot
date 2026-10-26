@@ -145,3 +145,31 @@ def test_improvement_brief_lists_proposals_as_checkboxes() -> None:
     assert "- [ ] 1. Wait (small)" in brief and "- [ ] 2. Tune X (small)" in brief
     assert "change: x_sentiment 0.2" in brief and "## Owner notes" in brief and "- stops" in brief
     assert "(the memo produced no proposals" in improvement_prompt({"week_ending": "x"}, None)
+
+
+def test_the_memo_facts_state_the_logic_in_force() -> None:
+    """Owner 2026-10-26: the brief cited a consensus rule and books that were gone. The
+    facts now carry the version, the rule, the active books and what is decided."""
+    from app.memo import decided_log, logic_facts
+    from app.version import FROZEN_UNTIL, LOGIC_VERSION
+
+    f = logic_facts(["primary", "pilot"], ["max", "inverse"])
+    assert f["version"] == LOGIC_VERSION and f["frozen_until"] == FROZEN_UNTIL
+    assert "two of the three managers" in f["consensus"]
+    assert f["closed_books"] == ["max", "inverse"]
+    log = decided_log()
+    assert log and log[0].startswith(f"v{LOGIC_VERSION} (")
+
+
+def test_excursion_tracks_best_and_worst() -> None:
+    from decimal import Decimal as D
+
+    from app.execution.simulator import Quote, Side, excursion
+
+    now = datetime.now(UTC)
+    mfe, mae = excursion(Side.LONG, D(100), Quote(D(101), D("101.1"), now), None, None)
+    assert mfe == D("0.01") and mae == D(0)
+    mfe, mae = excursion(Side.LONG, D(100), Quote(D(97), D("97.1"), now), mfe, mae)
+    assert mfe == D("0.01") and mae == D("-0.03")
+    mfe, mae = excursion(Side.SHORT, D(100), Quote(D("98.9"), D(99), now), None, None)
+    assert mfe == D("0.01") and mae == D(0)

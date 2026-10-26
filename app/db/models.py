@@ -441,6 +441,11 @@ class Position(Base):
     pnl: Mapped[Decimal | None]  # net, quote
     pnl_price_pct: Mapped[Decimal | None]
     pnl_margin_pct: Mapped[Decimal | None]
+    # The best and the worst the price went while open, as a signed fraction of the entry
+    # in the trade's direction (MFE/MAE); updated every pass, read at the exit review
+    # (memo 2026-10-26: time exits dominate and nobody knew how close they came).
+    mfe_pct: Mapped[Decimal | None]
+    mae_pct: Mapped[Decimal | None]
     liquidation_price: Mapped[Decimal | None]
     order_link_id: Mapped[str | None] = mapped_column(String(36), unique=True)
     x_post_id: Mapped[str | None] = mapped_column(String(32))  # M7

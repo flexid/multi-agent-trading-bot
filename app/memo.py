@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import sys
 from collections import Counter
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Config, get_config
+from app.data.fetch import stale_at
 from app.db.models import (
     Cycle,
     FetchRun,
@@ -34,6 +36,7 @@ from app.db.models import (
     XPostOut,
 )
 from app.db.session import new_session
+from app.version import FROZEN_UNTIL, LOGIC_VERSION
 
 log = logging.getLogger(__name__)
 
@@ -119,16 +122,89 @@ def pilot_vs_paper(pilot: list[Position], paper: list[Position]) -> list[dict[st
     return out
 
 
+KNOWN_TRACKS = ("primary", "max", "pilot", "live", "inverse")
+CONSENSUS_RULE = (
+    "a trade opens when two of the three managers call the same direction and none calls "
+    "the opposite one; the risk engine sizes it"
+)
+
+
+def decided_log(n: int = 6) -> list[str]:
+    """The last logic versions, one line each, from app/version.py: what is already
+    decided and must not come back as a proposal (owner 2026-10-26: the brief cited a
+    consensus rule and books that were gone)."""
+    import app.version as version
+
+    out: list[str] = []
+    for line in (version.__doc__ or "").splitlines():
+        m = re.match(r"^(\d+)\s+(\d{4}-\d{2}-\d{2})\s+(.*)$", line)
+        if m:
+            out.append(f"v{m.group(1)} ({m.group(2)}): {m.group(3).strip()}")
+        elif out and line.startswith(" ") and len(out[-1]) < 220:
+            out[-1] = f"{out[-1]} {line.strip()}"
+    return out[:n]
+
+
+def active_books(session: Session, now: datetime) -> tuple[list[str], list[str]]:
+    recent = set(
+        session.scalars(
+            select(Position.track).where(Position.opened_at >= now - timedelta(days=14)).distinct()
+        ).all()
+    )
+    active = [t for t in KNOWN_TRACKS if t in recent]
+    return active, [t for t in KNOWN_TRACKS if t not in active and t != "live"]
+
+
+def logic_facts(active: list[str], closed_books: list[str]) -> dict[str, Any]:
+    return {
+        "version": LOGIC_VERSION,
+        "frozen_until": FROZEN_UNTIL,
+        "consensus": CONSENSUS_RULE,
+        "active_books": active,
+        "closed_books": closed_books,
+        "note": "closed books open nothing new since v11; their last trades run out. "
+        "Judge the bot on the active books only.",
+        "already_decided": decided_log(),
+    }
+
+
+def time_exit_facts(closed: list[Position]) -> dict[str, Any]:
+    """What the week's time exits left on the table (memo 2026-10-26): the best and
+    worst excursion, how far they got toward the target."""
+    rows = [p for p in closed if p.close_reason == "time" and p.mfe_pct is not None]
+    if not rows:
+        return {
+            "count": 0,
+            "note": "no time exits with excursion data yet (tracked since 2026-10-26)",
+        }
+    shares = []
+    for p in rows:
+        if p.entry_price and p.target:
+            d = abs(p.target - p.entry_price) / p.entry_price
+            if d:
+                shares.append(float((p.mfe_pct or 0) / d))
+    return {
+        "count": len(rows),
+        "avg_mfe_pct": round(sum(float(p.mfe_pct or 0) for p in rows) / len(rows) * 100, 2),
+        "avg_mae_pct": round(sum(float(p.mae_pct or 0) for p in rows) / len(rows) * 100, 2),
+        "avg_target_reached_share": round(sum(shares) / len(shares), 2) if shares else None,
+        "avg_exit_price_pct": round(
+            sum(float(p.pnl_price_pct or 0) for p in rows) / len(rows) * 100, 2
+        ),
+        "reached_half_of_target": sum(1 for x in shares if x >= 0.5),
+    }
+
+
 def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     since = now - WEEK
     closed = session.scalars(
         select(Position).where(Position.status == "closed", Position.closed_at >= since)
     ).all()
-    by_track = {
-        t: _track_stats([p for p in closed if p.track == t]).__dict__
-        for t in ("primary", "max", "pilot", "live", "inverse")
-    }
+    # a book is active when it opened a trade in the last two weeks; the max and inverse
+    # books stopped opening at v11 and must not be judged as if they still traded
+    active, closed_books = active_books(session, now)
+    by_track = {t: _track_stats([p for p in closed if p.track == t]).__dict__ for t in active}
     pilot_rows = session.scalars(select(Position).where(Position.track == "pilot")).all()
     paper_rows = session.scalars(select(Position).where(Position.track == "primary")).all()
     open_rows = session.scalars(
@@ -191,8 +267,23 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
         mv = mention_volume(session, a, now)
         if mv:
             buzz[a] = {"last_24h": mv[0], "per_day_before": round(mv[1])}
+    full_cycles = [c for c in cycles if c.kind != "light"]
+    stale_counts: Counter[str] = Counter()
+    stale_cycles = 0
+    for c in full_cycles:
+        stale = stale_at(session, c.started_at)
+        if stale:
+            stale_cycles += 1
+            stale_counts.update(stale)
     return {
         "week_ending": now.strftime("%Y-%m-%d"),
+        "logic": logic_facts(active, closed_books),
+        "stale_input_cycles": {
+            "full_cycles": len(full_cycles),
+            "on_stale_input": stale_cycles,
+            "by_source": dict(stale_counts),
+        },
+        "time_exits": time_exit_facts([p for p in closed if p.track in active]),
         "mode": cfg.trading.live_allowed and "live" or "shadow",
         "pilot_enabled": cfg.pilot.enabled,
         "aggressive_mode": aggressive_fact(session),
@@ -230,9 +321,8 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
         "polymarket_coverage": pm_cov,
         "x_mentions": buzz,
         "optima": optima_facts(session),
-        "charts_first": charts_first_facts(session, cfg, now),
-        "solo_calls": solo_facts(session, cfg, now),
-        "three_seat": three_seat_facts(session, cfg, now),
+        # v11 (2026-10-19): the charts-first, solo-call and three-seat comparisons are
+        # decided and no longer computed; their rows stay in the database for the record.
     }
 
 
@@ -326,6 +416,20 @@ def sleeves_facts(session: Session, cfg: Config, now: datetime, since: datetime)
 
 def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> str:
     lines = [f"# dorkbot weekly memo, week ending {f['week_ending']}", ""]
+    lg = f.get("logic") or {}
+    if lg:
+        lines += [
+            f"Logic v{lg['version']}, untouched until {lg['frozen_until']}. "
+            f"Rule: {lg['consensus']}. "
+            f"Active books: {', '.join(lg['active_books']) or 'none'}"
+            + (
+                f"; closed books (no new trades): {', '.join(lg['closed_books'])}"
+                if lg["closed_books"]
+                else ""
+            )
+            + ".",
+            "",
+        ]
     c = f["cycles"]
     lines += [
         f"Mode {f['mode']}, pilot {'on' if f['pilot_enabled'] else 'off'}"
@@ -377,63 +481,25 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
         ic = "n/a" if r["ic_1d"] is None else f"{r['ic_1d']:+.2f}"
         lines.append(f"- {r['kind']} {r['name']}: IC {ic} on {r['sample']} samples")
     lines.append(f"- weights: {f['agent_weights']}")
-    solo = f.get("solo_calls") or {}
-    if solo.get("decisions"):
-        lines += ["", "## Solo calls: one manager called, the others stayed flat (logged only)"]
-        shares = ", ".join(
-            f"{m} flat {s:.0%}" for m, s in solo["flat_share"].items() if s is not None
-        )
+    te = f.get("time_exits") or {}
+    if te.get("count"):
+        lines += ["", "## Time exits (what the clock closed, and how close they came)"]
         lines.append(
-            f"- {solo['decisions']} decisions: {solo['agreed']} traded, {solo['solo']} solo, "
-            f"{solo['opposite']} opposite; {shares}"
+            f"- {te['count']} time exits: best on average {te['avg_mfe_pct']:+.2f}% "
+            f"({te['reached_half_of_target']} got at least halfway to the target, "
+            f"average {te['avg_target_reached_share']:.0%} of the way), worst "
+            f"{te['avg_mae_pct']:+.2f}%, closed at {te['avg_exit_price_pct']:+.2f}% on price"
         )
-        for r in solo["pairs"]:
-            d1 = r["d1"]
-            after = (
-                f"{d1['mean'] * 100:+.2f}% after a day, {d1['won']:.0%} right on {d1['n']}"
-                if d1["mean"] is not None
-                else "no next-day price yet"
-            )
-            lines.append(f"- {r['caller']} called alone: {r['calls']} calls, {after}")
-    three = f.get("three_seat") or {}
-    if three.get("decisions"):
-        lines += ["", "## Three ways to decide (logged only; the live rule is two of two)"]
-        lines.append(
-            f"- {three['decisions']} decisions with all three managers "
-            f"({', '.join(str(m) for m in three['models'])}; the third only watches)"
-        )
-        labels = {
-            "two_of_two": "two of two (live)",
-            "two_of_three": "two of three, nobody opposite",
-            "three_of_three": "all three agree",
-            "threshold": f"both seated scores beyond ±{three['threshold']}",
-        }
-        for key, label in labels.items():
-            r = three["rules"][key]
-            d1 = r["d1"]
-            after = (
-                f"{d1['mean'] * 100:+.2f}% after a day, {d1['won']:.0%} right on {d1['n']}"
-                if d1["mean"] is not None
-                else "no next-day price yet"
-            )
-            lines.append(f"- {label}: {r['trades']} trades, {after}")
-    cf = f.get("charts_first") or []
-    if cf:
-        lines += ["", "## Charts first vs the real score (logged only, for the review)"]
-        for r in cf:
-            share = r["calls_differ_share"]
-            ic_r = "n/a" if r["ic_formula"] is None else f"{r['ic_formula']:+.2f}"
-            ic_c = "n/a" if r["ic_charts_first"] is None else f"{r['ic_charts_first']:+.2f}"
-            lines.append(
-                f"- {r['sleeve']}: {r['decisions']} decisions, X changed the call in "
-                f"{r['calls_differ']}"
-                + (f" ({share:.0%})" if share is not None else "")
-                + f"; IC 1d real {ic_r} vs charts first {ic_c}"
-            )
     lines += ["", "## Plumbing"]
     lines.append(f"- risk rule hits: {f['risk_rule_hits'] or 'none'}")
     lines.append(f"- posts: {f['posts']}")
     lines.append(f"- failed fetches: {f['failed_fetches'] or 'none'}")
+    si = f.get("stale_input_cycles") or {}
+    if si:
+        lines.append(
+            f"- cycles on stale input: {si['on_stale_input']} of {si['full_cycles']}"
+            + (f" ({si['by_source']})" if si["by_source"] else "")
+        )
     st = f.get("suppressed_triggers") or {}
     if st.get("count"):
         lines.append(
@@ -500,6 +566,14 @@ def optima_section(o: dict[str, Any] | None) -> list[str]:
 def improvement_prompt(f: dict[str, Any], memo: Memo | None) -> str:
     """A ready-to-paste brief for Claude Code: the owner ticks the proposals to apply."""
     date = f["week_ending"]
+    lg = f.get("logic") or {
+        "version": LOGIC_VERSION,
+        "frozen_until": FROZEN_UNTIL,
+        "consensus": CONSENSUS_RULE,
+        "active_books": [],
+        "closed_books": [],
+        "already_decided": [],
+    }
     lines = [
         f"# dorkbot improvement brief, week ending {date}",
         "",
@@ -507,6 +581,13 @@ def improvement_prompt(f: dict[str, Any], memo: Memo | None) -> str:
         "proposals to apply. Untouched boxes mean: do not apply, just note it.",
         "",
         f"Context: the weekly memo of {date} (logs/memo-{date}.md on the server, also mailed).",
+        f"Logic v{lg['version']}, untouched until {lg['frozen_until']}. Rule: {lg['consensus']}.",
+        f"Active books: {', '.join(lg['active_books']) or 'none'}"
+        + (
+            f". Closed books (open nothing new): {', '.join(lg['closed_books'])}."
+            if lg["closed_books"]
+            else "."
+        ),
         "Standing goal: an average of 1% per day on capital, net of every cost, reached by",
         "tuning parameters as the evidence comes in. The hard risk rules (stops, liquidation",
         "guard, drawdown pause, day-loss lock, one-PM-flat, kill switch, order idempotency)",
@@ -532,6 +613,10 @@ def improvement_prompt(f: dict[str, Any], memo: Memo | None) -> str:
         ]
     if memo and memo.keep:
         lines += ["", "## Leave alone (per the memo)", ""] + [f"- {k}" for k in memo.keep]
+    if lg.get("already_decided"):
+        lines += ["", "## Already decided (not up for proposal)", ""] + [
+            f"- {d}" for d in lg["already_decided"]
+        ]
     o = f.get("optima") or {}
     r = o.get("report") or {}
     if r.get("proposals"):

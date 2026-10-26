@@ -27,6 +27,7 @@ from app.agents import run_catalysts, run_chart, run_indicators, run_macro, run_
 from app.agents.indicators_summary import summarize
 from app.agents.schema import AgentOutput
 from app.config import Config, get_config
+from app.data.fetch import stale_sources
 from app.db.models import AgentOutputRecord, Cycle, DecisionRecord, LLMCall, PMProposalRecord
 from app.db.session import new_session
 from app.decision.consensus import (
@@ -291,6 +292,15 @@ async def run_cycle(
         session.add(cycle)
         session.commit()
         cycle_id = cycle.id
+        stale = stale_sources(session, now)
+        if stale:  # the decision runs on the last good values; say so where it can be counted
+            log.warning(
+                "cycle %d runs on stale input: %s",
+                cycle_id,
+                ", ".join(
+                    f"{k} ({v:.1f}h)" if v >= 0 else f"{k} (never)" for k, v in stale.items()
+                ),
+            )
     results: dict[str, Consensus] = {}
     try:
         by_asset, regime, couplings = await run_agents(

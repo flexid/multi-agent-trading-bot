@@ -353,3 +353,32 @@ async def test_live_mode_books_on_its_own_ledger_seeded_from_real_equity(db: Non
         assert state is None or state.starting_capital == D("1234.5")
         s.execute(delete(AccountSnapshot))
         s.commit()
+
+
+def test_a_buy_fee_is_converted_from_base_coin_to_quote() -> None:
+    """2026-10-26: Bybit charges a spot buy's fee in the coin bought. The PEPE pilot long
+    had 2,374 PEPE of fee booked as 2,374 USDT; the gateway now converts at the fill."""
+    from app.execution.bybit_gateway import _fill_of
+    from app.execution.bybit_models import Order
+
+    common = dict(
+        order_id="1", order_link_id="l", symbol="PEPEUSDT", qty=D("2373823"), order_status="Filled"
+    )
+    buy = Order(
+        **common,
+        side="Buy",
+        cum_exec_qty=D("2373823"),
+        avg_price=D("0.000004675"),
+        cum_exec_fee=D("2373.823"),
+    )
+    sell = Order(
+        **common,
+        side="Sell",
+        cum_exec_qty=D("2373823"),
+        avg_price=D("0.000004853"),
+        cum_exec_fee=D("0.0115"),
+    )
+    _, _, buy_fee = _fill_of(buy)
+    _, _, sell_fee = _fill_of(sell)
+    assert buy_fee == D("2373.823") * D("0.000004675")  # about 0.011 USDT
+    assert sell_fee == D("0.0115")

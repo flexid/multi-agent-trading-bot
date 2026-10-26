@@ -89,6 +89,11 @@ QTY_STEP_FALLBACK = Decimal("0.000001")
 HOURLY_BORROW_FALLBACK = Decimal("0.000005")
 
 
+def tpl_holding(row: Position, now: datetime) -> str:
+    hours = (now - row.opened_at).total_seconds() / 3600 if row.opened_at else 0.0
+    return f"{hours:.0f}h"
+
+
 class Executor:
     def __init__(
         self,
@@ -432,6 +437,10 @@ class Executor:
                 pos, now, self.borrow_rates.get(row.symbol, HOURLY_BORROW_FALLBACK), quote.mid
             )
             pos = sim.update_trail(pos, quote)
+            if row.entry_price:
+                row.mfe_pct, row.mae_pct = sim.excursion(
+                    pos.side, row.entry_price, quote, row.mfe_pct, row.mae_pct
+                )
             reason = sim.exit_reason(
                 pos,
                 quote,
@@ -580,6 +589,22 @@ class Executor:
             fill.pnl_price_pct,
             net / pos.margin if pos.margin else Decimal(0),
         )
+        if reason is ExitReason.TIME and row.entry_price and row.mfe_pct is not None:
+            # the exit review's evidence (memo 2026-10-26): how far the trade got toward
+            # its target before the clock ran out, and how deep it went the other way
+            to_target = abs(row.target - row.entry_price) / row.entry_price
+            share = row.mfe_pct / to_target if to_target else Decimal(0)
+            log.info(
+                "%s %s: time exit after %s; best %+.2f%% (%.0f%% of the way to the target), "
+                "worst %+.2f%%, closed at %+.2f%% on price",
+                row.mode,
+                row.asset,
+                tpl_holding(row, now),
+                row.mfe_pct * 100,
+                share * 100,
+                (row.mae_pct or 0) * 100,
+                (fill.pnl_price_pct or 0) * 100,
+            )
         if row.track in ("primary", "live"):
             await self.post(session, row, "close", None, now)  # needs the P&L fields
         acct = self.ledger(session, now, row.track)

@@ -95,3 +95,24 @@ def test_data_age_unknown_source_is_none() -> None:
     with new_session() as s:
         assert fetch.data_age(s, "never.fetched") is None
         assert not fetch.is_fresh(s, "never.fetched")
+
+
+async def test_fred_retries_a_server_error_then_succeeds() -> None:
+    """2026-10-26: FRED failed 29 times in a week; one 5xx no longer loses the series."""
+    seen: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(1)
+        if len(seen) == 1:
+            return httpx.Response(503, json={"error": "busy"})
+        return httpx.Response(200, json={"observations": [{"date": "2026-10-06", "value": "4.1"}]})
+
+    async with FredClient(SecretStr("KEY"), transport=httpx.MockTransport(handler)) as fred:
+        rows = await fred.observations("DGS10", datetime(2026, 10, 1).date(), backoff_s=0)
+    assert len(seen) == 2 and [r.value for r in rows] == [Decimal("4.1")]
+
+
+def test_stale_after_covers_the_feeds_that_failed() -> None:
+    from app.data.fetch import STALE_AFTER
+
+    assert {"macro.fred", "bybit.margin_terms"} <= set(STALE_AFTER)

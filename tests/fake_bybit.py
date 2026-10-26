@@ -160,10 +160,10 @@ class FakeBybit:
             tif = body["timeInForce"]
             self.calls.append(f"create:{tif}")
             price = D(body["price"])
+            selling = body["side"] == "Sell"
             if tif == "PostOnly":
                 filled, at = qty, price
             else:
-                selling = body["side"] == "Sell"
                 crosses = price <= self.bid if selling else price >= self.ask
                 room = self.ioc_liquidity.pop(0) if self.ioc_liquidity else qty
                 filled = min(qty, room) if crosses else D(0)
@@ -175,7 +175,8 @@ class FakeBybit:
                 "orderStatus": status,
                 "cumExecQty": str(filled),
                 "avgPrice": str(at) if filled else "",
-                "cumExecFee": str(filled * at * D("0.001")),
+                # as Bybit: a sell's fee in quote, a buy's fee in the coin bought
+                "cumExecFee": str(filled * at * D("0.001") if selling else filled * D("0.001")),
             }
         self.orders[link] = order
         if self.drop_next_create:

@@ -377,9 +377,17 @@ class BybitGateway:
 
 
 def _fill_of(order: Order | None) -> tuple[Decimal, Decimal | None, Decimal]:
+    """Filled quantity, average price and the fee in quote. Bybit charges a spot fee in
+    the coin received: a sell's fee is already quote, a buy's fee is base coin and is
+    converted at the fill price (2026-10-26: a PEPE pilot long had booked 2,373,823 × 0.1%
+    = 2,374 PEPE as 2,374 USDT and wrecked the pilot's record)."""
     if order is None:
         return Decimal(0), None, Decimal(0)
-    return order.cum_exec_qty, order.avg_price or None, order.cum_exec_fee or Decimal(0)
+    fee = order.cum_exec_fee or Decimal(0)
+    avg = order.avg_price or None
+    if order.side is ExSide.BUY and avg:
+        fee = fee * avg
+    return order.cum_exec_qty, avg, fee
 
 
 def _never_placed(symbol: str, link_id: str) -> Order:

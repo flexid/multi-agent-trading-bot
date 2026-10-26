@@ -267,6 +267,19 @@ def close_position(
     )
 
 
+def excursion(
+    side: Side, entry: Decimal, quote: Quote, mfe: Decimal | None, mae: Decimal | None
+) -> tuple[Decimal, Decimal]:
+    """The running best and worst price move as signed fractions of the entry in the
+    trade's direction: a long's MFE uses the bid (what it could sell at), a short's the
+    ask. Never shrinks."""
+    price = quote.bid if side is Side.LONG else quote.ask
+    move = (price - entry) / entry if side is Side.LONG else (entry - price) / entry
+    best = move if mfe is None else max(mfe, move)
+    worst = move if mae is None else min(mae, move)
+    return max(best, Decimal(0)), min(worst, Decimal(0))
+
+
 def unrealized(pos: PaperPosition, quote: Quote) -> Decimal:
     price = quote.bid if pos.side is Side.LONG else quote.ask
     gross = (
