@@ -660,7 +660,7 @@ def test_the_pilot_has_a_slot_for_every_asset() -> None:
     share = min(cfg.trading.capital_share_per_asset, D(1) / len(cfg.trading.assets))
     assert all(v == cap * share for v in slots.values())
     assert sum(slots.values()) <= cap
-    assert ex.pilot_slot("BNB") == cap * D("0.20")  # outside the sleeves: the old share
+    assert ex.pilot_slot("BNB") == cap * share  # an asset outside the universe: the same slot
 
 
 @needs_db
