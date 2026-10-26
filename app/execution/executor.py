@@ -1199,7 +1199,10 @@ class Executor:
                 await self._sync_backup_stop(row, gw)
             if track == "primary":
                 await self.post(session, row, "open", self._reason_for(d), now)
-            acct.cash -= pos.margin + pos.fees
+            # The margin leaves cash now; the entry fee does not: it sits in the position
+            # and comes out of the net result at the close (until 2026-10-26 it was taken
+            # here as well, so every round trip cost its entry fee twice in the ledger)
+            acct.cash -= pos.margin
             acct.fees_paid += pos.fees
             open_assets.add(d.asset)
             log.info(

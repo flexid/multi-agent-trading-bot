@@ -732,3 +732,36 @@ async def test_nothing_opens_while_the_book_stands_at_the_day_goal(db: None) -> 
             if cur is not None:
                 cur.aggressive = False
                 s.commit()
+
+
+@needs_db
+async def test_a_round_trip_costs_the_ledger_its_entry_fee_once(db: None) -> None:
+    """2026-10-26: cash lost the entry fee at the open and again inside the net at the
+    close, so every ledger drifted down by its entry fees (the max book by 76.22 over 49
+    trades). A round trip now moves cash by the trade's net result and nothing else."""
+    from app.db.models import PaperAccount
+    from app.db.session import new_session
+
+    seed_decision(stop="90", target="101")
+    ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+    with new_session() as s:
+        before = s.get(PaperAccount, 1)
+        start = before.cash if before is not None else None
+    await ex.tick()
+    (row,) = [p for p in positions() if p.track == "primary"]
+    assert row.status == "open" and row.fees > 0
+    with new_session() as s:
+        mid = s.get(PaperAccount, 1)
+        assert mid is not None
+        if start is None:
+            start = mid.cash + row.margin
+        assert mid.cash == start - row.margin  # the margin left, the fee did not
+    symbol = get_config().symbol(ASSET)
+    ex.quotes[symbol] = quote("101.5", "101.6")  # through the target
+    await ex.tick()
+    (closed,) = [p for p in positions() if p.track == "primary"]
+    assert closed.status == "closed" and closed.pnl is not None
+    with new_session() as s:
+        after = s.get(PaperAccount, 1)
+        assert after is not None
+        assert abs(after.cash - (start + closed.pnl)) < D("0.000001")

@@ -123,6 +123,7 @@ def pilot_vs_paper(pilot: list[Position], paper: list[Position]) -> list[dict[st
 
 
 KNOWN_TRACKS = ("primary", "max", "pilot", "live", "inverse")
+CLOSED_BOOKS = ("max", "inverse")  # v11 (2026-10-19): they open nothing new
 CONSENSUS_RULE = (
     "a trade opens when two of the three managers call the same direction and none calls "
     "the opposite one; the risk engine sizes it"
@@ -151,8 +152,8 @@ def active_books(session: Session, now: datetime) -> tuple[list[str], list[str]]
             select(Position.track).where(Position.opened_at >= now - timedelta(days=14)).distinct()
         ).all()
     )
-    active = [t for t in KNOWN_TRACKS if t in recent]
-    return active, [t for t in KNOWN_TRACKS if t not in active and t != "live"]
+    active = [t for t in KNOWN_TRACKS if t in recent and t not in CLOSED_BOOKS]
+    return active, list(CLOSED_BOOKS)
 
 
 def logic_facts(active: list[str], closed_books: list[str]) -> dict[str, Any]:
