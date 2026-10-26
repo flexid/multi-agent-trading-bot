@@ -50,6 +50,7 @@ from app.db.models import (
     XPostRecord,
 )
 from app.db.session import new_session
+from app.version import FROZEN_UNTIL, LOGIC_VERSION
 
 app = FastAPI(title="dorkbot admin", docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=str(Path(__file__).with_name("static"))), name="static")
@@ -214,7 +215,17 @@ def render(request: Request, name: str, **ctx: Any) -> HTMLResponse:
     token = request.cookies.get(COOKIE) or ""
     csrf = _sessions().csrf(token) if token else ""
     return templates.TemplateResponse(
-        request, name, {"csrf": csrf, "next_cycle_at": next_cycle_at(), **ctx}
+        request,
+        name,
+        {
+            "csrf": csrf,
+            "next_cycle_at": next_cycle_at(),
+            # the logic in force, on every page (owner 2026-10-26: the admin must show
+            # the actual version, the site shows the record's starting one)
+            "logic_version": LOGIC_VERSION,
+            "frozen_until": FROZEN_UNTIL,
+            **ctx,
+        },
     )
 
 
