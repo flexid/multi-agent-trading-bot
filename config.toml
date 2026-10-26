@@ -1,56 +1,28 @@
 # Bot parameters. The owner sets these once; the bot decides everything else.
 # Secrets do not belong here; they live in .env. See docs/SPEC.md §13.
 
-[trading]
-assets = ["BTC", "ETH", "SOL", "XRP", "DOGE", "PEPE", "HBAR", "PUMP", "SPX6900", "ENA"]  # derived from [sleeves] at load; listed for readers
+[trading]                       # v14 (owner 2026-10-26): one mode, one book. What was the aggressive profile is the bot.
+assets = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ENA"]   # six in one pool; PEPE, HBAR, PUMP and SPX6900 left at v14 (one call a week, the worst stops)
 capital_max_usdt = 10000        # paper equity in shadow; live starts at live_start_fraction of it
 live_start_fraction = 0.10      # and never sizes beyond actual subaccount equity
 live_allowed = false            # owner flips once; go-live itself is automatic (SPEC §10)
-leverage_max = 10
-risk_per_trade = 0.01           # owner 2026-10-09; the sleeves override per asset
-risk_per_trade_max = 0.025      # the max shadow track: the leveraged variant (owner goal 1%/day, 2026-10-09)
-capital_share_per_asset = 0.20
+leverage_max = 3                # owner 2026-10-21: 3x is enough; the stop cap lands plans at 2-2.7x anyway
+capital_share_per_asset = 0.20  # margin per trade as a share of equity; the risk per trade follows: this × stop_max_margin_pct
 gross_exposure_max = 3.0
-net_beta_exposure_max = 1.5     # beta-weighted same-direction crypto exposure, × equity (owner 2026-10-10)
+net_beta_exposure_max = 3.0     # beta-weighted same-direction exposure, × equity
 holding_min_hours = 1
-holding_max_days = 7
+max_hold_hours = 48             # no trade is held longer
 short_allowed = true
-day_loss_stop = -0.02
-drawdown_pause = -0.10
-emergency_brake = -0.25
+emergency_brake = -0.25         # the one loss limit left, against starting capital; no day-loss stop, no drawdown pause, no locks
 depth_cap = 0.05
 cycle_hours = 4
-
-[aggressive]                    # the profile behind the admin's "aggressive mode" switch (owner 2026-10-11); off by default. No locks while it is on.
-risk_multiplier = 2.5           # × each sleeve's risk per trade: bluechips 1% → 2.5%, alts 0.5% → 1.25% (never above 5%)
-leverage_ceiling = 10           # the full ceiling instead of 2x; a sleeve's own cap still applies (alts 3x)
-take_profit_equity_pct = 0.01   # day goal: all trades are closed once the ledger is 1% up, net; so is one trade that makes it alone
-take_profit_trade_pct = 0.02    # a single trade is banked once it is 2% up on its margin, net of the closing fee (owner 2026-10-12); 0 = off
-take_profit_giveback = 0.25     # past that level the take trails: closed after giving back this share of its best return, never below the level
-stop_max_margin_pct = 0.04      # v10: the loss at the stop is at most 4% of the margin; the leverage and the size come down until it fits. 0 = off
-net_beta_exposure_max = 3.0     # × equity, per sleeve and across both
-max_hold_hours = 48             # no trade is held longer (24 until 2026-10-12)
-goal_cycle = true               # after the day goal is banked, start a new decision cycle at once
+stop_room = 1.0                 # v11: stops where the managers put them
+stop_max_margin_pct = 0.04      # the loss at the stop is at most 4% of the margin; a stop that does not fit at 1x blocks the trade (v14)
+take_profit_equity_pct = 0.01   # day goal: every open trade is banked once the ledger is 1% up, net
+goal_cycle = true               # ... and a new decision cycle starts at once
 goal_cycle_min_gap_minutes = 30 # ... unless the regular cycle starts within this many minutes
-stop_room = 1.0                 # v11: stops where the managers put them (1.5 forced 1x on 107 plans in the v10 week)
-
-[sleeves.bluechips]             # owner 2026-10-10 (logic v4): two sleeves, each its own budget and limits
-assets = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
-capital_fraction = 0.70
-risk_per_trade = 0.01
-leverage_max = 10
-net_beta_exposure_max = 1.5
-day_loss_stop = -0.02
-
-[sleeves.alts]
-assets = ["PEPE", "HBAR", "PUMP", "SPX6900", "ENA"]
-capital_fraction = 0.30
-risk_per_trade = 0.005
-leverage_max = 3
-net_beta_exposure_max = 1.5
-day_loss_stop = -0.02
-weights = { polymarket = 0.0, catalysts = 0.20, x_sentiment = 0.30, chart_patterns = 0.30 }   # Djaf replaces Orak here (logic v5)
-models = { chart_patterns = "claude-sonnet-5-5", x_sentiment = "jev-latest" }   # cheaper vision; Jev labels the posts
+take_profit_trade_pct = 0.02    # a single trade is banked once it is 2% up on its margin, net of the closing fee
+take_profit_keep = 0.5          # v14: past the level the floor rides half of the gain beyond it (a 4% peak banks 3%)
 
 [pilot]                         # execution pilot after M9 (owner): real orders, 1x, small
 enabled = true                  # owner enabled the pilot 2026-10-09
@@ -109,25 +81,23 @@ dominance_weight = 0.0          # BTC dominance tilt: logged only until real dom
 
 [agents.weights_by_asset]       # overrides on the tuned weights, renormalized per asset
 DOGE = { x_sentiment = 0.30 }   # a memecoin: attention on X drives it (owner 2026-10-10)
+ENA = { polymarket = 0.0, catalysts = 0.20, x_sentiment = 0.30, chart_patterns = 0.30 }   # the old alt-sleeve weights (v14)
 
-[catalysts]                     # Djaf: catalyst agent for the alt sleeve (owner 2026-10-10, logic v5)
+[catalysts]                     # Djaf: the catalyst agent (owner 2026-10-10, logic v5); v14: ENA only, the alt sleeve is gone
+assets = ["ENA"]                # the assets it covers; its reading replaces Polymarket's for them (see agents.weights_by_asset)
 # Official project accounts, then alt-news accounts; handles verified on X 2026-10-10.
-accounts = ["pepecoineth", "hedera", "pumpfun", "spx6900", "ethena", "DefiLlama", "Tokenomist_ai", "cryptorank_io", "Bybit_Official"]
+accounts = ["ethena", "DefiLlama", "Tokenomist_ai", "cryptorank_io", "Bybit_Official"]
 reads_per_cycle_max = 30        # of the daily X read budget (5 posts per account minimum page)
+label_model = "jev-latest"      # labels the catalyst accounts' posts
 shadow_model = "claude-sonnet-5-5"   # labels the same events and posts beside Jev while not live
 unlock_horizon_days = 30
 [catalysts.official]            # the project's own accounts (owner 2026-10-10): bullish counts half, promo needs materiality ≥ 0.4, two events per account
-pepecoineth = "PEPE"
-hedera = "HBAR"
-pumpfun = "PUMP"
-spx6900 = "SPX6900"
 ethena = "ENA"
-[catalysts.unlock_slugs]        # DefiLlama emissions datasets; PEPE and SPX6900 have no schedule (fully circulating)
+[catalysts.unlock_slugs]        # DefiLlama emissions datasets
 ENA = "ethena"
-PUMP = "pump"
-HBAR = "hedera"
 
 [x]                             # X sentiment agent (SPEC §6)
+models_by_asset = { ENA = "jev-latest" }   # the cheap labeller for the asset that carried the alt sleeve's catalyst reading (v14)
 # Curated accounts, handles without "@". Owner's list (2026-10-09), duplicates removed.
 accounts = [
   "decentradork", "DrProfitCrypto", "MustStopMurad", "trader1sz", "MerlijnTrader", "Exitpump",
@@ -149,6 +119,7 @@ price_atr_1h = 1.5              # a move of this many ATR within an hour starts 
 max_per_day = 4                 # triggered cycles per day, all sources together (was 2)
 min_gap_minutes = 30            # no trigger this soon after any cycle
 x_poll_minutes = 3              # the curated X accounts are read and labelled by Jev this often; a credible fresh shock starts a cycle
+same_story_hours = 6            # v14: one triggered cycle per news story
 light_cycle = true              # every hour a code-only check (no managers, cents): a formula flip on an asset starts a full cycle
 formula_flip = 0.3              # the formula score that counts as a call for that check
 

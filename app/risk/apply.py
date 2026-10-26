@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.agents.macro import event_today
-from app.config import AggressiveConfig, Config, SleeveConfig
+from app.config import Config, TradingConfig, get_config
 from app.db.models import (
     AccountSnapshot,
     AgentOutputRecord,
@@ -72,16 +72,15 @@ def limits_with_state(lim: engine.Limits, state: RiskState) -> engine.Limits:
 
 
 def limits_for_max(lim: engine.Limits, cfg: Config) -> engine.Limits:
-    """The max track's limits: the same rules, sized with ``risk_per_trade_max`` (never
-    below the sleeve's own risk per trade)."""
-    return replace(lim, risk_per_trade=max(lim.risk_per_trade, cfg.trading.risk_per_trade_max))
+    """The max track opens nothing since v11; its limits are the book's."""
+    return lim
 
 
 STOP_ROOM_MAX = Decimal(3)  # a stop is never moved more than three times further away
 
 
 def widen_stop(
-    c: Consensus, agg: AggressiveConfig | None, max_distance: Decimal | None = None
+    c: Consensus, agg: TradingConfig | None, max_distance: Decimal | None = None
 ) -> Consensus:
     """Aggressive mode gives every stop more room (owner 2026-10-11): the stop moves
     ``stop_room`` times further from the middle of the entry zone. The engine sizes the
@@ -119,33 +118,35 @@ RISK_HARD_MAX = Decimal("0.05")  # risk per trade, aggressive mode included
 NEVER = Decimal(-1)  # a loss limit that cannot be reached: equity cannot fall by more than 100%
 
 
-def aggressive_profile(cfg: Config, state: RiskState) -> AggressiveConfig | None:
-    """The aggressive profile when the owner's switch is on, else None."""
-    return cfg.aggressive if getattr(state, "aggressive", False) else None
+def aggressive_profile(cfg: Config, state: RiskState) -> TradingConfig | None:
+    """v14: the one mode, always on. The name stays for the call sites."""
+    return cfg.profile
 
 
-def aggressive_limits(lim: engine.Limits, agg: AggressiveConfig | None) -> engine.Limits:
+def aggressive_limits(lim: engine.Limits, agg: TradingConfig | None) -> engine.Limits:
     """The account-level limits under aggressive mode: more risk per trade, a wider
     day-loss stop and exposure cap. Every value stays inside hard bounds in code."""
     if agg is None:
         return lim
     return replace(
         lim,
-        risk_per_trade=min(RISK_HARD_MAX, lim.risk_per_trade * agg.risk_multiplier),
+        # the risk per trade follows the stop cap: at the cap a stop costs capital share ×
+        # cap of equity (v14: no risk-per-trade parameter)
+        risk_per_trade=min(RISK_HARD_MAX, lim.capital_share * agg.stop_max_margin_pct),
         net_beta_exposure_max=max(lim.net_beta_exposure_max, agg.net_beta_exposure_max),
         net_beta_total_max=max(lim.net_beta_total_max, agg.net_beta_exposure_max),
-        # no locks (owner): the day-loss stop, the drawdown pause and the automatic brake
-        # can never be reached, and there is no daily limit on trades per asset
+        # no locks (owner): the day-loss stop and the drawdown pause can never be reached,
+        # and there is no daily limit on trades per asset; the emergency brake stays (v14)
         day_loss_stop=NEVER,
         drawdown_pause=NEVER,
-        emergency_brake=NEVER,
+        emergency_brake=agg.emergency_brake,
         max_trades_per_asset_day=10_000,
         stop_max_margin_pct=agg.stop_max_margin_pct,
     )
 
 
 def aggressive_account(
-    acct: engine.AccountState, agg: AggressiveConfig | None, live: bool
+    acct: engine.AccountState, agg: TradingConfig | None, live: bool
 ) -> engine.AccountState:
     """The account view under aggressive mode: the full leverage ceiling (not while live:
     real money keeps the go-live ramp), and no memory of pauses, losing days or half risk.
@@ -167,21 +168,20 @@ def aggressive_account(
     )
 
 
-def sleeve_values(
-    s_cfg: SleeveConfig, agg: AggressiveConfig | None
-) -> tuple[Decimal, Decimal, Decimal]:
-    """(risk per trade, day-loss stop, exposure cap) for a sleeve, with the aggressive
-    profile applied when it is on."""
-    if agg is None:
-        return s_cfg.risk_per_trade, s_cfg.day_loss_stop, s_cfg.net_beta_exposure_max
+def sleeve_values(s_cfg: Any, agg: TradingConfig | None) -> tuple[Decimal, Decimal, Decimal]:
+    """Kept for the admin page; there are no sleeves since v14."""
     return (
-        min(RISK_HARD_MAX, s_cfg.risk_per_trade * agg.risk_multiplier),
-        NEVER,  # no sleeve day-loss stop while the mode is on
-        max(s_cfg.net_beta_exposure_max, agg.net_beta_exposure_max),
+        min(
+            RISK_HARD_MAX,
+            (agg or get_config().trading).capital_share_per_asset
+            * (agg or get_config().trading).stop_max_margin_pct,
+        ),
+        NEVER,
+        (agg or get_config().trading).net_beta_exposure_max,
     )
 
 
-def cap_hold(c: Consensus, agg: AggressiveConfig | None) -> Consensus:
+def cap_hold(c: Consensus, agg: TradingConfig | None) -> Consensus:
     """Aggressive mode holds no trade longer than its limit (24 hours)."""
     if agg is None or c.proposal is None or not c.proposal.max_hold_hours:
         return c
@@ -195,14 +195,14 @@ def limits_from_config(cfg: Config) -> engine.Limits:
     t = cfg.trading
     return engine.Limits(
         capital_max=t.capital_max_usdt,
-        risk_per_trade=t.risk_per_trade,
+        risk_per_trade=min(RISK_HARD_MAX, t.capital_share_per_asset * t.stop_max_margin_pct),
         capital_share=t.capital_share_per_asset,
         leverage_max=Decimal(t.leverage_max),
         gross_exposure_max=t.gross_exposure_max,
         net_beta_exposure_max=t.net_beta_exposure_max,
         depth_cap=t.depth_cap,
-        day_loss_stop=t.day_loss_stop,
-        drawdown_pause=t.drawdown_pause,
+        day_loss_stop=NEVER,
+        drawdown_pause=NEVER,
         emergency_brake=t.emergency_brake,
         chase_max_atr=cfg.risk.chase_max_atr,
         hard_stop_atr=cfg.risk.hard_stop_atr,

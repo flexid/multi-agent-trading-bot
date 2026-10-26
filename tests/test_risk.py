@@ -270,10 +270,8 @@ def test_max_track_limits_use_their_own_risk_per_trade() -> None:
         drawdown_pause=D("-0.10"),
         emergency_brake=D("-0.20"),
     )
-    cfg = SimpleNamespace(trading=SimpleNamespace(risk_per_trade_max=D("0.025")))
-    mx = limits_for_max(lim, cfg)  # type: ignore[arg-type]
-    assert mx.risk_per_trade == D("0.025") and mx.leverage_max == lim.leverage_max
-    assert lim.risk_per_trade == D("0.005")  # the primary's limits are untouched
+    cfg = SimpleNamespace(trading=SimpleNamespace())
+    assert limits_for_max(lim, cfg) is lim  # v14: the max track opens nothing; no own risk
 
 
 def test_correlation_cap_sizes_same_direction_trades_into_the_room_left() -> None:
@@ -337,50 +335,41 @@ def test_a_short_at_conviction_point_four_can_borrow_since_v7() -> None:
     assert not low.allowed and any(h.rule == "short_needs_borrow" for h in low.hits)
 
 
-def test_aggressive_mode_pushes_risk_and_leverage_inside_hard_bounds() -> None:
-    from app.config import AggressiveConfig, get_config
-    from app.risk.apply import (
-        NEVER,
-        RISK_HARD_MAX,
-        aggressive_account,
-        aggressive_limits,
-        cap_hold,
-        sleeve_values,
-    )
+def test_the_one_mode_limits_follow_the_stop_cap_and_keep_only_the_brake() -> None:
+    """v14 (owner 2026-10-26): the aggressive profile is the bot. The risk per trade is the
+    capital share times the stop cap, no day-loss stop or drawdown pause can fire, the
+    emergency brake stays, no trade is held past 48 hours, paper gets the 3x ceiling."""
+    from app.config import get_config
+    from app.risk.apply import NEVER, aggressive_account, aggressive_limits, cap_hold
 
     cfg = get_config()
-    agg = cfg.aggressive
-    blue, alts = cfg.sleeves["bluechips"], cfg.sleeves["alts"]
-    assert sleeve_values(blue, None) == (
-        blue.risk_per_trade,
-        blue.day_loss_stop,
-        blue.net_beta_exposure_max,
-    )
-    risk, stop, beta = sleeve_values(blue, agg)
-    assert risk == D("0.025") and stop == NEVER and beta == D("3.0")
-    assert sleeve_values(alts, agg)[0] == D("0.0125")
-    # the hard bound on risk holds whatever the profile says
-    assert sleeve_values(blue, AggressiveConfig(risk_multiplier=D(50)))[0] == RISK_HARD_MAX
-    assert aggressive_limits(limits(), None) == limits()
+    agg = cfg.profile
+    assert agg is cfg.trading and cfg.sleeves == {} and cfg.sleeve_of("BTC") is None
     pushed = aggressive_limits(limits(), agg)
-    assert pushed.risk_per_trade == limits().risk_per_trade * D("2.5")
+    assert pushed.risk_per_trade == pushed.capital_share * agg.stop_max_margin_pct
+    assert pushed.day_loss_stop == NEVER and pushed.drawdown_pause == NEVER
+    assert pushed.emergency_brake == agg.emergency_brake == D("-0.25")
     assert pushed.net_beta_total_max == D("3.0")
-    # no trade is held longer than two days
     long_hold = cons()
     held = cap_hold(replace_hold(long_hold, 72), agg)
     assert held.proposal is not None and held.proposal.max_hold_hours == 48
     assert cap_hold(replace_hold(long_hold, 12), agg).proposal.max_hold_hours == 12  # type: ignore[union-attr]
-    assert cap_hold(replace_hold(long_hold, 72), None).proposal.max_hold_hours == 72  # type: ignore[union-attr]
-    # the bigger risk sizes a bigger trade at the same stop
-    normal = engine.assess(cons(), account(), market(), limits())
-    bigger = engine.assess(cons(), account(), market(), pushed)
-    assert normal.plan and bigger.plan and bigger.plan.notional > normal.plan.notional
-    assert agg.take_profit_equity_pct == D("0.01")
-    # live keeps the go-live leverage ramp; paper gets the full ceiling
-    assert (
-        aggressive_account(account(leverage_ceiling=D(2)), agg, live=False).leverage_ceiling == 10
-    )
+    assert agg.take_profit_equity_pct == D("0.01") and agg.take_profit_keep == D("0.5")
+    # live keeps the go-live leverage ramp; paper gets the ceiling, 3x since v14
+    assert aggressive_account(account(leverage_ceiling=D(2)), agg, live=False).leverage_ceiling == 3
     assert aggressive_account(account(leverage_ceiling=D(2)), agg, live=True).leverage_ceiling == 2
+
+
+def test_a_stop_that_does_not_fit_the_cap_at_1x_blocks_the_trade() -> None:
+    """v14 (owner): the three stops of the v10-v13 weeks averaged -8.4% against a 4% cap;
+    a plan whose stop would cost more than the cap even without leverage is not taken."""
+    wide = cons(Direction.LONG, stop=93.0)  # 7% away
+    blocked = engine.assess(wide, account(), market(), limits(stop_max_margin_pct=D("0.04")))
+    assert not blocked.allowed and any(h.rule == "stop_exceeds_cap" for h in blocked.hits)
+    fits = engine.assess(
+        cons(Direction.LONG, stop=97.0), account(), market(), limits(stop_max_margin_pct=D("0.04"))
+    )
+    assert fits.allowed and fits.plan is not None and fits.plan.leverage <= D("1.34")
 
 
 def test_the_stop_may_cost_at_most_a_share_of_the_margin() -> None:
@@ -429,10 +418,10 @@ def test_aggressive_mode_has_no_locks() -> None:
     from app.config import get_config
     from app.risk.apply import aggressive_account, aggressive_limits
 
-    agg = get_config().aggressive
+    agg = get_config().profile
     now = datetime.now(UTC)
     bad = account(
-        equity=D(6000),  # -40% against 10,000 starting capital and its peak
+        equity=D(8500),  # -15% against 10,000 starting capital: a pause and a day lock, no brake
         day_pnl_pct=D("-0.15"),
         paused_until=now + timedelta(hours=40),
         pause_count_30d=2,
@@ -448,6 +437,9 @@ def test_aggressive_mode_has_no_locks() -> None:
     assert a.allowed and not any(h.rule == "trades_per_day" for h in a.hits)
     braked = aggressive_account(account(emergency_brake=True), agg, live=False)
     assert [h.effect for h in engine.account_rules(braked, lim_a, now)] == ["brake"]
+    # v14: the loss limit against starting capital still brakes
+    deep = aggressive_account(account(equity=D(6000)), agg, live=False)
+    assert [h.rule for h in engine.account_rules(deep, lim_a, now)] == ["emergency_brake"]
 
 
 def replace_hold(c: Consensus, hours: int) -> Consensus:
@@ -458,20 +450,20 @@ def replace_hold(c: Consensus, hours: int) -> Consensus:
 
 
 def test_aggressive_mode_gives_stops_more_room_at_the_same_risk() -> None:
-    from app.config import AggressiveConfig, get_config
+    from app.config import get_config
     from app.risk.apply import widen_stop
 
-    agg = get_config().aggressive
-    assert agg.stop_room == D("1.0")  # v11: stops where the managers put them
-    agg = AggressiveConfig(stop_room=D("1.5"))  # the widening itself, tested at 1.5
+    base = get_config().profile
+    assert base.stop_room == D("1.0")  # v11: stops where the managers put them
+    agg = base.model_copy(update={"stop_room": D("1.5")})  # the widening itself, tested at 1.5
     long_ = cons(stop=98.0)  # entry zone 99-101, middle 100: the stop is 2 away
     wide = widen_stop(long_, agg)
     assert wide.proposal is not None and wide.proposal.stop == pytest.approx(97.0)  # 3 away
     short = widen_stop(cons(Direction.SHORT, stop=103.0, target=94.0), agg)
     assert short.proposal is not None and short.proposal.stop == pytest.approx(104.5)
     assert widen_stop(long_, None) is long_  # mode off: untouched
-    assert widen_stop(long_, AggressiveConfig(stop_room=D(1))) is long_
-    capped = widen_stop(long_, AggressiveConfig(stop_room=D(50)))  # never more than 3×
+    assert widen_stop(long_, base.model_copy(update={"stop_room": D(1)})) is long_
+    capped = widen_stop(long_, base.model_copy(update={"stop_room": D(50)}))  # never more than 3×
     assert capped.proposal is not None and capped.proposal.stop == pytest.approx(94.0)
     # the engine sizes on the new distance: a smaller position, the same money at risk
     lim = limits(risk_per_trade=D("0.025"), hard_stop_atr=D(0), stop_buffer_atr=D(0))

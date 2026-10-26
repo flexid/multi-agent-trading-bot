@@ -139,12 +139,9 @@ class EventLabelBatch(BaseModel):
 
 
 def sleeve_assets(cfg: Config) -> list[str]:
-    """The assets this agent covers: those of the sleeve that lists it in its weights
-    (the alts), else none."""
-    for s in cfg.sleeves.values():
-        if s.weights.get(AGENT, 0.0) > 0:
-            return [a for a in s.assets if a in ASSET_TEXT]
-    return []
+    """The assets this agent covers: ``catalysts.assets`` in config (v14; the alt sleeve
+    before that)."""
+    return [a for a in cfg.catalysts.assets if a in ASSET_TEXT and a in cfg.trading.assets]
 
 
 def mentioned_asset(text: str, assets: list[str]) -> str | None:

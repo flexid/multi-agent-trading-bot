@@ -271,7 +271,20 @@ def assess(
         # v10 (owner): the take is 2% of the margin, so the stop may cost at most
         # stop_max_margin_pct of it. The stop stays where it was placed; the leverage,
         # and with it the size, comes down until the loss at the stop fits.
-        cap = max(Decimal(1), (lim.stop_max_margin_pct / stop_distance).quantize(Decimal("0.01")))
+        raw_cap = (lim.stop_max_margin_pct / stop_distance).quantize(Decimal("0.01"))
+        if raw_cap < 1:
+            # v14 (owner): at 1x the stop would already cost more than the cap. The three
+            # stops of the v10-v13 weeks averaged -8.4% against a 4% cap, two of them here.
+            hits.append(
+                RuleHit(
+                    "stop_exceeds_cap",
+                    f"stop {stop_distance:.2%} away costs more than {lim.stop_max_margin_pct:.0%} "
+                    "of margin even at 1x",
+                    "block",
+                )
+            )
+            return Assessment(asset, False, None, hits)
+        cap = max(Decimal(1), raw_cap)
         if leverage > cap:
             leverage = cap
             hits.append(

@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Config
-from app.db.models import ControlRequest, Cycle, RiskState
+from app.db.models import ControlRequest, Cycle
 
 KIND = "cycle"  # control_requests.kind
 CYCLE_KIND = "goal"  # cycles.kind: not "triggered", so it does not use up the trigger cap
@@ -54,15 +54,12 @@ def claim(session: Session, cfg: Config, now: datetime) -> str | None:
     ).all()
     if not pending:
         return None
-    state = session.get(RiskState, 1)
     nxt = next_scheduled(now, cfg.trading.cycle_hours)
-    gap = timedelta(minutes=cfg.aggressive.goal_cycle_min_gap_minutes)
+    gap = timedelta(minutes=cfg.profile.goal_cycle_min_gap_minutes)
     running = session.scalars(
         select(Cycle).where(Cycle.status == "running", Cycle.started_at >= now - RUNNING_STALE)
     ).first()
-    if state is None or not state.aggressive:
-        verdict = "skipped: aggressive mode is off"
-    elif not cfg.aggressive.goal_cycle:
+    if not cfg.profile.goal_cycle:
         verdict = "skipped: switched off in config"
     elif running is not None:
         verdict = f"skipped: cycle {running.id} is already running"

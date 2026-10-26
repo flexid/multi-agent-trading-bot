@@ -470,7 +470,7 @@ class Executor:
                     reason = ExitReason.TAKE_PROFIT
                 # ... or once the trade alone is up its share of the margin put in (owner
                 # 2026-10-12: "1-3% on a single trade, then close it").
-                per_trade = self.cfg.aggressive.take_profit_trade_pct
+                per_trade = self.cfg.profile.take_profit_trade_pct
                 if reason is None and per_trade > 0 and row.margin > 0:
                     ret = net / row.margin
                     peak = row.profit_peak_pct
@@ -480,9 +480,10 @@ class Executor:
                         # the level (a fast run to 4% is banked near 4%, not at 2%).
                         peak = max(peak or Decimal(0), ret)
                         row.profit_peak_pct = peak
-                        floor = max(
-                            per_trade, peak * (1 - self.cfg.aggressive.take_profit_giveback)
-                        )
+                        # v14: the floor rides the gain beyond the level (a 4% peak banks
+                        # 3% at keep 0.5); below the level nothing is given back
+                        keep = self.cfg.profile.take_profit_keep
+                        floor = max(per_trade, per_trade + (peak - per_trade) * keep)
                         if ret <= floor and peak > ret:
                             reason = ExitReason.TAKE_PROFIT
             if reason is None and row.status == "closing":
@@ -774,10 +775,7 @@ class Executor:
     def _take_profit(self, session: Session) -> Decimal | None:
         """The aggressive profile's profit level (a share of equity), or None when the
         mode is off."""
-        state = session.get(RiskState, 1)
-        if state is None or not state.aggressive:
-            return None
-        level = self.cfg.aggressive.take_profit_equity_pct
+        level = self.cfg.profile.take_profit_equity_pct  # v14: the one mode, always on
         return level if level > 0 else None
 
     @staticmethod
@@ -785,9 +783,8 @@ class Executor:
         """Active day locks per sleeve: which directions are locked and since when."""
         from app.risk.sleeves import lock_info
 
+        return {}  # v14: no locks of any kind
         state = session.get(RiskState, 1)
-        if state is not None and state.aggressive:
-            return {}  # aggressive mode: no locks
         locks = (state.day_locked_sleeves or {}) if state else {}
         out = {}
         for name in locks:
@@ -994,10 +991,10 @@ class Executor:
         of its sleeve (owner 2026-10-11: the pilot should be able to take every trade), so
         all ten assets fit at once: 14% of the pilot's capital for a bluechip, 6% for an
         alt. An asset outside the sleeves keeps the old share of the whole."""
-        share = self.cfg.trading.capital_share_per_asset
-        sleeve = self.cfg.sleeve_cfg(asset)
-        fraction = sleeve.capital_fraction if sleeve is not None else Decimal(1)
-        return self.cfg.pilot.capital_usdt * fraction * share
+        # v14: one book; every asset gets the same slot, and all of them fit at once
+        n = max(1, len(self.cfg.trading.assets))
+        share = min(self.cfg.trading.capital_share_per_asset, Decimal(1) / n)
+        return self.cfg.pilot.capital_usdt * share
 
     @staticmethod
     def _note(d: DecisionRecord, track: str, text: str) -> None:
@@ -1350,40 +1347,23 @@ class Executor:
         state = session.get(RiskState, 1)
         if state is None:
             return False
-        if state.aggressive:
-            # Aggressive mode (owner 2026-10-11): no locks. Only a brake still stops it,
-            # and that is now set by hand or by a reconcile mismatch, never by a loss.
-            self.frozen = bool(state.emergency_brake)
-            return bool(state.emergency_brake)
-        alerted = self._alerted
-        for flag, cond, subject in (
-            ("brake", state.emergency_brake, "dorkbot: EMERGENCY BRAKE, waiting for you"),
-            (
-                "pause",
-                bool(state.paused_until and state.paused_until > now),
-                "dorkbot: drawdown pause, closing everything for 72 h",
-            ),
-            (
-                "daylock",
-                bool(state.day_locked_until and state.day_locked_until > now),
-                "dorkbot: day loss stop, closed everything until 00:00 UTC",
-            ),
-        ):
-            if cond and flag not in alerted:
-                alerted.add(flag)
-                self._alert(
-                    subject,
-                    f"{subject}. Reason: {state.brake_reason or 'risk rule'}. Mode {self.mode}. "
-                    "Resume from the admin when you are ready.",
-                )
-            if not cond:
-                alerted.discard(flag)
+        # v14: one mode, no locks. Only the brake closes everything: set by hand, by a
+        # reconcile mismatch, or by the loss limit against starting capital
+        # (trading.emergency_brake). A kill switch freezes new entries on its own path.
+        subject = "dorkbot: EMERGENCY BRAKE, waiting for you"
+        if state.emergency_brake and "brake" not in self._alerted:
+            self._alerted.add("brake")
+            self._alert(
+                subject,
+                f"{subject}. Reason: {state.brake_reason or 'risk rule'}. Mode {self.mode}. "
+                "Resume from the admin when you are ready.",
+            )
+        if not state.emergency_brake:
+            self._alerted.discard("brake")
         if state.emergency_brake:
             self.frozen = True
             return True
-        if state.day_locked_until and state.day_locked_until > now:
-            return True
-        return bool(state.paused_until and state.paused_until > now)
+        return False
 
     # --- loop ---------------------------------------------------------------------
 

@@ -130,8 +130,6 @@ EDITABLE: dict[str, tuple[Decimal, Decimal]] = {
         Decimal(1),
         Decimal(10),
     ),  # owner 2026-10-09: Bybit spot margin tops at 10x
-    "trading.risk_per_trade": (Decimal("0.001"), Decimal("0.02")),
-    "trading.risk_per_trade_max": (Decimal("0.001"), Decimal("0.05")),  # the max track only
     "trading.capital_share_per_asset": (Decimal("0.05"), Decimal("0.5")),
     "trading.gross_exposure_max": (Decimal(1), Decimal(3)),
     "trading.net_beta_exposure_max": (Decimal("0.5"), Decimal(5)),  # beta-weighted, × equity
@@ -1440,7 +1438,7 @@ def aggressive_view(cfg: Config, state: RiskState | None) -> dict[str, Any]:
     """What the switch changes, normal next to aggressive, for the parameters page."""
     from app.risk.apply import RISK_HARD_MAX, sleeve_values
 
-    agg = cfg.aggressive
+    agg = cfg.profile
     rows = []
     for name, s_cfg in cfg.sleeves.items():
         risk, stop, beta = sleeve_values(s_cfg, agg)
@@ -1467,7 +1465,7 @@ def aggressive_view(cfg: Config, state: RiskState | None) -> dict[str, Any]:
         "take_profit": agg.take_profit_equity_pct,
         "goal_gap": agg.goal_cycle_min_gap_minutes,
         "take_trade": agg.take_profit_trade_pct,
-        "giveback": agg.take_profit_giveback,
+        "keep": agg.take_profit_keep,
         "stop_room": agg.stop_room,
     }
 

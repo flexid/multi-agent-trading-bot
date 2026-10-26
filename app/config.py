@@ -22,41 +22,50 @@ class _Section(BaseModel):
 
 
 class TradingConfig(_Section):
+    """The one mode (v14, owner 2026-10-26): what used to be the aggressive profile is the
+    bot. One book, one pool of capital, one set of exits. No locks: the day-loss stop,
+    the drawdown pause and the daily trade limit are gone; only the emergency brake and
+    each trade's own stop remain. Code keeps hard bounds on risk and leverage."""
+
     assets: list[str]
     capital_max_usdt: Decimal
     live_start_fraction: Decimal = Decimal("0.10")
     live_allowed: bool
-    leverage_max: int
-    risk_per_trade: Decimal
-    # The max shadow track sizes with this instead (owner goal 2026-10-09: show the
-    # leveraged variant beside the go-live record).
-    risk_per_trade_max: Decimal = Decimal("0.025")
-    capital_share_per_asset: Decimal
+    leverage_max: int = Field(default=3, ge=1, le=10)  # owner 2026-10-21: 3x is enough
+    capital_share_per_asset: Decimal  # margin per trade, as a share of equity
     gross_exposure_max: Decimal
     # Beta-weighted same-direction exposure cap, × equity (owner 2026-10-10)
-    net_beta_exposure_max: Decimal = Decimal("1.5")
-    holding_min_hours: int
-    holding_max_days: int
-    short_allowed: bool
-    day_loss_stop: Decimal
-    drawdown_pause: Decimal
-    emergency_brake: Decimal
+    net_beta_exposure_max: Decimal = Decimal("3.0")
+    holding_min_hours: int = 1
+    max_hold_hours: int = Field(default=48, ge=1, le=336)  # no trade is held longer
+    short_allowed: bool = True
+    emergency_brake: Decimal = Decimal("-0.25")  # the one loss limit left: against starting capital
     depth_cap: Decimal
     cycle_hours: int
+    # Stops sit this many times further from the entry than the managers put them; v11:
+    # 1.0, where they put them (1.5 forced 1x on 107 of the v10 week's plans).
+    stop_room: Decimal = Field(default=Decimal("1.0"), ge=1, le=3)
+    # The loss at the stop may be at most this share of the margin: the leverage, and so
+    # the size, comes down until it fits; a stop that does not fit at 1x blocks the trade
+    # (v14). The risk per trade follows: capital share × this cap. 0 = off.
+    stop_max_margin_pct: Decimal = Field(default=Decimal("0.04"), ge=0, le=Decimal("0.5"))
+    # Day goal: once a ledger is this share up, net of every fee and the borrow interest,
+    # every open trade is banked and a new cycle starts (goal_cycle).
+    take_profit_equity_pct: Decimal = Decimal("0.01")
+    goal_cycle: bool = True
+    goal_cycle_min_gap_minutes: int = Field(default=30, ge=5, le=240)
+    # A single trade is banked once its net return on margin reaches this level (owner
+    # 2026-10-12: "1-3% on a single trade"). 0 = off.
+    take_profit_trade_pct: Decimal = Field(default=Decimal("0.02"), ge=0, le=Decimal("0.5"))
+    # Past the level the take rides: the floor is the level plus this share of the gain
+    # beyond it (v14: a 4% peak banks 3%; a peak just above the level still banks the
+    # level, as before).
+    take_profit_keep: Decimal = Field(default=Decimal("0.5"), ge=0, le=1)
 
-
-class SleeveConfig(_Section):
-    """One sleeve of the book (owner 2026-10-10): its assets, share of capital and its own
-    risk budget, caps and day-loss stop; optional agent-weight and model overrides."""
-
-    assets: list[str]
-    capital_fraction: Decimal
-    risk_per_trade: Decimal
-    leverage_max: int
-    net_beta_exposure_max: Decimal = Decimal("1.5")
-    day_loss_stop: Decimal = Decimal("-0.02")
-    weights: dict[str, float] = Field(default_factory=dict)  # agent weight overrides
-    models: dict[str, str] = Field(default_factory=dict)  # task -> model overrides
+    # --- the old profile's names, for the code paths that still use them --------------
+    @property
+    def leverage_ceiling(self) -> int:
+        return self.leverage_max
 
 
 class CatalystsConfig(_Section):
@@ -68,44 +77,11 @@ class CatalystsConfig(_Section):
     # count half, its promotional posts need more materiality, and two events per account count
     official: dict[str, str] = Field(default_factory=dict)
     reads_per_cycle_max: int = 30  # share of the daily X read budget
+    assets: list[str] = Field(default_factory=list)  # the assets the catalyst reading covers (v14)
+    label_model: str = "jev-latest"  # labels the catalyst accounts' posts
     shadow_model: str = "claude-sonnet-5-5"  # runs beside Jev while not live; "" turns it off
     unlock_slugs: dict[str, str] = Field(default_factory=dict)  # asset -> DefiLlama slug
     unlock_horizon_days: int = 30  # how far ahead unlocks are loaded
-
-
-class AggressiveConfig(_Section):
-    """What the admin's "aggressive mode" switch changes (owner 2026-10-11): more risk per
-    trade and the full leverage ceiling in pursuit of the 1%-a-day goal, no locks of any
-    kind (no day-loss stop, no drawdown pause, no automatic brake, no daily trade limit),
-    a trade banked as soon as it has earned its share of the goal, and a short holding
-    limit. Each trade keeps its own stop. Code keeps hard bounds on risk and leverage."""
-
-    risk_multiplier: Decimal = Decimal("2.5")  # × each sleeve's risk per trade
-    leverage_ceiling: int = 10  # instead of the 2x start ceiling; sleeve caps still apply
-    net_beta_exposure_max: Decimal = Decimal("3.0")  # × equity, per sleeve and in total
-    max_hold_hours: int = 48  # 24 until 2026-10-12: too short for a 4-hour setup
-    # After the day goal is banked, start a decision cycle at once instead of waiting for
-    # the next regular one, unless that one starts within the gap anyway.
-    goal_cycle: bool = True
-    goal_cycle_min_gap_minutes: int = Field(default=30, ge=5, le=240)
-    # Stops sit this many times further from the entry than the managers put them (owner:
-    # more room). The position shrinks to match, so the loss at the stop is unchanged.
-    stop_room: Decimal = Decimal("1.5")
-    # Close a trade once its net profit, after both fees and the borrow interest, reaches
-    # this share of the ledger's equity. Checked every ten seconds, so it fills at or a
-    # little above it ("between 1 and 2% net").
-    take_profit_equity_pct: Decimal = Decimal("0.01")
-    # Close a single trade once its net profit, the closing fee taken off, reaches this
-    # share of the margin put in (owner 2026-10-12: "1-3% on a single trade"). 0 = off.
-    take_profit_trade_pct: Decimal = Field(default=Decimal("0.02"), ge=0, le=Decimal("0.5"))
-    # Past that level the take trails: the trade stays open while the return keeps rising
-    # and is closed when it has given back this share of its best return, never below the
-    # level itself (owner: "if it's suddenly 4% it can close on 4% as well").
-    take_profit_giveback: Decimal = Field(default=Decimal("0.25"), ge=0, le=Decimal("0.9"))
-    # The loss at the stop may be at most this share of the margin: the leverage, and so
-    # the size, comes down until it fits (v10, owner: a 2% take needs a stop of about 4%
-    # on margin, not 9%). 0 = off.
-    stop_max_margin_pct: Decimal = Field(default=Decimal("0.04"), ge=0, le=Decimal("0.5"))
 
 
 class PilotConfig(_Section):
@@ -166,6 +142,7 @@ class AgentsConfig(_Section):
 
 class XConfig(_Section):
     accounts: list[str] = Field(default_factory=list)
+    models_by_asset: dict[str, str] = Field(default_factory=dict)  # asset -> labeller (v14)
     search_per_asset: int = 20
     reads_per_cycle_max: int = 90
     query_max_chars: int = 512  # X recent-search query length limit on this tier
@@ -261,6 +238,7 @@ class TriggersConfig(_Section):
     max_per_day: int = Field(default=4, ge=0, le=24)  # triggered cycles, all sources
     min_gap_minutes: int = Field(default=30, ge=5, le=240)  # after any cycle
     x_poll_minutes: int = Field(default=3, ge=1, le=60)  # the curated accounts, Jev labels
+    same_story_hours: int = Field(default=6, ge=0, le=48)  # one triggered cycle per story (v14)
     light_cycle: bool = True  # the hourly code-only check that can trigger a full cycle
     formula_flip: float = Field(default=0.3, ge=0.1, le=1.0)  # |score| that counts as a call
 
@@ -326,7 +304,6 @@ class Config(_Section):
     llm: LLMConfig = LLMConfig()
     trading: TradingConfig
     pilot: PilotConfig = PilotConfig()
-    aggressive: AggressiveConfig = AggressiveConfig()
     exchange: ExchangeConfig = ExchangeConfig()
     posting: PostingConfig
     risk: RiskConfig = RiskConfig()
@@ -340,23 +317,27 @@ class Config(_Section):
     server: ServerConfig = ServerConfig()
     budget: BudgetConfig
     models: ModelsConfig
-    sleeves: dict[str, SleeveConfig] = Field(default_factory=dict)
 
-    def model_post_init(self, __context: Any) -> None:
-        # With sleeves, the traded universe is their union, in sleeve order.
-        if self.sleeves:
-            assets = [a for s in self.sleeves.values() for a in s.assets]
-            object.__setattr__(self.trading, "assets", assets)
+    # v14 (owner 2026-10-26): one book. The sleeves are gone; these keep the code paths
+    # that grouped by sleeve on one empty group.
+    @property
+    def sleeves(self) -> dict[str, Any]:
+        return {}
 
     def sleeve_of(self, asset: str) -> str | None:
-        for name, s in self.sleeves.items():
-            if asset in s.assets:
-                return name
         return None
 
-    def sleeve_cfg(self, asset: str) -> SleeveConfig | None:
-        name = self.sleeve_of(asset)
-        return self.sleeves[name] if name else None
+    def sleeve_cfg(self, asset: str) -> Any | None:
+        return None
+
+    @property
+    def profile(self) -> TradingConfig:
+        """The exits and caps that used to be the aggressive profile: the one mode."""
+        return self.trading
+
+    @property
+    def aggressive(self) -> TradingConfig:
+        return self.trading
 
     def base_coin(self, asset: str) -> str:
         return self.exchange.base_coin.get(asset, asset)

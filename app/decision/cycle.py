@@ -248,12 +248,7 @@ def abort_stale_cycles(session: Session, now: datetime | None = None) -> int:
 def hold_limit(session: Session, cfg: Config) -> int:
     """The longest holding time the managers may plan for: 168 hours, or the aggressive
     profile's limit while that mode is on."""
-    from app.db.models import RiskState
-
-    state = session.get(RiskState, 1)
-    if state is not None and state.aggressive:
-        return max(1, cfg.aggressive.max_hold_hours)
-    return 168
+    return max(1, cfg.profile.max_hold_hours)  # v14: the one mode
 
 
 def asset_overrides(cfg: Config, asset: str) -> dict[str, float]:

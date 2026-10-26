@@ -347,8 +347,8 @@ async def test_soft_stop_waits_for_the_fifteen_minute_close(db: None) -> None:
 
 @needs_db
 async def test_aggressive_mode_banks_a_trade_at_its_share_of_the_goal(db: None) -> None:
-    """Aggressive mode (owner 2026-10-11): a position is closed once its net profit reaches
-    1% of the ledger's equity, long before its target; with the mode off it stays open."""
+    """The day goal (owner 2026-10-11; the one mode since v14): a position is closed once
+    its net profit reaches 1% of the ledger's equity, long before its target."""
     from app.db.models import PaperAccount, RiskState
     from app.db.session import new_session
 
@@ -364,11 +364,8 @@ async def test_aggressive_mode_banks_a_trade_at_its_share_of_the_goal(db: None) 
     assert pos.entry_price is not None
     up = pos.entry_price + move
     ex.quotes[symbol] = quote(str(up), str(up + D("0.1")))
-    await ex.tick()
-    assert positions()[0].status == "open"  # mode off: nothing happens
     with new_session() as s:
         state = s.get(RiskState, 1) or RiskState(id=1, leverage_ceiling=D(2))
-        state.aggressive = True
         s.merge(state)
         s.commit()
     try:
@@ -654,14 +651,14 @@ async def test_a_backup_stop_without_a_position_is_cancelled(db: None) -> None:
 
 
 def test_the_pilot_has_a_slot_for_every_asset() -> None:
-    """Ten positions sized per sleeve fit the pilot's capital together (owner 2026-10-11)."""
+    """Every position takes the same share of the pilot's capital (v14: one book)."""
     cfg = get_config()
     ex = Executor(cfg, get_secrets(), ScriptedGateway(opens=[]), feed=False)
     slots = {a: ex.pilot_slot(a) for a in cfg.trading.assets}
     cap = cfg.pilot.capital_usdt
-    assert slots["BTC"] == cap * D("0.70") * D("0.20") and slots["PEPE"] == cap * D("0.30") * D(
-        "0.20"
-    )
+    assert set(slots) == {"BTC", "ETH", "SOL", "XRP", "DOGE", "ENA"}
+    share = min(cfg.trading.capital_share_per_asset, D(1) / len(cfg.trading.assets))
+    assert all(v == cap * share for v in slots.values())
     assert sum(slots.values()) <= cap
     assert ex.pilot_slot("BNB") == cap * D("0.20")  # outside the sleeves: the old share
 

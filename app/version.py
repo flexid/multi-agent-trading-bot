@@ -1,6 +1,12 @@
 """Logic version: bumped when the decision logic changes in a way that makes earlier
 decisions not comparable. Stored on every cycle row.
 
+14 2026-10-26  one mode, one book (owner): the aggressive profile is the bot and the
+              switch is gone; no locks but the emergency brake; the risk per trade follows
+              the stop cap (capital share × 4%) and leverage caps at 3x; six assets in one
+              pool (PEPE, HBAR, PUMP, SPX6900 out); a stop that does not fit the cap at 1x
+              blocks the trade; the take floor rides half of any gain beyond 2%; one
+              triggered cycle per news story. pm.md v12. Review 2026-11-07.
 13 2026-10-20  the managers see the book (owner): each asset carries its open position
               (side, leverage, entry, stop, target, hours open, net result on margin) and
               the pack carries the book's longs, shorts and open result, with a rule in
@@ -68,6 +74,6 @@ decisions not comparable. Stored on every cycle row.
 1  2026-10-08  initial logic (SPEC §6-§9).
 """
 
-LOGIC_VERSION = 13
+LOGIC_VERSION = 14
 # v10 (owner 2026-10-12): one week untouched, then judge; the 4-week review stays 2026-11-07
-FROZEN_UNTIL = "2026-10-28"
+FROZEN_UNTIL = "2026-11-07"

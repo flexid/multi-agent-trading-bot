@@ -353,9 +353,12 @@ def aggressive_fact(session: Session) -> dict[str, Any]:
     from app.db.models import RiskState
 
     state = session.get(RiskState, 1)
-    on = bool(state and state.aggressive)
-    since = state.aggressive_since if state and on else None
-    return {"on": on, "since": since.strftime("%Y-%m-%d %H:%M UTC") if since else None}
+    since = state.aggressive_since if state else None
+    return {
+        "on": True,
+        "since": since.strftime("%Y-%m-%d %H:%M UTC") if since else None,
+        "note": "v14 (2026-10-26): the one mode; there is no switch any more",
+    }
 
 
 def optima_facts(session: Session) -> dict[str, Any] | None:

@@ -384,18 +384,14 @@ def labeler_for(cfg: Config, rec: XPostRecord) -> str:
     """The model that labels a post: the sleeve's ``x_sentiment`` override when the post
     was searched for one of its assets or comes from a catalyst account (owner 2026-10-10:
     Jev for the alt sleeve), else the task's model."""
-    sleeve = cfg.sleeve_cfg(rec.query_asset) if rec.query_asset else None
-    if sleeve is None and rec.author and rec.author in cfg.catalysts.accounts:
-        for s in cfg.sleeves.values():
-            if s.models.get(TASK):
-                sleeve = s
-                break
-    return (sleeve.models.get(TASK) if sleeve else None) or cfg.models.x_sentiment
+    model = cfg.x.models_by_asset.get(rec.query_asset) if rec.query_asset else None
+    if model is None and rec.author and rec.author in cfg.catalysts.accounts:
+        model = cfg.catalysts.label_model or None
+    return model or cfg.models.x_sentiment
 
 
 def labeler_for_asset(cfg: Config, asset: str) -> str:
-    sleeve = cfg.sleeve_cfg(asset)
-    return (sleeve.models.get(TASK) if sleeve else None) or cfg.models.x_sentiment
+    return cfg.x.models_by_asset.get(asset) or cfg.models.x_sentiment
 
 
 def shadow_on(session: Session, cfg: Config) -> bool:

@@ -45,14 +45,16 @@ def event(
     )
 
 
-def test_config_wires_djaf_into_the_alt_sleeve_only() -> None:
+def test_config_wires_the_catalyst_reading_to_ena() -> None:
+    """v14: one book of six; the catalyst reading covers the assets in catalysts.assets."""
     cfg = get_config()
-    assert cat.sleeve_assets(cfg) == ASSETS
-    assert cfg.sleeves["bluechips"].weights.get("catalysts", 0.0) == 0.0
-    assert cfg.sleeves["alts"].models["x_sentiment"].startswith("jev-")
+    assert cat.sleeve_assets(cfg) == ["ENA"] == cfg.catalysts.assets
+    assert cfg.x.models_by_asset["ENA"].startswith("jev-")
+    assert cfg.catalysts.label_model.startswith("jev-")
     assert cfg.models.catalysts.startswith("jev-")
-    assert set(cfg.catalysts.unlock_slugs) == {"ENA", "PUMP", "HBAR"}
-    assert "spx6900" in cfg.catalysts.accounts
+    assert set(cfg.catalysts.unlock_slugs) == {"ENA"}
+    assert "ethena" in cfg.catalysts.accounts and "spx6900" not in cfg.catalysts.accounts
+    assert cfg.agents.weights_by_asset["ENA"]["catalysts"] > 0
     # the admin container never sees the key: the env whitelist is explicit
     from pathlib import Path
 
@@ -201,18 +203,12 @@ def test_official_accounts_count_half_when_bullish_and_only_twice() -> None:
     assert cat.event_weight(promo, NOW, official=False) == 0.0  # a third party's opinion
     promo.source = "bybit"
     assert cat.event_weight(promo, NOW, official=False) == pytest.approx(0.09)
-    assert get_config().catalysts.official == {
-        "pepecoineth": "PEPE",
-        "hedera": "HBAR",
-        "pumpfun": "PUMP",
-        "spx6900": "SPX6900",
-        "ethena": "ENA",
-    }
+    assert get_config().catalysts.official == {"ethena": "ENA"}
 
 
-def test_alt_sleeve_posts_go_to_jev_and_the_rest_to_the_text_model() -> None:
+def test_ena_and_catalyst_posts_go_to_jev_and_the_rest_to_the_text_model() -> None:
     cfg = get_config()
-    alt = XPostRecord(id="1", text="x", fetched_at=NOW, query_asset="PEPE")
+    alt = XPostRecord(id="1", text="x", fetched_at=NOW, query_asset="ENA")
     blue = XPostRecord(id="2", text="x", fetched_at=NOW, query_asset="BTC")
     curated = XPostRecord(id="3", text="x", fetched_at=NOW, author="saylor")
     project = XPostRecord(id="4", text="x", fetched_at=NOW, author="ethena")

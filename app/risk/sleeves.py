@@ -18,7 +18,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import Config, SleeveConfig
+from app.config import Config
 from app.db.models import Candle, PaperAccount, Position
 from app.risk.exposure import net_beta_exposure
 
@@ -62,7 +62,7 @@ def sleeve_account(
     beta: dict[str, Decimal],
     ledger_id: int,
 ) -> SleeveAccount:
-    s: SleeveConfig = cfg.sleeves[name]
+    s: Any = cfg.sleeves[name]
     acct = session.get(PaperAccount, ledger_id)
     start = (
         acct.starting_capital if acct and acct.starting_capital else cfg.trading.capital_max_usdt

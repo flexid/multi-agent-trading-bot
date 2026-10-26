@@ -216,6 +216,17 @@ def check(
     # v11: no Polymarket trigger; its daily markets fired most of the v10 week's 32
     # triggered cycles ($26) for a reading that weighs almost nothing.
     reason = reason or (price_trigger(session, cfg, now) or x_shock_trigger(session, now))
+    if reason and reason.startswith("x_shock") and cfg.triggers.same_story_hours > 0:
+        # v14: one triggered cycle per story. The same post stays fresh for an hour and
+        # fired three cycles 30 minutes apart on 2026-10-24.
+        again = session.execute(
+            select(Cycle.id).where(
+                Cycle.trigger == reason[:80],
+                Cycle.started_at >= now - timedelta(hours=cfg.triggers.same_story_hours),
+            )
+        ).first()
+        if again is not None:
+            return None
     if reason and triggered_today(session, now) >= cfg.triggers.max_per_day:
         log_suppressed(session, cfg, now, reason)  # the cap stands; only the log changes
         return None
