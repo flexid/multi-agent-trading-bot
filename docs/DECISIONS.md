@@ -542,3 +542,7 @@ Owner: "the goal is to have one bot that does everything with a config that stay
 - **The take floor rides gains beyond 2%:** floor = 2% + half of (peak - 2%). On the 33 winners since v10 it would have changed nothing (no peak above 2.28%); it costs nothing until the market gives more.
 - **One triggered cycle per news story** (`triggers.same_story_hours` 6): the same ETH story fired three cycles on 24 Oct.
 - pm.md v12 (six assets, 48h, no sleeve paragraph), post_writer.md v11, the site says "six assets in one book". `FROZEN_UNTIL` 2026-11-07. The max and inverse ledgers stay as records.
+
+## 2026-10-27 · The primary equity history rewritten to where the book was
+
+Owner: the ledger correction of 2026-10-26 16:29 UTC showed on the site as a 2% cliff on the 26th, although the credit it removed had been in the book since 2026-10-15 02:36 UTC. `scripts/restate_snapshots.py` took 277.56 (the jump that pass recorded beyond its closes' net result) out of every primary equity snapshot from that pass until the correction. The 15 Oct jump is gone from the curve; the 26 Oct step shrinks to about +0.8%, the refunded double fees. Drawdown on the record reads -2.9% instead of -4.6%.
