@@ -20,7 +20,7 @@ from app.db.session import new_session
 
 MODE = "paper:primary"
 SINCE = datetime(2026, 10, 15, 2, 36, 0, 736212, tzinfo=UTC)  # the pass with the credit
-UNTIL = datetime(2026, 10, 26, 16, 25, 0, tzinfo=UTC)  # the ledger restatement took it out
+UNTIL = datetime(2026, 10, 26, 16, 29, 20, tzinfo=UTC)  # the ledger restatement took it out
 CREDIT = Decimal("277.56")  # the jump that pass recorded beyond its closes' net result
 
 
