@@ -248,3 +248,19 @@ async def test_the_public_record_starts_at_the_line(db: None) -> None:
     cfg = cfg.model_copy(update={"dex": cfg.dex.model_copy(update={"record_since": None})})
     feed = await build(cfg, ex, "paper", "")
     assert feed["stats"]["trades"] == 1 and feed["closed_trades"][0]["main_entry"] == 80000.0
+
+
+@needs_db
+async def test_a_paused_mirror_publishes_its_state_with_the_flag(db: None) -> None:
+    """Owner 2026-11-04: the DEX mirror is paused; the site must say so, not show LIVE."""
+    from app.dex.snapshot import build
+
+    feed = await build(get_config(), None, "paper", "", paused=True)
+    assert feed["paused"] is True and feed["open_trades"] == []
+    live = await build(
+        get_config(),
+        PaperDex(equity=D(1000), taker_fee_pct=D("0.035"), prices=Venue()),
+        "paper",
+        "",
+    )
+    assert live["paused"] is False

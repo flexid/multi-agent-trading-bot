@@ -20,6 +20,10 @@ async def serve() -> None:
     cfg, secrets = get_config(), get_secrets()
     while not cfg.dex.enabled:
         log.info("dex: disabled in config; checking again in an hour")
+        try:  # the site shows PAUSED, with the last record, instead of a stale LIVE
+            await publish(cfg, None, cfg.dex.mode, secrets.dex_address, paused=True)
+        except Exception:
+            log.exception("dex: publish while paused failed")
         await asyncio.sleep(3600)
         get_config.cache_clear()
         cfg = get_config()

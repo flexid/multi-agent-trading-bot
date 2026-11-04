@@ -27,10 +27,18 @@ def _f(x: Decimal | float | None, d: int = 2) -> float | None:
 
 
 async def build(
-    cfg: Config, ex: DexExchange, mode: str, address: str, now: datetime | None = None
+    cfg: Config,
+    ex: DexExchange | None,
+    mode: str,
+    address: str,
+    now: datetime | None = None,
+    *,
+    paused: bool = False,
 ) -> dict[str, Any]:
+    """``paused``: the mirror is switched off in config (owner 2026-11-04) and publishes
+    its last state with the flag, so the site says so instead of showing a stale LIVE."""
     now = now or datetime.now(UTC)
-    mids = await ex.mids()
+    mids = await ex.mids() if ex is not None else {}
     with new_session() as s:
         st = s.get(DexState, 1)
         last = s.execute(
@@ -126,6 +134,7 @@ async def build(
     return {
         "generated_at": now.isoformat(),
         "mode": mode,
+        "paused": paused,
         "venue": "hyperliquid",
         "address": address if mode != "paper" else None,
         "explorer": f"{cfg.dex.explorer}/address/{address}"
@@ -149,8 +158,10 @@ async def build(
     }
 
 
-async def publish(cfg: Config, ex: DexExchange, mode: str, address: str) -> None:
-    data = await build(cfg, ex, mode, address)
+async def publish(
+    cfg: Config, ex: DexExchange | None, mode: str, address: str, *, paused: bool = False
+) -> None:
+    data = await build(cfg, ex, mode, address, paused=paused)
     problems = verify_dict(data)
     if problems:
         log.error("dex snapshot failed the whitelist: %s", problems[:3])
