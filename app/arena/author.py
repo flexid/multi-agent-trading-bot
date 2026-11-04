@@ -24,10 +24,36 @@ def round_context(
     last_result: dict[str, Any] | None,
     hourly: list[list[float]],
     quarter_hourly: list[list[float]] | None = None,
+    long_frames: dict[str, list[list[float]]] | None = None,
+    others: list[dict[str, Any]] | None = None,
+    season: int = 1,
 ) -> str:
     """What the author is told: its own record, last round's book and result, the last
     200 hourly candles and the last day of 15-minute candles (owner 2026-10-14: so the
     thresholds it writes come from what the market does). No strategy hints."""
+
+    def pack(rows: list[list[float]], n: int) -> list[list[float | int]]:
+        return [
+            [int(r[0]), round(r[1], 1), round(r[2], 1), round(r[3], 1), round(r[4], 1), int(r[5])]
+            for r in rows[-n:]
+        ]
+
+    if long_frames is not None:
+        # season two: the authors see only the frames their conditions may use, and each
+        # other's last book and result
+        return json.dumps(
+            {
+                "trader": trader,
+                "season": season,
+                "round": round_number,
+                "your_record": stats,
+                "last_round": {"rulebook": last_rulebook, "result": last_result},
+                "the_others_last_round": others or [],
+                **{f"candles_{k}": pack(v, 150) for k, v in long_frames.items()},
+                "candle_fields": "[time_ms, open, high, low, close, volume], oldest first",
+            },
+            separators=(",", ":"),
+        )
     ctx = {
         "trader": trader,
         "round": round_number,

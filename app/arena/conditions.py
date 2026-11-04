@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-Timeframe = Literal["1m", "5m", "15m", "1h"]
+Timeframe = Literal["1m", "5m", "15m", "1h", "4h", "1d"]
 Fld = Literal["open", "high", "low", "close", "volume", "range", "body"]
 Op = Literal[">", "<", ">=", "<="]
 Agg = Literal["max", "min", "avg"]

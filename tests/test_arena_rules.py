@@ -100,7 +100,7 @@ def test_jev_state_is_compact() -> None:
 
     class Src:
         async def klines(self, interval: str, limit: int = 151) -> list[list[float]]:
-            step = int(interval)
+            step = 1440 if interval == "D" else int(interval)
             return [
                 [
                     (now - timedelta(minutes=(limit - i) * step)).timestamp() * 1000,
@@ -199,3 +199,10 @@ def test_the_bounce_since_a_breakout_counts_only_candles_after_it_closed() -> No
     facts = breakout_facts({"15m": f15, "1m": f1})["last_15m_breakout"]
     assert facts["minutes_since_close"] == 4
     assert abs(facts["deepest_bounce_pct"] - 0.2) < 0.01  # the 0.2% high after the close, not 0.6%
+
+
+def test_a_maker_entry_leg_cuts_the_round_trip_fee() -> None:
+    """Season two: the entry fills as a limit order at the maker rate."""
+    season_two = R.Rules(entry_fee_pct=D("0.02"))
+    assert R.round_trip_fee_pct(season_two, 2) == D("0.150")  # (0.02 + 0.055) × 2
+    assert R.round_trip_fee_pct(R.Rules(), 2) == D("0.220")

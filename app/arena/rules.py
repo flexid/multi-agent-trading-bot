@@ -20,13 +20,16 @@ class Rules:
     tp_max: int = 10
     losses_to_bench: int = 2
     taker_fee_pct: Decimal = Decimal("0.055")  # per side, percent of notional
+    entry_fee_pct: Decimal | None = None  # season two: the entry leg as a maker; None = taker
     min_conviction_floor: float = 0.5
     fee_share_max: Decimal = Decimal("0.5")  # fees may eat at most half the target
 
 
 def round_trip_fee_pct(rules: Rules, leverage: int) -> Decimal:
-    """Both fee legs as a percentage of the margin."""
-    return 2 * rules.taker_fee_pct * leverage
+    """Both fee legs as a percentage of the margin: the entry at the maker rate when the
+    season fills entries as limit orders, the exit always as a taker."""
+    entry = rules.entry_fee_pct if rules.entry_fee_pct is not None else rules.taker_fee_pct
+    return (entry + rules.taker_fee_pct) * leverage
 
 
 def gross_roe_pct(rules: Rules, net_roe_pct: Decimal, leverage: int) -> Decimal:

@@ -180,6 +180,13 @@ class ArenaConfig(_Section):
     # round open for everyone. 0 = no limit.
     max_round_hours: int = Field(default=48, ge=0, le=720)
     taker_fee_pct: Decimal = Decimal("0.055")
+    # Season two (owner 2026-11-04): a new season ends the running round, restarts every
+    # index at 100 and starts round one of the season; season one's record stays.
+    season: int = Field(default=1, ge=1)
+    maker_entries: bool = False  # entries as limit orders at the signal price, maker fee
+    maker_fee_pct: Decimal = Decimal("0.02")
+    # The candle timeframes a rulebook may use in its conditions; empty = all of them
+    allowed_timeframes: list[str] = Field(default_factory=list)
     # Owner 2026-10-24 ("make it winnable"): two of three traders were gross positive and
     # fees took it all, a trade every two hours at 3-4x. No new entry within this long of
     # a close, and at most this many entries per trader per 24 hours.

@@ -54,6 +54,7 @@ def build_traders(cfg: Config, secrets: Secrets, public: LinearExchange) -> dict
                 equity=tc.allocation_usdt or PAPER_EQUITY,
                 taker_fee_pct=a.taker_fee_pct,
                 prices=public,
+                entry_fee_pct=a.maker_fee_pct if a.maker_entries else None,
             )
         out[tid] = Trader(id=tid, model=tc.model, exchange=ex)
     return out

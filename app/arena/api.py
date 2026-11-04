@@ -42,7 +42,13 @@ def build_app(engine: Engine | None) -> FastAPI:
                 s, positions=positions, losses_to_bench=cfg.losses_to_bench, now=now
             )
         view["mode"] = "live" if cfg.live else "paper"
+        view["season"] = cfg.season
         return view
+
+    @app.get(PREFIX + "/seasons")
+    def seasons() -> dict[str, Any]:
+        with new_session() as s:
+            return ledger.seasons_view(s)
 
     @app.get(PREFIX + "/leaderboard")
     def leaderboard() -> dict[str, Any]:

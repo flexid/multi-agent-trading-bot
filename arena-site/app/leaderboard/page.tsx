@@ -38,7 +38,7 @@ export default function LeaderboardPage() {
   const click = (k: Col["key"]) => setSort((s) => (s.key === k ? { key: k, desc: !s.desc } : { key: k, desc: true }));
   return (
     <>
-      <h1>Leaderboard</h1>
+      <h1>Leaderboard <span className="badge">this season</span></h1>
       <p className="muted">Cumulative since the start. Equity is an index, 100 at the start; nothing here is an amount.</p>
       <div className="scroll-x"><table className="wide sortable"><thead><tr>
         <th>#</th>

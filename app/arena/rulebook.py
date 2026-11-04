@@ -43,7 +43,7 @@ class Rulebook(BaseModel):
     short_conditions: list[Condition] = Field(default_factory=list, max_length=12)
     no_trade_conditions: list[Condition] = Field(default_factory=list, max_length=12)
     exit_conditions: list[Condition] = Field(default_factory=list, max_length=8)
-    max_hold_minutes: int | None = Field(default=None, ge=5, le=1440)
+    max_hold_minutes: int | None = Field(default=None, ge=5, le=10080)  # up to a week (season two)
 
     def public(self) -> dict[str, Any]:
         """The site's shape (arena-site/README.md)."""

@@ -65,3 +65,21 @@ def test_percent_scale_and_missing_data() -> None:
         == "5m close[0] > max high over 8 5m from [1]"
     )
     assert above.model_dump()["pct"] is False
+
+
+def test_conditions_evaluate_on_the_daily_and_4h_frames() -> None:
+    """Season two: rules on slow candles only."""
+    from app.arena.conditions import Condition, Ref, evaluate
+
+    frames = {
+        "1d": [[i, 100.0, 101.0, 99.0, 100.0 + i, 10.0] for i in range(10)],
+        "4h": [[i, 100.0, 101.0, 99.0, 100.0, 10.0] for i in range(10)],
+    }
+    up = Condition(
+        timeframe="1d",
+        field="close",
+        op=">",
+        ref=Ref(field="close", agg="max", lookback=5, index=1),
+    )
+    out = evaluate(frames, [up])
+    assert out["met"] and out["count_met"] == 1

@@ -733,6 +733,9 @@ class ArenaRound(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     winner: Mapped[str | None] = mapped_column(String(10))
+    season: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1"
+    )  # season two: 2026-11-04
 
 
 class ArenaRulebook(Base):

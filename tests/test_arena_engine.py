@@ -47,7 +47,7 @@ class Prices:
         self.lo = low if low is not None else close
 
     async def klines(self, interval: str, limit: int = 151) -> list[list[float]]:
-        step = {"1": 1, "5": 5, "15": 15, "60": 60}[interval]
+        step = {"1": 1, "5": 5, "15": 15, "60": 60, "240": 240, "D": 1440}[interval]
         rows = []
         for i, c in enumerate(self.closes[-limit:]):
             t = (T0 + timedelta(minutes=(i + self.minute) * step)).timestamp() * 1000
@@ -599,3 +599,50 @@ async def test_cooldown_and_daily_cap_gate_entries(
             .first()
         )
         assert d is not None and not d.acted and d.probabilities.get("daily_cap") == 1.0
+
+
+@needs_db
+async def test_a_new_season_ends_the_round_and_restarts_the_index(
+    db: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Season two (owner 2026-11-04): the running round ends, every index restarts at 100,
+    the views count this season only, and season one keeps its scoreboard."""
+    from app.arena import ledger
+    from app.arena.ledger import seasons_view
+    from app.db.models import ArenaRound
+
+    prices = Prices()
+    engine, traders = make(prices)
+
+    async def fake_write(model: str, context: str, *, round_number: int) -> Rulebook:
+        return RB
+
+    monkeypatch.setattr(author, "write_rulebook", fake_write)
+    now = T0
+    await engine.start(now)  # season 1, round 1
+    await engine.wait_authors()
+    prices.push(60000.0)
+    await engine.tick(now)
+    with new_session() as s:
+        r1 = ledger.current_round(s)
+        assert r1 is not None and r1.season == 1 and r1.number == 1
+    # season two begins on the next start
+    engine.cfg = engine.cfg.model_copy(update={"season": 2})
+    now += timedelta(minutes=5)
+    await engine.start(now)
+    await engine.wait_authors()
+    prices.push(60000.0)
+    await engine.tick(now)
+    with new_session() as s:
+        rounds = s.query(ArenaRound).order_by(ArenaRound.number).all()
+        assert [(r.number, r.season, r.ended_at is not None) for r in rounds] == [
+            (1, 1, True),
+            (2, 2, False),
+        ]
+        assert ledger.current_season(s) == 2
+        view = seasons_view(s)
+        assert [x["season"] for x in view["seasons"]] == [1, 2]
+        assert view["seasons"][0]["closed"] and not view["seasons"][1]["closed"]
+        board = ledger.leaderboard_view(s, now)
+        assert all(t["trades"] == 0 and t["equity_index"] == 100.0 for t in board["traders"])
+    assert all(t.start_equity == D(1000) for t in traders.values())

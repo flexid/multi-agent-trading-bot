@@ -69,6 +69,7 @@ class Engine:
             tp_max=cfg.tp_net_roe_range[1],
             losses_to_bench=cfg.losses_to_bench,
             taker_fee_pct=cfg.taker_fee_pct,
+            entry_fee_pct=cfg.maker_fee_pct if cfg.maker_entries else None,
             min_conviction_floor=cfg.min_conviction_floor,
         )
         self.traders = traders
@@ -101,6 +102,19 @@ class Engine:
                 t.start_equity = row.start_equity
             rnd = ledger.current_round(s)
             if rnd is None:
+                s.commit()
+                await self.new_round(now)
+                return
+            if (rnd.season or 1) < self.cfg.season:
+                # season two (owner 2026-11-04): the old round ends, every index restarts
+                # at 100 on the same allocation, season one's record stays in the tables
+                log.info("arena: season %d begins; round %d ends", self.cfg.season, rnd.number)
+                for t in self.traders.values():
+                    row = ledger.ensure_trader(s, t.id, t.name, t.model, now)
+                    row.start_equity = None
+                    t.start_equity = None
+                    if isinstance(t.exchange, PaperExchange):
+                        t.exchange.restore(t.exchange.cash, None, Decimal(0))
                 s.commit()
                 await self.new_round(now)
                 return
@@ -194,11 +208,13 @@ class Engine:
         from sqlalchemy import func as fn
 
         assert isinstance(t.exchange, PaperExchange)
-        realized = s.execute(
-            select(fn.coalesce(fn.sum(ArenaTrade.pnl_usdt), 0)).where(
-                ArenaTrade.trader == t.id, ArenaTrade.status == "closed"
-            )
-        ).scalar_one()
+        since = ledger.season_start(s, self.cfg.season)
+        q = select(fn.coalesce(fn.sum(ArenaTrade.pnl_usdt), 0)).where(
+            ArenaTrade.trader == t.id, ArenaTrade.status == "closed"
+        )
+        if since is not None:
+            q = q.where(ArenaTrade.opened_at >= since)
+        realized = s.execute(q).scalar_one()
         start = t.start_equity or t.exchange.cash
         cash = start + Decimal(str(realized))
         position = None
@@ -246,7 +262,7 @@ class Engine:
                 winner = self._round_winner(s, cur.started_at, now)
                 ledger.end_round(s, cur, now, winner)
                 log.info("arena: round %d over, winner %s", cur.number, winner)
-            rnd = ledger.start_round(s, now)
+            rnd = ledger.start_round(s, now, season=self.cfg.season)
             s.commit()
             self.round_number, self.round_started = rnd.number, rnd.started_at
         for t in self.traders.values():
@@ -276,24 +292,62 @@ class Engine:
             prev = ledger.latest_rulebook(s, t.id, self.round_number - 1)
             prev_rb = prev.rulebook if prev else None
             prev_result = self._round_result(s, t.id, self.round_number - 1) if prev else None
+            # season two: the authors see each other's last book and result
+            others = []
+            for o in self.traders.values():
+                if o.id == t.id:
+                    continue
+                orb = ledger.latest_rulebook(s, o.id, self.round_number - 1)
+                others.append(
+                    {
+                        "trader": o.name,
+                        "rulebook": orb.rulebook if orb else None,
+                        "result": self._round_result(s, o.id, self.round_number - 1)
+                        if orb
+                        else None,
+                        "record": next((x for x in board["traders"] if x["id"] == o.id), None),
+                    }
+                )
+        frames = self.candles.frames
         context = author.round_context(
             trader=t.name,
             round_number=self.round_number,
             stats=stats,
             last_rulebook=prev_rb,
             last_result=prev_result,
-            hourly=self.candles.frames["1h"],
-            quarter_hourly=self.candles.frames["15m"],
+            hourly=frames["1h"],
+            quarter_hourly=frames["15m"],
+            long_frames={k: frames[k] for k in self.cfg.allowed_timeframes if k in frames}
+            if self.cfg.allowed_timeframes
+            else None,
+            others=others,
+            season=self.cfg.season,
         )
         rb = await author.write_rulebook(t.model, context, round_number=self.round_number)
         plan: R.Plan | None = None
         if rb is not None:
             try:
+                allowed = set(self.cfg.allowed_timeframes)
+                used = {
+                    c.timeframe
+                    for c in [
+                        *rb.long_conditions,
+                        *rb.short_conditions,
+                        *rb.no_trade_conditions,
+                        *rb.exit_conditions,
+                    ]
+                }
+                if allowed and not used <= allowed:
+                    raise R.RulesError(
+                        f"conditions on {sorted(used - allowed)}; "
+                        f"this season allows {sorted(allowed)}"
+                    )
                 plan = R.plan_for(
                     self.rules, rb.leverage, rb.tp_net_roe_pct, rb.sl_net_roe_pct, rb.min_conviction
                 )
             except R.RulesError as exc:
                 log.warning("arena %s: rulebook refused: %s", t.id, exc)
+                rb = None
         t.rulebook, t.plan = rb, plan
         t.author_failed_at = now if rb is None else None
         with new_session() as s:

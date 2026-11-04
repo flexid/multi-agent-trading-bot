@@ -20,10 +20,15 @@ class PaperExchange:
         equity: Decimal,
         taker_fee_pct: Decimal,
         prices: PriceSource,
+        entry_fee_pct: Decimal | None = None,
     ) -> None:
         self.symbol = symbol
         self.cash = equity
         self.fee = taker_fee_pct / 100
+        # season two: the entry fills as a limit order at the signal close, maker fee; the
+        # exit is a market order. (The fill at the signal close is an assumption: a limit
+        # a tick inside the close is usually touched within the next candle.)
+        self.entry_fee = (entry_fee_pct / 100) if entry_fee_pct is not None else self.fee
         self._prices = prices
         self._leverage = 1
         self._pos: Position | None = None
@@ -78,7 +83,7 @@ class PaperExchange:
         price = await self.last_price()
         notional = price * qty
         margin = notional / self._leverage
-        self._open_fee = notional * self.fee
+        self._open_fee = notional * self.entry_fee
         self.cash -= margin + self._open_fee
         self._pos = Position(side, qty, price, self._leverage, tp, sl, Decimal(0), margin)
         self._opened_at = self._now()

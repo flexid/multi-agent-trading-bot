@@ -1,4 +1,4 @@
-"""The only input: closed OHLCV candles on 1m, 5m, 15m and 1h, the last 150 of each,
+"""The only input: closed OHLCV candles on 1m, 5m, 15m, 1h, 4h and 1d, the last 150 of each,
 refreshed from the exchange after every 1-minute close and serialized compactly for Jev."""
 
 from __future__ import annotations
@@ -9,12 +9,17 @@ from typing import Any
 
 from app.arena.exchange import Exchange
 
-INTERVALS = {"1m": "1", "5m": "5", "15m": "15", "1h": "60"}
+INTERVALS = {"1m": "1", "5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D"}
 KEEP = 150  # the 15m frame keeps a day for the authors (96); the rest is plenty
 # What Jev sees per timeframe: its window is small (a state of 600 full-precision candles
 # was refused on the first run, 2026-10-13), so fewer candles, prices rounded, volumes as
 # integers and times as minutes before now.
-JEV_COUNT = {"1m": 120, "5m": 72, "15m": 64, "1h": 72}
+JEV_COUNT = {
+    "1m": 120,
+    "5m": 72,
+    "15m": 64,
+    "1h": 72,
+}  # Jev (the fallback) never sees the slow frames
 PRICE_DECIMALS = 1
 
 
@@ -50,7 +55,7 @@ class CandleBuffer:
         now_ms = now.timestamp() * 1000
         return {
             "now": now.isoformat(timespec="minutes"),
-            "facts": facts(self.frames),
+            "facts": facts({k: v for k, v in self.frames.items() if k in JEV_COUNT}),
             "candle_fields": "[minutes_before_now, open, high, low, close, volume], oldest first",
             "candles": {
                 k: [
@@ -65,6 +70,7 @@ class CandleBuffer:
                     for r in v[-JEV_COUNT[k] :]
                 ]
                 for k, v in self.frames.items()
+                if k in JEV_COUNT
             },
             "position": position,
         }

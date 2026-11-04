@@ -48,12 +48,60 @@ def current_round(s: Session) -> ArenaRound | None:
     ).first()
 
 
-def start_round(s: Session, now: datetime) -> ArenaRound:
+def start_round(s: Session, now: datetime, season: int = 1) -> ArenaRound:
     last = s.execute(select(func.max(ArenaRound.number))).scalar_one() or 0
-    row = ArenaRound(number=last + 1, started_at=now)
+    row = ArenaRound(number=last + 1, started_at=now, season=season)
     s.add(row)
     s.flush()
     return row
+
+
+def current_season(s: Session) -> int:
+    return s.execute(select(func.max(ArenaRound.season))).scalar_one() or 1
+
+
+def season_start(s: Session, season: int) -> datetime | None:
+    """When the season's first round started; the views count from here."""
+    return s.execute(
+        select(func.min(ArenaRound.started_at)).where(ArenaRound.season == season)
+    ).scalar_one()
+
+
+def seasons_view(s: Session) -> dict[str, Any]:
+    """Every season: its rounds, its span and each trader's final index (the last equity
+    point before the next season began), so a closed season keeps its scoreboard."""
+    out = []
+    seasons = sorted(set(s.scalars(select(ArenaRound.season)).all()))
+    for n in seasons:
+        rounds = list(
+            s.scalars(
+                select(ArenaRound).where(ArenaRound.season == n).order_by(ArenaRound.number)
+            ).all()
+        )
+        start = rounds[0].started_at
+        nxt = season_start(s, n + 1)
+        end = rounds[-1].ended_at
+        finals = []
+        for t in _traders(s):
+            q = select(ArenaEquity.equity_index).where(ArenaEquity.trader == t.id)
+            if nxt is not None:
+                q = q.where(ArenaEquity.ts < nxt)
+            idx = s.execute(q.order_by(ArenaEquity.ts.desc()).limit(1)).scalar_one_or_none()
+            final = _f(idx) if idx is not None else None
+            finals.append({"id": t.id, "name": t.display_name, "final_index": final})
+        winners = [r.winner for r in rounds if r.winner]
+        out.append(
+            {
+                "season": n,
+                "rounds": len(rounds),
+                "started_at": start.isoformat(),
+                "ended_at": (end or nxt).isoformat() if (end or nxt) and nxt is not None else None,
+                "closed": nxt is not None,
+                "round_winners": winners,
+                "final": sorted(finals, key=lambda x: -float(x["final_index"] or 0)),
+            }
+        )
+    return {"seasons": out}
 
 
 def end_round(s: Session, rnd: ArenaRound, now: datetime, winner: str | None) -> None:
@@ -239,12 +287,22 @@ def model_label(model: str) -> str:
 
 def leaderboard_view(s: Session, now: datetime) -> dict[str, Any]:
     out = []
-    rounds_done = list(s.scalars(select(ArenaRound).where(ArenaRound.ended_at.is_not(None))).all())
+    season = current_season(s)
+    since = season_start(s, season) or now
+    rounds_done = list(
+        s.scalars(
+            select(ArenaRound).where(ArenaRound.ended_at.is_not(None), ArenaRound.season == season)
+        ).all()
+    )
     for t in _traders(s):
         closed = list(
             s.scalars(
                 select(ArenaTrade)
-                .where(ArenaTrade.trader == t.id, ArenaTrade.status == "closed")
+                .where(
+                    ArenaTrade.trader == t.id,
+                    ArenaTrade.status == "closed",
+                    ArenaTrade.opened_at >= since,
+                )
                 .order_by(ArenaTrade.closed_at)
             ).all()
         )
@@ -325,6 +383,9 @@ def trades_view(
     s: Session, *, trader: str | None, limit: int, before: int | None
 ) -> dict[str, Any]:
     q = select(ArenaTrade).where(ArenaTrade.status == "closed")
+    since = season_start(s, current_season(s))
+    if since is not None:
+        q = q.where(ArenaTrade.opened_at >= since)
     if trader:
         q = q.where(ArenaTrade.trader == trader)
     if before:
@@ -340,7 +401,12 @@ def trades_view(
 
 
 def rounds_view(s: Session) -> dict[str, Any]:
-    rounds = list(s.scalars(select(ArenaRound).order_by(ArenaRound.number)).all())
+    season = current_season(s)
+    rounds = list(
+        s.scalars(
+            select(ArenaRound).where(ArenaRound.season == season).order_by(ArenaRound.number)
+        ).all()
+    )
     benches: dict[int, list[ArenaBenchEvent]] = defaultdict(list)
     for b in s.scalars(select(ArenaBenchEvent).order_by(ArenaBenchEvent.at)).all():
         benches[b.round].append(b)
@@ -363,6 +429,9 @@ def rounds_view(s: Session) -> dict[str, Any]:
 
 def equity_view(s: Session, *, trader: str | None, since: datetime | None) -> dict[str, Any]:
     q = select(ArenaEquity.trader, ArenaEquity.ts, ArenaEquity.equity_index)
+    season_from = season_start(s, current_season(s))
+    if since is None or (season_from is not None and since < season_from):
+        since = season_from
     if trader:
         q = q.where(ArenaEquity.trader == trader)
     if since:
@@ -373,7 +442,11 @@ def equity_view(s: Session, *, trader: str | None, since: datetime | None) -> di
     thinned = {k: _thin(v, 600) for k, v in series.items()}
     rounds = [
         {"number": r.number, "started_at": r.started_at.isoformat()}
-        for r in s.scalars(select(ArenaRound).order_by(ArenaRound.number)).all()
+        for r in s.scalars(
+            select(ArenaRound)
+            .where(ArenaRound.season == current_season(s))
+            .order_by(ArenaRound.number)
+        ).all()
     ]
     return {"rounds": rounds, "series": thinned}
 

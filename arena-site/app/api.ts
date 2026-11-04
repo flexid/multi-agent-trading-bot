@@ -68,7 +68,15 @@ export type State = {
   mode?: "live" | "paper";
   started_at: string;
   round: { number: number; started_at: string; active: number };
+  season?: number;
   traders: TraderState[];
+};
+
+export type Seasons = {
+  seasons: {
+    season: number; rounds: number; started_at: string; ended_at: string | null; closed: boolean;
+    round_winners: TraderId[]; final: { id: TraderId; name: string; final_index: number | null }[];
+  }[];
 };
 
 export type LeaderRow = {
