@@ -7,10 +7,10 @@ export default function Mirror() {
   const d = useDex();
   if (d === undefined) return <p className="muted">Loading…</p>;
   if (d === null) return <><h1>Mirror <span className="badge">not running</span></h1><p className="muted">The DEX mirror has not published yet.</p></>;
-  const label = d.mode === "live" ? "LIVE" : d.mode === "testnet" ? "TESTNET" : "PAPER";
+  const label = d.paused ? "PAUSED" : d.mode === "live" ? "LIVE" : d.mode === "testnet" ? "TESTNET" : "PAPER";
   return (
     <>
-      <h1><span className={`badge ${d.mode === "live" ? "neon" : "warn"}`} style={{ fontSize: 14, padding: "4px 12px" }}>{label}</span><span className="badge">{d.venue}</span>{d.paused && <span className="badge warn">PAUSED</span>}{d.mismatch && <span className="badge down">paused: mismatch</span>}</h1>
+      <h1><span className={`badge ${d.paused ? "warn" : d.mode === "live" ? "neon" : "warn"}`} style={{ fontSize: 14, padding: "4px 12px" }}>{label}</span><span className="badge">{d.venue}</span>{d.mismatch && <span className="badge down">paused: mismatch</span>}</h1>
       {d.paused && <p className="small" style={{ marginTop: 4 }}><b>Paused.</b> The mirror opens nothing while the main book&apos;s record is under review; it resumes when that book shows a profit factor above 1 over thirty trades. The record below stands as it closed.</p>}
       <p className="muted">dorkbot&apos;s record, mirrored trade for trade on a decentralised perpetuals exchange. {d.mode === "live" ? "Real funds on a public address." : d.mode === "testnet" ? "Testnet funds: real orders on the test network, no money at stake." : "Paper fills on the venue's prices, no orders placed."} The decisions come from <a href="https://dorkbot.dev/">dorkbot.dev</a>; nothing is decided here. The ambition, once the record is there, is a Hyperliquid vault anyone can deposit into. <a href="/how/">How it works</a>.</p>
       <div className="row">
