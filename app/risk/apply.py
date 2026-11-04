@@ -72,8 +72,9 @@ def limits_with_state(lim: engine.Limits, state: RiskState) -> engine.Limits:
 
 
 def limits_for_max(lim: engine.Limits, cfg: Config) -> engine.Limits:
-    """The max track opens nothing since v11; its limits are the book's."""
-    return lim
+    """The control book (v15): the same rules with the control chase limit, so the two
+    books differ in that one thing. (The name stays from the max track it replaced.)"""
+    return replace(lim, chase_max_atr=cfg.risk.control_chase_max_atr)
 
 
 STOP_ROOM_MAX = Decimal(3)  # a stop is never moved more than three times further away
@@ -421,9 +422,9 @@ def apply_risk(
     beta = betas(session, cfg, now)
     acct = account_state(session, cfg, mode, now, beta=beta)
     acct = aggressive_account(acct, agg, live=mode == "live")
-    # Comparison track (shadow only): same rules with the ceiling at leverage_max, its own
-    # exposure.
-    max_exp = track_exposure(session, "max", beta)
+    # The control book (v15, paper only): the same decisions at the control chase limit,
+    # its own exposure and ledger.
+    max_exp = track_exposure(session, "control", beta)
     acct_max = engine.AccountState(
         **{
             **acct.__dict__,
@@ -442,7 +443,7 @@ def apply_risk(
                 "net_beta_x_equity": str(round(acct.net_beta_exposure / acct.equity, 3)),
                 "gross_x_equity": str(round(acct.gross_exposure / acct.equity, 3)),
             },
-            "max": {
+            "control": {
                 "net_beta_x_equity": str(round(max_exp.net_beta / acct.equity, 3)),
                 "gross_x_equity": str(round(max_exp.gross / acct.equity, 3)),
             },
@@ -604,8 +605,8 @@ def apply_risk(
         d.risk_rule_hits = hits
         d.action = "open" if a.allowed else "none"
         _, atr = spot_and_atr(session, cfg.symbol(d.asset))
-        if a_max is not None and a_max.plan is not None:
-            d.proposal = {**(d.proposal or {}), "plan_max": _plan_dict(a_max.plan, atr)}
+        if a_max is not None and a_max.plan is not None and cfg.risk.control_chase_max_atr > 0:
+            d.proposal = {**(d.proposal or {}), "plan_control": _plan_dict(a_max.plan, atr)}
         if a.plan is not None:
             d.proposal = {**(d.proposal or {}), "plan": _plan_dict(a.plan, atr)}
         for h in a.hits:

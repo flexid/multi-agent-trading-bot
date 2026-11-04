@@ -69,7 +69,8 @@ SPX6900 = "$SPX"                # history only
 # by the API; 0.03 is the documented spot-margin figure, to be confirmed in the live
 # self-test (M9). See DECISIONS.
 maintenance_margin_rate = 0.03
-chase_max_atr = 2.0             # no new trade in the direction of a 24h move larger than this many ATR (owner 2026-10-12, v9); 0 = off
+chase_max_atr = 1.0             # v15 (owner 2026-11-04): no new trade in the direction of a 24h move larger than this many ATR; the replay of 58 trades put following >1 ATR at PF 0.56 vs 0.80 without
+control_chase_max_atr = 2.0     # v15: the control book on paper takes the same decisions at this limit (the v9-v14 value); 0 = no control book
 hard_stop_atr = 0.5             # v11: the hard stop half an ATR beyond the soft one (was a whole ATR)
 
 [agents]
@@ -152,7 +153,7 @@ model = "claude-fable-5-1"
 allocation_usdt = 0
 
 [dex]                           # dorkbot on a DEX (app/dex, docs/DEX_PLAN.md; owner 2026-10-19): a mirror of the main book on Hyperliquid perps
-enabled = true
+enabled = false                 # paused 2026-11-04 (owner): back on when the primary book shows a profit factor above 1 on thirty trades
 mode = "live"                   # paper = simulated fills on the venue's prices; testnet = signed on the testnet; live = real (owner 2026-10-19: small, capped)
 account_mode = "unified"        # the Hyperliquid account's abstraction mode: unified (one USDC balance) or standard
 follow_track = "primary"        # the book whose record is mirrored

@@ -73,14 +73,14 @@ TRACKS: dict[str, dict[str, str]] = {
     # has an edge, no edge, or the reverse of one.
     # v11: one paper book. The max (leveraged) and inverse (mirror) books answered their
     # questions; their open positions run out under their stops, nothing new opens there.
-    "paper": {"primary": "paper"},
-    "pilot": {"primary": "paper", "pilot": "pilot"},
-    # One real-money track; the paper tracks keep running beside it as the control group
-    # (same decisions at the live rules and at risk_per_trade_max), which is the evidence
-    # for stepping live risk up toward the owner's goal.
-    "live": {"primary": "paper", "live": "live"},
+    # v15 (owner 2026-11-04): "control" takes the same decisions at the old chase limit
+    # (risk.control_chase_max_atr) on paper, so the primary's tighter limit is judged on
+    # the same days. It is not posted and not on the site.
+    "paper": {"primary": "paper", "control": "paper"},
+    "pilot": {"primary": "paper", "pilot": "pilot", "control": "paper"},
+    "live": {"primary": "paper", "live": "live", "control": "paper"},
 }
-LEDGER_IDS = {"primary": 1, "max": 2, "pilot": 3, "live": 4, "inverse": 5}
+LEDGER_IDS = {"primary": 1, "max": 2, "pilot": 3, "live": 4, "inverse": 5, "control": 6}
 TAKER_FEE = {"USDT": Decimal("0.001"), "USDC": Decimal("0.0005")}
 LIQ_WARN_ROOM = Decimal("0.30")  # mail when under 30% of the entry-to-liquidation distance is left
 CASH_FIT_BUFFER = Decimal("0.995")  # leave the entry fee in cash when sizing to what is free
@@ -1010,7 +1010,7 @@ class Executor:
         gw = self.gateway_for(track_mode)
         fee = TAKER_FEE.get(self.cfg.exchange.quote, Decimal("0.001"))
         acct = self.ledger(session, now, track)
-        plan_key = "plan_max" if track == "max" else "plan"
+        plan_key = "plan_control" if track == "control" else "plan"
         open_assets = set(
             session.scalars(
                 select(Position.asset).where(

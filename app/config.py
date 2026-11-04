@@ -123,7 +123,10 @@ class RiskConfig(_Section):
     hard_stop_atr: Decimal = Field(default=Decimal("0.5"), ge=0, le=3)
     # No new trade in the direction of a move already larger than this many ATR (14 × 4h)
     # over the last 24 hours: that is chasing (owner 2026-10-12, logic v9). 0 switches it off.
-    chase_max_atr: Decimal = Field(default=Decimal("2"), ge=0, le=10)
+    chase_max_atr: Decimal = Field(default=Decimal("1"), ge=0, le=10)
+    # v15 (owner 2026-11-04): a control book on paper takes the same decisions with this
+    # chase limit, so the primary's tighter limit can be judged on the same days. 0 = off.
+    control_chase_max_atr: Decimal = Field(default=Decimal("2"), ge=0, le=10)
 
 
 class MacroAgentConfig(_Section):

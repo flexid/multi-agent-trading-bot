@@ -253,27 +253,6 @@ def test_depth_cap_per_asset_binds_on_a_thin_book() -> None:
     assert any(h.rule == "leverage_cap:depth" for h in thin.hits)
 
 
-def test_max_track_limits_use_their_own_risk_per_trade() -> None:
-    from types import SimpleNamespace
-
-    from app.risk.apply import limits_for_max
-    from app.risk.engine import Limits
-
-    lim = Limits(
-        capital_max=D(10000),
-        risk_per_trade=D("0.005"),
-        capital_share=D("0.2"),
-        leverage_max=D(20),
-        gross_exposure_max=D(2),
-        depth_cap=D("0.05"),
-        day_loss_stop=D("-0.02"),
-        drawdown_pause=D("-0.10"),
-        emergency_brake=D("-0.20"),
-    )
-    cfg = SimpleNamespace(trading=SimpleNamespace())
-    assert limits_for_max(lim, cfg) is lim  # v14: the max track opens nothing; no own risk
-
-
 def test_correlation_cap_sizes_same_direction_trades_into_the_room_left() -> None:
     from app.risk.exposure import beta_from_returns, net_beta_exposure
 
@@ -483,3 +462,21 @@ def test_aggressive_mode_gives_stops_more_room_at_the_same_risk() -> None:
     assert held is long_  # already 2% away: no more room to give
     part = widen_stop(cons(stop=99.0), agg, one_x_distance(small))  # 1% away → 1.5%
     assert part.proposal is not None and part.proposal.stop == pytest.approx(98.5)
+
+
+def test_the_control_book_uses_the_old_chase_limit() -> None:
+    """v15 (owner 2026-11-04): the primary blocks a call along a move beyond 1 ATR, the
+    control book beside it still takes it at 2 ATR, so the two can be compared."""
+    from app.config import get_config
+    from app.risk.apply import limits_for_max
+
+    cfg = get_config()
+    assert cfg.risk.chase_max_atr == D(1) and cfg.risk.control_chase_max_atr == D(2)
+    lim = limits(chase_max_atr=cfg.risk.chase_max_atr)
+    ctl = limits_for_max(lim, cfg)
+    assert ctl.chase_max_atr == D(2) and lim.chase_max_atr == D(1)
+    along = market(move_24h_atr=D("1.5"))  # a day's move of 1.5 ATR in the call's direction
+    blocked = engine.assess(cons(Direction.LONG), account(), along, lim)
+    taken = engine.assess(cons(Direction.LONG), account(), along, ctl)
+    assert not blocked.allowed and any(h.rule == "chasing" for h in blocked.hits)
+    assert taken.allowed

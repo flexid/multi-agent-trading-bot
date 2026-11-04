@@ -546,3 +546,19 @@ Owner: "the goal is to have one bot that does everything with a config that stay
 ## 2026-10-27 · The primary equity history rewritten to where the book was
 
 Owner: the ledger correction of 2026-10-26 16:29 UTC showed on the site as a 2% cliff on the 26th, although the credit it removed had been in the book since 2026-10-15 02:36 UTC. `scripts/restate_snapshots.py` took 277.56 (the jump that pass recorded beyond its closes' net result) out of every primary equity snapshot from that pass until the correction. The 15 Oct jump is gone from the curve; the 26 Oct step shrinks to about +0.8%, the refunded double fees. Drawdown on the record reads -2.9% instead of -4.6%.
+
+## 2026-11-04 · Logic v15: the chase limit at 1 ATR, a control book, the DEX paused
+
+Owner, after the v14 review: "no way to act faster?" The answer was a replay (`app/backtest_geometry.py`): every primary trade since the record line walked over its own 15-minute candles under the rules on the table. The results, same entries and same market:
+
+| variant | trades | result | profit factor |
+|---|---|---|---|
+| v14 as it runs | 58 | -429 | 0.59 |
+| v10 stops at 1x | 58 | -426 | 0.56 |
+| v10 stops + dead trade at 24h | 58 | -318 | 0.56 |
+| skip entries following a 24h move beyond 1 ATR | 30 | -87 | 0.80 |
+| the same + dead trade at 24h | 30 | -14 | 0.95 |
+
+So the exits are not the lever (v10's week was the market), the dead-trade rule does not pay, and the only thing that moves the result is not taking entries that follow a move: on the logged calls, following a move beyond 1 ATR was right 26% of the time the next day, fading one 79%. No variant is profitable; the entries carry no edge in this market.
+
+Applied: `risk.chase_max_atr` 2 → 1. A control book on paper (`track = "control"`, ledger 6, the old max track's slot in the risk engine and the executor) takes the same decisions at `risk.control_chase_max_atr` = 2, so the two limits are judged on the same days; it is not posted and not on the site. `dex.enabled = false` until the primary shows a profit factor above 1 on thirty trades. Not applied: the v10 stop geometry, the dead-trade rule, the trend gate (the regime label read "trend" on 233 of 236 calls, so it would have filtered nothing), the agent weights. Review 2026-11-18. The replay runs in a minute against the live record and every proposal gets its table before it ships.

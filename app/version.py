@@ -1,6 +1,11 @@
 """Logic version: bumped when the decision logic changes in a way that makes earlier
 decisions not comparable. Stored on every cycle row.
 
+15 2026-11-04  the chase limit at 1 ATR (owner): a replay of the 58 trades since the record
+              line over their candles put entries that followed a move beyond 1 ATR at a
+              profit factor of 0.56 against 0.80 without them, while no stop geometry and
+              no dead-trade rule moved the result. A control book on paper takes the same
+              decisions at the old 2 ATR limit. The DEX mirror is paused. Review 2026-11-18.
 14 2026-10-26  one mode, one book (owner): the aggressive profile is the bot and the
               switch is gone; no locks but the emergency brake; the risk per trade follows
               the stop cap (capital share × 4%) and leverage caps at 3x; six assets in one
@@ -74,6 +79,6 @@ decisions not comparable. Stored on every cycle row.
 1  2026-10-08  initial logic (SPEC §6-§9).
 """
 
-LOGIC_VERSION = 14
+LOGIC_VERSION = 15
 # v10 (owner 2026-10-12): one week untouched, then judge; the 4-week review stays 2026-11-07
-FROZEN_UNTIL = "2026-11-07"
+FROZEN_UNTIL = "2026-11-18"

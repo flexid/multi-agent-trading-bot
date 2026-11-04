@@ -122,7 +122,7 @@ def pilot_vs_paper(pilot: list[Position], paper: list[Position]) -> list[dict[st
     return out
 
 
-KNOWN_TRACKS = ("primary", "max", "pilot", "live", "inverse")
+KNOWN_TRACKS = ("primary", "control", "pilot", "live", "max", "inverse")
 CLOSED_BOOKS = ("max", "inverse")  # v11 (2026-10-19): they open nothing new
 CONSENSUS_RULE = (
     "a trade opens when two of the three managers call the same direction and none calls "
@@ -164,7 +164,8 @@ def logic_facts(active: list[str], closed_books: list[str]) -> dict[str, Any]:
         "active_books": active,
         "closed_books": closed_books,
         "note": "closed books open nothing new since v11; their last trades run out. "
-        "Judge the bot on the active books only.",
+        "Judge the bot on the active books only. The control book (v15) takes the same "
+        "decisions as the primary with the old chase limit of 2 ATR; the primary uses 1.",
         "already_decided": decided_log(),
     }
 

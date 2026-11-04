@@ -910,7 +910,7 @@ def _p_exposure(s: Session, cfg: Config, now: datetime, risk: RiskState | None) 
     beta = betas(s, cfg, now)
     equity_of = {a.track: a.equity for a in s.scalars(select(PaperAccount)).all()}
     exposures = []
-    for tr in ("primary", "max", "inverse", "pilot", "live"):
+    for tr in ("primary", "control", "pilot", "live", "max", "inverse"):
         if tr not in equity_of:
             continue
         e = track_exposure(s, tr, beta)
