@@ -266,8 +266,8 @@ async def test_compose_rewrites_a_lookalike_and_skips_after_three(
         "close",
         FACTS,
         "plain",
-        session=object(),
-        cfg=get_config(),  # type: ignore[arg-type]
+        session=object(),  # type: ignore[arg-type]
+        cfg=get_config(),
     )
     assert source == "writer" and ok and text and text.startswith("Nine hours")
     assert notes is not None and "same shape as a recent post" in notes
@@ -288,8 +288,8 @@ async def test_compose_rewrites_a_lookalike_and_skips_after_three(
         "close",
         FACTS,
         "plain",
-        session=object(),
-        cfg=get_config(),  # type: ignore[arg-type]
+        session=object(),  # type: ignore[arg-type]
+        cfg=get_config(),
     )
     assert text is None and source == "skipped" and not ok and "no draft passed" in (notes or "")
 
@@ -330,8 +330,8 @@ async def test_the_writer_model_audits_when_the_auditor_is_down(
         "close",
         FACTS,
         "plain",
-        session=object(),
-        cfg=cfg,  # type: ignore[arg-type]
+        session=object(),  # type: ignore[arg-type]
+        cfg=cfg,
     )
     assert ok and source == "writer" and text
     assert models == [None, cfg.models.post_writer]

@@ -18,8 +18,14 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column("dex_trades", sa.Column("mode", sa.String(length=8), nullable=False, server_default="paper"))
-    op.add_column("dex_equity", sa.Column("mode", sa.String(length=8), nullable=False, server_default="paper"))
+    op.add_column(
+        "dex_trades",
+        sa.Column("mode", sa.String(length=8), nullable=False, server_default="paper"),
+    )
+    op.add_column(
+        "dex_equity",
+        sa.Column("mode", sa.String(length=8), nullable=False, server_default="paper"),
+    )
     op.add_column("dex_state", sa.Column("mode", sa.String(length=8), nullable=True))
 
 

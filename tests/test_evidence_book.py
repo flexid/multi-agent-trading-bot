@@ -37,7 +37,7 @@ def _pos(asset: str, direction: str, entry: str, **kw: object) -> Position:
         updated_at=NOW - timedelta(hours=3),
     )
     base.update(kw)
-    return Position(asset=asset, **base)  # type: ignore[arg-type]
+    return Position(asset=asset, **base)
 
 
 def test_net_margin_pct_is_net_of_fees() -> None:
