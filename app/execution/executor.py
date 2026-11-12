@@ -1023,7 +1023,7 @@ class Executor:
         # when the primary's rules blocked the call: that is the point of the comparison.
         # (Until 2026-11-11 it only saw the primary's approvals and copied its book.)
         approved = (
-            DecisionRecord.proposal.has_key("plan_control")  # type: ignore[attr-defined]
+            DecisionRecord.proposal.has_key("plan_control")
             if track == "control"
             else DecisionRecord.action == "open"
         )

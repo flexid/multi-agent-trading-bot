@@ -38,8 +38,9 @@ class Variant:
 
 
 VARIANTS = [
+    # name, stop room, hard stop ATR, leverage ceiling, keep (None = v10 giveback), dead hours, skip-follow ATR, skip-with-leader
     Variant(
-        "v14 as run (stops 1.0, hard 0.5 ATR, cap 3x, keep 0.5)",
+        "v14/v15 as run (stops 1.0, hard 0.5 ATR, cap 3x, keep 0.5)",
         Decimal(1),
         Decimal("0.5"),
         Decimal(3),
@@ -47,6 +48,8 @@ VARIANTS = [
         None,
         None,
     ),
+    Variant("the same at 2x", Decimal(1), Decimal("0.5"), Decimal(2), Decimal("0.5"), None, None),
+    Variant("the same at 1x", Decimal(1), Decimal("0.5"), Decimal(1), Decimal("0.5"), None, None),
     Variant(
         "v10 geometry (stops 1.5, hard 1 ATR, 1x, giveback 0.25)",
         Decimal("1.5"),
@@ -60,13 +63,25 @@ VARIANTS = [
         "v10 geometry + dead trade at 24h", Decimal("1.5"), Decimal(1), Decimal(1), None, 24, None
     ),
     Variant(
-        "v10 geometry + dead trade at 12h", Decimal("1.5"), Decimal(1), Decimal(1), None, 12, None
+        "as run + dead trade at 24h",
+        Decimal(1),
+        Decimal("0.5"),
+        Decimal(3),
+        Decimal("0.5"),
+        24,
+        None,
     ),
     Variant(
-        "v14 + dead trade at 24h", Decimal(1), Decimal("0.5"), Decimal(3), Decimal("0.5"), 24, None
+        "as run + skip following > 1 ATR",
+        Decimal(1),
+        Decimal("0.5"),
+        Decimal(3),
+        Decimal("0.5"),
+        None,
+        Decimal(1),
     ),
     Variant(
-        "v10 geometry + skip trades following > 1 ATR",
+        "v10 geometry + skip following > 1 ATR",
         Decimal("1.5"),
         Decimal(1),
         Decimal(1),
@@ -84,74 +99,17 @@ VARIANTS = [
         Decimal(1),
     ),
     Variant(
-        "v14 + skip following > 1 ATR",
-        Decimal(1),
-        Variant(
-            "v15 at 1x (stops 1.0, hard 0.5 ATR, keep 0.5)",
-            Decimal(1),
-            Decimal("0.5"),
-            Decimal(1),
-            Decimal("0.5"),
-            None,
-            None,
-        ),
-        Variant("v15 at 2x", Decimal(1), Decimal("0.5"), Decimal(2), Decimal("0.5"), None, None),
-        Decimal("0.5"),
-        Decimal(3),
-        Decimal("0.5"),
-        None,
-        Decimal(1),
-    ),
-    Variant(
-        "v14 + skip following > 0.5 ATR",
-        Decimal(1),
-        Decimal("0.5"),
-        Decimal(3),
-        Decimal("0.5"),
-        None,
-        Decimal("0.5"),
-    ),
-    Variant(
-        "v14 + skip a call that continues BTC's own >1% day",
+        "as run + skip a call that continues BTC's own >1% day",
         Decimal(1),
         Decimal("0.5"),
         Decimal(3),
         Decimal("0.5"),
         None,
         None,
-        True,
-    ),
-    Variant(
-        "v14 + both skips",
-        Decimal(1),
-        Decimal("0.5"),
-        Decimal(3),
-        Decimal("0.5"),
-        None,
-        Decimal(1),
-        True,
-    ),
-    Variant(
-        "v10 geometry + both skips",
-        Decimal("1.5"),
-        Decimal(1),
-        Decimal(1),
-        None,
-        None,
-        Decimal(1),
-        True,
-    ),
-    Variant(
-        "v10 geometry + both skips + dead 24h",
-        Decimal("1.5"),
-        Decimal(1),
-        Decimal(1),
-        None,
-        24,
-        Decimal(1),
         True,
     ),
 ]
+
 
 TRADES_SQL = text(  # noqa: E501
     """
