@@ -762,3 +762,23 @@ async def test_a_round_trip_costs_the_ledger_its_entry_fee_once(db: None) -> Non
         after = s.get(PaperAccount, 1)
         assert after is not None
         assert abs(after.cash - (start + closed.pnl)) < D("0.000001")
+
+
+@needs_db
+async def test_the_control_book_opens_what_the_primary_blocked(db: None) -> None:
+    """v15 (2026-11-11 fix): a decision the primary's chase rule blocked still carries the
+    control plan, and the control book opens it; the primary does not."""
+    from app.db.models import DecisionRecord
+    from app.db.session import new_session
+
+    seed_decision()
+    with new_session() as s:
+        d = s.query(DecisionRecord).order_by(DecisionRecord.id.desc()).first()
+        assert d is not None and d.proposal is not None
+        d.action = "none"  # blocked on the primary ...
+        d.proposal = {**d.proposal, "plan_control": d.proposal["plan"]}  # ... with a control plan
+        s.commit()
+    ex = make(ScriptedGateway(opens=[OrderOutcome(Outcome.FILLED)]), quote("99.9", "100"))
+    await ex.tick()
+    assert [p.track for p in positions(track="control")] == ["control"]
+    assert positions(track="primary") == []

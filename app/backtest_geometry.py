@@ -9,6 +9,7 @@ python -m app.backtest_geometry
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -21,7 +22,7 @@ from app.db.session import new_session
 
 FEE = Decimal("0.001")  # per leg, of notional
 TAKE = Decimal("0.02")  # net on margin
-SINCE = "2026-10-12 19:33+00"
+SINCE = os.environ.get("REPLAY_SINCE", "2026-10-12 19:33+00")
 
 
 @dataclass(frozen=True)
@@ -85,6 +86,16 @@ VARIANTS = [
     Variant(
         "v14 + skip following > 1 ATR",
         Decimal(1),
+        Variant(
+            "v15 at 1x (stops 1.0, hard 0.5 ATR, keep 0.5)",
+            Decimal(1),
+            Decimal("0.5"),
+            Decimal(1),
+            Decimal("0.5"),
+            None,
+            None,
+        ),
+        Variant("v15 at 2x", Decimal(1), Decimal("0.5"), Decimal(2), Decimal("0.5"), None, None),
         Decimal("0.5"),
         Decimal(3),
         Decimal("0.5"),

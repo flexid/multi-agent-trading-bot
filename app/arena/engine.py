@@ -273,7 +273,7 @@ class Engine:
     def _round_winner(self, s: Any, started: datetime, now: datetime) -> str | None:
         best: tuple[Decimal, str] | None = None
         for t in self.traders.values():
-            start = ledger.equity_at(s, t.id, started)
+            start = ledger.equity_from(s, t.id, started)
             end = ledger.equity_at(s, t.id, now)
             if start is None or end is None or start <= 0:
                 continue

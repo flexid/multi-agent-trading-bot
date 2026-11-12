@@ -1019,9 +1019,17 @@ class Executor:
             ).all()
         )
         recent = now - timedelta(hours=self.cfg.trading.cycle_hours)
+        # The control book (v15) opens on its own plan, which the risk engine writes even
+        # when the primary's rules blocked the call: that is the point of the comparison.
+        # (Until 2026-11-11 it only saw the primary's approvals and copied its book.)
+        approved = (
+            DecisionRecord.proposal.has_key("plan_control")  # type: ignore[attr-defined]
+            if track == "control"
+            else DecisionRecord.action == "open"
+        )
         rows = session.scalars(
             select(DecisionRecord)
-            .where(DecisionRecord.action == "open", DecisionRecord.ts >= recent)
+            .where(approved, DecisionRecord.ts >= recent)
             .order_by(DecisionRecord.ts.desc())
         ).all()
         seen: set[str] = set()

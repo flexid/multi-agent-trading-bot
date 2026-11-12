@@ -164,6 +164,19 @@ def latest_rulebook(s: Session, trader: str, round_number: int) -> ArenaRulebook
     ).first()
 
 
+def equity_from(s: Session, trader: str, at: datetime) -> Decimal | None:
+    """The first equity point at or after ``at``: a round's starting line. (The last point
+    before it belongs to the previous round, or to the previous season: Kwekton "won"
+    round 15 on no trades because its start was read as season one's last equity.)"""
+    row = s.execute(
+        select(ArenaEquity.equity_usdt)
+        .where(ArenaEquity.trader == trader, ArenaEquity.ts >= at)
+        .order_by(ArenaEquity.ts)
+        .limit(1)
+    ).scalar_one_or_none()
+    return row
+
+
 def equity_at(s: Session, trader: str, at: datetime) -> Decimal | None:
     row = s.execute(
         select(ArenaEquity.equity_usdt)

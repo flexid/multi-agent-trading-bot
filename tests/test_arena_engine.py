@@ -646,3 +646,34 @@ async def test_a_new_season_ends_the_round_and_restarts_the_index(
         board = ledger.leaderboard_view(s, now)
         assert all(t["trades"] == 0 and t["equity_index"] == 100.0 for t in board["traders"])
     assert all(t.start_equity == D(1000) for t in traders.values())
+
+
+@needs_db
+async def test_a_round_winner_needs_a_gain_measured_from_the_round_start(db: None) -> None:
+    """2026-11-11: Kwekton 'won' round 15 with no trades because its start was read as
+    the last equity before the season reset. The start is the first point in the round."""
+    from app.arena import ledger
+    from app.db.models import ArenaEquity
+
+    prices = Prices()
+    engine, traders = make(prices)
+    now = T0
+    with new_session() as s:
+        for t in traders:
+            s.merge(
+                ArenaEquity(
+                    trader=t, ts=now - timedelta(minutes=5), equity_usdt=D(800), equity_index=D(80)
+                )
+            )
+            s.merge(ArenaEquity(trader=t, ts=now, equity_usdt=D(1000), equity_index=D(100)))
+            s.merge(
+                ArenaEquity(
+                    trader=t,
+                    ts=now + timedelta(hours=1),
+                    equity_usdt=D(1000) - (D(10) if t != "kwekton" else D(0)),
+                    equity_index=D(100),
+                )
+            )
+        s.commit()
+        assert ledger.equity_from(s, "kwekton", now) == D(1000)
+        assert engine._round_winner(s, now, now + timedelta(hours=1)) is None  # nobody gained
