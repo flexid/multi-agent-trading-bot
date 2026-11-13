@@ -247,6 +247,13 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
     )
     scheduler.add_job(
         ops_job,
+        CronTrigger(hour="7", minute="5"),  # inputs that keep failing: one mail a day
+        args=["sources", cfg],
+        id="sources",
+        max_instances=1,
+    )
+    scheduler.add_job(
+        ops_job,
         CronTrigger(day="1,15", hour="1", minute="30"),
         args=["tuning", cfg],
         id="tuning",
@@ -362,6 +369,8 @@ async def ops_job(kind: str, cfg: Config) -> None:
             await asyncio.to_thread(ops.backup)
         elif kind == "tuning":
             await asyncio.to_thread(ops.tuning, cfg)
+        elif kind == "sources":
+            await asyncio.to_thread(ops.sources_alert)
         elif kind == "costs":
             await asyncio.to_thread(ops.write_cost_report)
             log.info("cost report written to logs/costs.md")

@@ -185,7 +185,8 @@ def test_the_brief_states_the_restated_goal_and_not_the_retired_one() -> None:
     assert GOAL in brief and "retired" in brief and "skill against drift" in brief
     assert "an average of 1% per day" not in brief
     prompt = load_prompt("memo")
-    assert prompt.version == 10 and "`promotion`" in prompt.system
+    assert prompt.version == 11 and "`promotion`" in prompt.system
+    assert "`failing_sources`" in prompt.system
     assert "1% a day is retired" in prompt.system and "skill_vs_drift" in prompt.system
     assert "promotion_rule" in prompt.system and "two sleeves" not in prompt.system
 
@@ -252,6 +253,15 @@ def test_render_shows_the_slow_books_the_skill_table_and_the_cost_share() -> Non
                 },
             },
         },
+        "failing_sources": [
+            {
+                "source": "x.curated",
+                "parts": 4,
+                "since": "2026-11-06 04:02",
+                "errors_in_a_row": 3632,
+                "last_error": "/tweets/search/recent: HTTP 402: Payment Required",
+            }
+        ],
         "promotion": {
             "window_days": 90,
             "calls": 412,
@@ -292,6 +302,11 @@ def test_render_shows_the_slow_books_the_skill_table_and_the_cost_share() -> Non
     assert "- short (ledger short): equity 10000.0, +0.00%; holds nothing; 0 closed" in text
     assert "- challenger (ledger seats): no ledger yet; holds nothing" in text
     assert "None" not in text
+    assert (
+        "- INPUT FAILING NOW: x.curated (4 queries): no success since 2026-11-06 04:02 UTC, "
+        "3632 errors in a row; last answer: /tweets/search/recent: HTTP 402: Payment Required"
+        in text
+    )
     assert (
         "- promotion check, consensus over 90 days: 412 calls on 31 days, skill 3d -0.85, "
         "7d none yet: not met (31 of 60 days; skill at three days not above zero)" in text

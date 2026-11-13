@@ -1,24 +1,93 @@
 """Ops jobs scheduled from the scheduler (M9): nightly backup, go-live check, tuning,
-monthly cost report."""
+monthly cost report, and the daily look at inputs that keep failing."""
 
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.config import Config, get_secrets
 from app.costs import SERVER_USD_PER_MONTH, X_POST_USD, X_READ_USD
-from app.db.models import LLMCall, XPostOut, XPostRecord
+from app.db.models import DataSource, LLMCall, XPostOut, XPostRecord
 from app.db.session import new_session
 
 log = logging.getLogger("ops")
 BACKUP_DIR = Path("/app/logs/backups")
 KEEP_BACKUPS = 14
+# An input is "failing" when it has not succeeded for this long and is still being tried.
+FAILING_AFTER = timedelta(hours=6)
+
+
+def failing_sources(session: Session, now: datetime | None = None) -> list[dict[str, Any]]:
+    """Inputs that keep failing: no success for six hours, errors in a row, and an error in
+    the last day (so a source nobody asks for any more is not reported). The numbered
+    queries of one source (x.curated.q0, q1, ...) are one line.
+
+    2026-11-13: X had answered every read with "402 Payment Required" for a week and every
+    post with 429 for five days; nothing told the owner."""
+    now = now or datetime.now(UTC)
+    rows = session.scalars(
+        select(DataSource)
+        .where(DataSource.consecutive_errors >= 3, DataSource.last_error_at >= now - timedelta(1))
+        .order_by(DataSource.name)
+    ).all()
+    grouped: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        if r.last_success_at is not None and r.last_success_at > now - FAILING_AFTER:
+            continue
+        name = re.sub(r"\.q\d+$", "", r.name)
+        g = grouped.setdefault(
+            name,
+            {"source": name, "parts": 0, "since": r.last_success_at, "errors_in_a_row": 0},
+        )
+        g["parts"] += 1
+        g["errors_in_a_row"] = max(g["errors_in_a_row"], r.consecutive_errors)
+        g["last_error"] = (r.last_error or "")[:160]
+        if r.last_success_at is not None and (g["since"] is None or r.last_success_at < g["since"]):
+            g["since"] = r.last_success_at
+    out = []
+    for g in grouped.values():
+        since = g["since"]
+        g["since"] = since.strftime("%Y-%m-%d %H:%M") if since else None
+        out.append(g)
+    return out
+
+
+def describe_failing(sources: list[dict[str, Any]]) -> list[str]:
+    return [
+        f"{s['source']}"
+        + (f" ({s['parts']} queries)" if s["parts"] > 1 else "")
+        + (f": no success since {s['since']} UTC" if s["since"] else ": never succeeded")
+        + f", {s['errors_in_a_row']} errors in a row; last answer: {s['last_error'] or 'none'}"
+        for s in sources
+    ]
+
+
+def sources_alert(now: datetime | None = None) -> list[dict[str, Any]]:
+    """One mail a day for as long as an input keeps failing. Returns what was reported."""
+    from app.admin import notify
+
+    with new_session() as session:
+        failing = failing_sources(session, now)
+    if failing:
+        lines = describe_failing(failing)
+        notify.send(
+            "dorkbot: an input has been failing for hours",
+            "The bot keeps running, but it decides without:\n\n- "
+            + "\n- ".join(lines)
+            + "\n\nA 401, 402 or 403 from a paid API is usually the account (credit, plan, "
+            "key), not the bot. This mail repeats daily until the source answers again.",
+        )
+        log.warning("failing inputs reported: %s", "; ".join(lines))
+    return failing
 
 
 def backup() -> Path | None:

@@ -37,6 +37,7 @@ from app.db.models import (
 )
 from app.db.session import new_session
 from app.decision.skill import skill_table
+from app.ops import describe_failing, failing_sources
 from app.strategy.books import book_tracks
 from app.version import FROZEN_UNTIL, LOGIC_VERSION
 
@@ -405,6 +406,9 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
             "template_fallbacks": sum(1 for p in posts if p.source == "template" and not p.dry_run),
         },
         "failed_fetches": {s: n for s, n in failed_fetches},
+        # inputs that have been failing for hours right now (the X reads are not fetch
+        # jobs, so a week of "402 Payment Required" never showed in failed_fetches)
+        "failing_sources": failing_sources(session, now),
         "suppressed_triggers": suppressed_facts,
         "sleeves": sleeves_facts(session, cfg, now, since),
         "agent_weights": current_weights(session),
@@ -648,6 +652,8 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
     lines.append(f"- risk rule hits: {f['risk_rule_hits'] or 'none'}")
     lines.append(f"- posts: {f['posts']}")
     lines.append(f"- failed fetches: {f['failed_fetches'] or 'none'}")
+    for line in describe_failing(f.get("failing_sources") or []):
+        lines.append(f"- INPUT FAILING NOW: {line}")
     si = f.get("stale_input_cycles") or {}
     if si:
         lines.append(

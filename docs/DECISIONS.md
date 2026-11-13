@@ -610,5 +610,7 @@ Found while verifying the v16 deploy: no post had gone out since 4 November, and
 
 Now (`app/social/poster.py`): a failed send waits before its next try, half the post's age with a floor of five minutes and a ceiling of six hours; a 429 stops the whole queue until X's window reopens (fifteen minutes, or the reset time X gives, at most six hours); a post that could not go out within a day is closed unsent, because a week-old trade is not news and a burst of old posts when a limit lifts is what gets an account flagged. Eleven of the thirteen stuck posts expire on the first pass; the two from 13 November are tried a few more times. The counts of posts (daily cap, costs, report, admin) count posts that went out, not rows that were closed.
 
-Why X refuses is the owner's to check in the developer portal (plan, monthly cap, account status); the bot cannot see it.
+Why X refuses: the reads say it. Since 2026-11-06 04:02 UTC every search answers "402 Payment Required" (3,632 times in a row per query by the 13th), so the X API account is out of credit; the posts get 429 on top. Only the owner can top it up. Until then the X agent, the news trigger and the shock exit have no new posts to work with, and nothing is posted.
+
+**An outage like this is reported from now on.** It sat for a week because the X reads are not fetch jobs, so the memo's "failed fetches" never listed them. `ops.failing_sources` reads `data_sources`: no success for six hours, errors in a row and an error in the last day. The scheduler mails the owner once a day while any input is in that state (job `sources`, 07:05 UTC), and the weekly memo lists it first (`failing_sources`, memo.md v11).
 
