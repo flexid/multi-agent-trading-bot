@@ -616,3 +616,9 @@ Why X refuses: the reads say it. Since 2026-11-06 04:02 UTC every search answers
 
 **An outage like this is reported from now on.** It sat for a week because the X reads are not fetch jobs, so the memo's "failed fetches" never listed them. `ops.failing_sources` reads `data_sources`: no success for six hours, errors in a row and an error in the last day. The scheduler mails the owner once a day while any input is in that state (job `sources`, 07:05 UTC), and the weekly memo lists it first (`failing_sources`, memo.md v11).
 
+## 2026-11-13 · The scheduler froze on its own two X fetches
+
+16:32 UTC, minutes after the X API credit came back: the three-minute X poll and a triggered cycle's X agent started in the same second. Both write the `x.curated.q*` markers, each in its own session, and wait for X between writes. The second one's UPDATE waited on the first one's open transaction; the database calls are synchronous on the scheduler's one event loop, so the first could never run again to commit. No heartbeat, no cycle, no job for eight minutes, until the scheduler was restarted by hand. An old race, unrelated to v16; it needed the poll's three-minute grid to land on a cycle's first second.
+
+Two changes. The curated fetch takes a lock per event loop, held until its markers are committed, so the poll and a cycle take turns (`app/agents/x_sentiment.py`). And every app database connection carries `lock_timeout = 20s` (`app/db/session.py`): a statement that waits that long on a row lock raises, is logged and is retried on the next pass or job, instead of holding a whole process still. For the executor that is also the safer side: a tick that fails is retried ten seconds later, a tick that waits evaluates no stop at all.
+

@@ -18,6 +18,7 @@ Aggregation in code, per asset over the labelled posts of the last 24 hours:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
@@ -242,7 +243,27 @@ async def fetch_posts(session: Session, cfg: Config, client: XClient, now: datet
     return stored
 
 
+_curated_locks: dict[int, asyncio.Lock] = {}
+
+
+def _curated_lock() -> asyncio.Lock:
+    """One curated fetch at a time per event loop. The three-minute poll and a cycle's X
+    agent both write the ``x.curated.q*`` markers, each in its own session, and wait for X
+    in between. Started in the same second (2026-11-13 16:32 UTC) the second one's UPDATE
+    waited on the first one's open transaction, on the event loop the first one needed to
+    finish: the scheduler stood still for eight minutes until it was restarted."""
+    loop = asyncio.get_running_loop()
+    return _curated_locks.setdefault(id(loop), asyncio.Lock())
+
+
 async def fetch_curated(
+    session: Session, cfg: Config, client: XClient, now: datetime, allowance: int
+) -> tuple[int, int]:
+    async with _curated_lock():  # held until the markers are committed
+        return await _fetch_curated(session, cfg, client, now, allowance)
+
+
+async def _fetch_curated(
     session: Session, cfg: Config, client: XClient, now: datetime, allowance: int
 ) -> tuple[int, int]:
     """The curated accounts, through a search X filters by ticker (owner 2026-10-10: the
