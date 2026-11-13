@@ -59,7 +59,12 @@ def running_costs(session: Session, since: datetime, until: datetime) -> Running
     posts = session.execute(
         select(func.count())
         .select_from(XPostOut)
-        .where(XPostOut.posted_at >= since, XPostOut.posted_at < until, XPostOut.dry_run.is_(False))
+        .where(
+            XPostOut.posted_at >= since,
+            XPostOut.posted_at < until,
+            XPostOut.dry_run.is_(False),
+            XPostOut.x_id.is_not(None),  # went out: X bills a post, not an attempt
+        )
     ).scalar_one()
     return RunningCosts(
         llm=Decimal(str(llm or 0)),

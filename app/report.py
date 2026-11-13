@@ -59,7 +59,9 @@ def main(argv: list[str] | None = None) -> int:
         posts_today = s.execute(
             select(func.count())
             .select_from(XPostOut)
-            .where(XPostOut.posted_at >= day, XPostOut.dry_run.is_(False))
+            .where(
+                XPostOut.posted_at >= day, XPostOut.dry_run.is_(False), XPostOut.x_id.is_not(None)
+            )
         ).scalar_one()
         open_count = sum(1 for r in rows if r.status != "closed")
         # Open trades have no stored result yet: work it out from the price now (the

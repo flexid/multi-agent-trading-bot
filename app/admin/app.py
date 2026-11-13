@@ -475,7 +475,7 @@ def _p_costs(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> 
     posts_month = s.execute(
         select(func.count())
         .select_from(XPostOut)
-        .where(XPostOut.posted_at >= month, XPostOut.dry_run.is_(False))
+        .where(XPostOut.posted_at >= month, XPostOut.dry_run.is_(False), XPostOut.x_id.is_not(None))
     ).scalar_one()
     # Average per day over the last seven days (owner 2026-10-14): LLM, X, and the Bybit
     # fees the real pilot paid and the paper book would have paid.
@@ -497,7 +497,7 @@ def _p_costs(s: Session, cfg: Config, now: datetime, risk: RiskState | None) -> 
     posts_week = s.execute(
         select(func.count())
         .select_from(XPostOut)
-        .where(XPostOut.posted_at >= week, XPostOut.dry_run.is_(False))
+        .where(XPostOut.posted_at >= week, XPostOut.dry_run.is_(False), XPostOut.x_id.is_not(None))
     ).scalar_one()
     x_week = Decimal(reads_week) * Decimal("0.005") + Decimal(posts_week) * Decimal("0.015")
 

@@ -603,3 +603,12 @@ The owner asked for a ground-up review and rethink (docs/RETHINK_2026-11.md) and
 12. *The model lacked the index the migration creates* on `rule_plans`.
 
 One old test (the fast book's shock exit) was made independent of how long the suite takes: it built a post ten minutes before the module was imported and failed whenever the run stalled for more than five.
+
+## 2026-11-13 · The X poster stops hammering a closed door
+
+Found while verifying the v16 deploy: no post had gone out since 4 November, and since 8 November thirteen close posts were refused by X with HTTP 429 and each was retried on every executor pass, every ten seconds. That is about a hundred thousand rejected requests a day, for five days, from an account X had already flagged once. The flush had no wait and no end.
+
+Now (`app/social/poster.py`): a failed send waits before its next try, half the post's age with a floor of five minutes and a ceiling of six hours; a 429 stops the whole queue until X's window reopens (fifteen minutes, or the reset time X gives, at most six hours); a post that could not go out within a day is closed unsent, because a week-old trade is not news and a burst of old posts when a limit lifts is what gets an account flagged. Eleven of the thirteen stuck posts expire on the first pass; the two from 13 November are tried a few more times. The counts of posts (daily cap, costs, report, admin) count posts that went out, not rows that were closed.
+
+Why X refuses is the owner's to check in the developer portal (plan, monthly cap, account status); the bot cannot see it.
+

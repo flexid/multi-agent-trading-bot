@@ -335,3 +335,131 @@ async def test_the_writer_model_audits_when_the_auditor_is_down(
     )
     assert ok and source == "writer" and text
     assert models == [None, cfg.models.post_writer]
+
+
+def _queue(position_id: int, ages_hours: list[float]) -> list[int]:
+    """Close posts that are due now, one per age (hours since they were written)."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.db.models import XPostOut
+    from app.db.session import new_session
+
+    now = datetime.now(UTC)
+    ids = []
+    with new_session() as s:
+        for age in ages_hours:
+            row = XPostOut(
+                position_id=position_id,
+                kind="close",
+                text=f"closed, {age}h ago",
+                source="writer",
+                audit_ok=True,
+                whitelist_ok=True,
+                scheduled_at=now - timedelta(hours=age) + timedelta(minutes=5),
+                dry_run=False,
+                created_at=now - timedelta(hours=age),
+            )
+            s.add(row)
+            s.flush()
+            ids.append(row.id)
+        s.commit()
+    return ids
+
+
+async def test_a_failed_post_waits_a_rate_limit_stops_the_queue_and_old_news_expires(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """2026-11-13: thirteen close posts had been refused with HTTP 429 since the 8th and
+    each was retried on every pass, every ten seconds: about a hundred thousand rejected
+    requests a day. A failure now waits, a 429 stops the whole queue for X's window, and
+    a post that is a day old is closed without ever being sent."""
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import delete, select
+
+    from app.config import get_config, get_secrets
+    from app.db.models import XPostOut
+    from app.db.session import new_session
+    from app.social import poster
+    from tests.test_data_layer import _db_available
+
+    if not _db_available():
+        return
+    pid = 987655
+    calls: list[str] = []
+    answer: list[Exception | None] = [poster.RateLimited("X post failed: HTTP 429")]
+
+    async def fake_send(secrets: object, text: str, reply_to: object, media: object = None) -> str:
+        calls.append(text)
+        if answer[0] is not None:
+            raise answer[0]
+        return f"x-{len(calls)}"
+
+    monkeypatch.setattr(poster, "send", fake_send)
+    monkeypatch.setattr(poster, "_paused_until", None)
+    cfg, secrets = get_config(), get_secrets()
+
+    def rows() -> dict[int, XPostOut]:
+        with new_session() as s:
+            return {r.id: r for r in s.scalars(select(XPostOut).where(XPostOut.position_id == pid))}
+
+    with new_session() as s:
+        s.execute(delete(XPostOut).where(XPostOut.posted_at.is_(None)))
+        s.execute(delete(XPostOut).where(XPostOut.position_id == pid))
+        s.commit()
+    try:
+        old, mid, fresh = _queue(pid, [30, 8, 0.2])
+        now = datetime.now(UTC)
+        with new_session() as s:
+            assert await poster.flush(s, cfg, secrets, now) == 0
+        got = rows()
+        # the day-old post is closed unsent, with no X id, and does not count as a post
+        assert got[old].posted_at is not None and got[old].x_id is None
+        assert (got[old].error or "").startswith("expired unsent")
+        # one request, one refusal: the second post was not even tried
+        assert calls == ["closed, 8h ago"]
+        assert got[mid].posted_at is None and "429" in (got[mid].error or "")
+        wait = got[mid].scheduled_at - now
+        assert timedelta(hours=3, minutes=55) < wait < timedelta(hours=4, minutes=5)  # half its age
+        assert got[fresh].posted_at is None and got[fresh].error is None
+        with new_session() as s:
+            assert poster.posts_today(s, now) == 0
+        # the next passes send nothing at all while X's window lasts
+        with new_session() as s:
+            assert await poster.flush(s, cfg, secrets, now + timedelta(minutes=10)) == 0
+        assert len(calls) == 1
+        # after the window the young post goes out; the refused one still waits its turn
+        answer[0] = None
+        later = now + timedelta(minutes=16)
+        with new_session() as s:
+            assert await poster.flush(s, cfg, secrets, later) == 1
+        got = rows()
+        assert calls[-1] == "closed, 0.2h ago" and len(calls) == 2
+        assert got[fresh].x_id == "x-2" and got[mid].posted_at is None
+        # an ordinary failure waits too (at least five minutes), without stopping the queue
+        answer[0] = RuntimeError("X post failed: HTTP 503")
+        (young,) = _queue(pid, [0.1])
+        with new_session() as s:
+            assert await poster.flush(s, cfg, secrets, later + timedelta(seconds=10)) == 0
+        got = rows()
+        assert got[young].posted_at is None and poster._paused_until is not None
+        assert got[young].scheduled_at - later >= timedelta(minutes=5)
+        assert poster._paused_until <= later  # a 503 is not a rate limit: no new pause
+    finally:
+        with new_session() as s:
+            s.execute(delete(XPostOut).where(XPostOut.position_id == pid))
+            s.commit()
+
+
+def test_a_rate_limit_answer_carries_the_reset_time_when_x_gives_one() -> None:
+    from datetime import UTC, datetime
+
+    import httpx
+
+    from app.social.poster import _reset_at
+
+    assert _reset_at(httpx.Headers({"x-rate-limit-reset": "1794578400"})) == datetime.fromtimestamp(
+        1794578400, UTC
+    )
+    assert _reset_at(httpx.Headers({})) is None
+    assert _reset_at(httpx.Headers({"x-rate-limit-reset": "soon"})) is None

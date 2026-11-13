@@ -103,7 +103,11 @@ def cost_report(now: datetime | None = None) -> str:
         posts = s.execute(
             select(func.count())
             .select_from(XPostOut)
-            .where(XPostOut.posted_at >= since, XPostOut.dry_run.is_(False))
+            .where(
+                XPostOut.posted_at >= since,
+                XPostOut.dry_run.is_(False),
+                XPostOut.x_id.is_not(None),
+            )
         ).scalar_one()
     llm_total = sum(Decimal(str(r[4] or 0)) for r in by_model)
     x_total = Decimal(reads) * X_READ_USD + Decimal(posts) * X_POST_USD

@@ -346,12 +346,40 @@ def posts_today(session: Session, now: datetime) -> int:
         session.execute(
             select(func.count())
             .select_from(XPostOut)
-            .where(XPostOut.posted_at >= day, XPostOut.dry_run.is_(False))
+            .where(
+                XPostOut.posted_at >= day,
+                XPostOut.dry_run.is_(False),
+                XPostOut.x_id.is_not(None),  # went out: not blocked, skipped or expired
+            )
         ).scalar_one()
     )
 
 
 # --- X API v2 write (OAuth 1.0a user context) --------------------------------------
+
+# A post that fails is tried again later, never on the next pass. Until 2026-11-13 it was
+# retried every ten seconds for as long as it failed: thirteen stuck posts sent X about a
+# hundred thousand rejected requests a day for five days.
+RETRY_FIRST = timedelta(minutes=5)  # the shortest wait after a failed send
+RETRY_MAX = timedelta(hours=6)  # the longest; in between the wait is half the post's age
+GIVE_UP_AFTER = timedelta(hours=24)  # a trade post not out within a day is old news
+RATE_LIMIT_PAUSE = timedelta(minutes=15)  # X's window: nothing is sent while it lasts
+_paused_until: datetime | None = None  # set by a 429; this process sends nothing before it
+
+
+class RateLimited(RuntimeError):
+    """X answered 429. ``reset_at`` is when it says the window reopens, when it says so."""
+
+    def __init__(self, message: str, reset_at: datetime | None = None) -> None:
+        super().__init__(message)
+        self.reset_at = reset_at
+
+
+def _reset_at(headers: httpx.Headers) -> datetime | None:
+    try:
+        return datetime.fromtimestamp(int(headers.get("x-rate-limit-reset", "")), UTC)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
 
 
 def _oauth_header(secrets: Secrets, method: str, url: str) -> str:
@@ -411,6 +439,8 @@ async def send(
         r = await http.post(
             url, json=body, headers={"Authorization": _oauth_header(secrets, "POST", url)}
         )
+    if r.status_code == 429:
+        raise RateLimited(f"X post failed: HTTP 429 {r.text[:200]}", _reset_at(r.headers))
     if r.status_code not in (200, 201):
         raise RuntimeError(f"X post failed: HTTP {r.status_code} {r.text[:200]}")
     return str(r.json()["data"]["id"])
@@ -447,8 +477,16 @@ async def _card_for(session: Session, cfg: Config, secrets: Secrets, row: XPostO
 async def flush(
     session: Session, cfg: Config, secrets: Secrets, now: datetime | None = None
 ) -> int:
-    """Send due posts. Dry-run rows are marked posted without a request. Returns sent count."""
+    """Send due posts. Dry-run rows are marked posted without a request. Returns sent count.
+
+    A failed send waits before its next try (half the post's age, between five minutes
+    and six hours), a 429 stops everything for X's window, and a post that is a day old
+    is closed unsent: a week-old trade is not news, and a burst of old posts when a limit
+    lifts is what gets an account flagged."""
+    global _paused_until
     now = now or datetime.now(UTC)
+    if _paused_until is not None and now < _paused_until:
+        return 0
     due = session.scalars(
         select(XPostOut)
         .where(XPostOut.posted_at.is_(None), XPostOut.scheduled_at <= now)
@@ -462,6 +500,11 @@ async def flush(
         if row.dry_run:
             row.posted_at, row.x_id = now, f"dry-{row.id}"
             continue
+        if now - row.created_at > GIVE_UP_AFTER:
+            row.error = f"expired unsent after a day; last answer: {row.error or 'none'}"[:500]
+            row.posted_at = now  # closed, with no X id: it never went out
+            log.warning("post %d expired unsent", row.id)
+            continue
         if row.kind == "close" and posts_today(session, now) >= cfg.posting.max_posts_per_day:
             row.kind, row.error = "summary", "bundled: daily cap reached"
             row.scheduled_at = now.replace(hour=23, minute=55, second=0, microsecond=0)
@@ -473,6 +516,16 @@ async def flush(
             sent += 1
         except Exception as exc:
             row.error = str(exc)[:500]
-            log.error("post %d failed: %s", row.id, exc)
+            wait = min(RETRY_MAX, max(RETRY_FIRST, (now - row.created_at) / 2))
+            row.scheduled_at = now + wait
+            log.error(
+                "post %d failed, next try in %.0f min: %s", row.id, wait.total_seconds() / 60, exc
+            )
+            if isinstance(exc, RateLimited):
+                # One answer is enough: the other due posts would get the same one.
+                reset = exc.reset_at if exc.reset_at and exc.reset_at > now else now
+                _paused_until = max(now + RATE_LIMIT_PAUSE, min(reset, now + RETRY_MAX))
+                log.warning("X rate limit: nothing is sent before %s", _paused_until)
+                break
     session.commit()
     return sent
