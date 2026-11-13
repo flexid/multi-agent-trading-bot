@@ -37,7 +37,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.config import Config, Secrets, get_config, get_secrets
+from app.config import NOT_RULE_TRACKS, Config, Secrets, get_config, get_secrets
 from app.db.models import (
     Candle,
     ControlRequest,
@@ -47,6 +47,7 @@ from app.db.models import (
     PaperAccount,
     Position,
     RiskState,
+    RulePlan,
 )
 from app.db.session import new_session
 from app.decision import goal_cycle
@@ -56,6 +57,7 @@ from app.execution.gateway import Gateway, OrderOutcome, Outcome, PaperGateway
 from app.execution.simulator import ExitReason, Quote, Side
 from app.execution.ws_feed import QuoteFeed
 from app.social import poster, style
+from app.strategy.books import book_tracks, slow_main, track_books
 
 log = logging.getLogger("executor")
 TICK_S = 10
@@ -80,7 +82,19 @@ TRACKS: dict[str, dict[str, str]] = {
     "pilot": {"primary": "paper", "pilot": "pilot", "control": "paper"},
     "live": {"primary": "paper", "live": "live", "control": "paper"},
 }
-LEDGER_IDS = {"primary": 1, "max": 2, "pilot": 3, "live": 4, "inverse": 5, "control": 6}
+LEDGER_IDS = {
+    "primary": 1,
+    "max": 2,
+    "pilot": 3,
+    "live": 4,
+    "inverse": 5,
+    "control": 6,
+    # v16, the slow books' paper ledgers (docs/RETHINK_2026-11.md): the trend book while it
+    # is not yet the main book, the short leg, and the managers' daily challenger
+    "trend": 7,
+    "short": 8,
+    "seats": 9,
+}
 TAKER_FEE = {"USDT": Decimal("0.001"), "USDC": Decimal("0.0005")}
 LIQ_WARN_ROOM = Decimal("0.30")  # mail when under 30% of the entry-to-liquidation distance is left
 CASH_FIT_BUFFER = Decimal("0.995")  # leave the entry fee in cash when sizing to what is free
@@ -129,6 +143,30 @@ class Executor:
         self.qty_steps: dict[str, Decimal] = {}
         self.borrow_rates: dict[str, Decimal] = {}
         self.collateral_ratios: dict[str, Decimal] = {}
+        # v16: the ledgers that belong to a slow book (track -> book). A position on one of
+        # them carries the book's name and follows the daily rule, not the fast exits.
+        # The layout is read once, here: moving a book or flipping the takeover switch
+        # needs a restart (of the scheduler too), so a config reload can never leave the
+        # process half switched.
+        self.rule_tracks: dict[str, str] = track_books(cfg)
+        self.books: dict[str, str] = book_tracks(cfg)  # book -> the ledger it trades on now
+        self.slow = slow_main(cfg)  # the trend book is the main book: the fast book is shut
+        unknown = [t for t in self.rule_tracks if t not in LEDGER_IDS]
+        if unknown:
+            raise ValueError(
+                f"strategy: no ledger for track(s) {unknown}; known: {list(LEDGER_IDS)}"
+            )
+        if len(self.rule_tracks) != len(self.books):
+            raise ValueError(f"strategy: two books on one ledger: {self.books}")
+        # A slow book trades on paper. Its ledger is never the pilot's or the live one,
+        # never another book's, and the primary only for the trend book after the takeover.
+        taken = [
+            t
+            for t, book in self.rule_tracks.items()
+            if t in NOT_RULE_TRACKS or (t == "primary" and not (self.slow and book == "trend"))
+        ]
+        if taken:
+            raise ValueError(f"strategy: a slow book cannot trade on ledger(s) {taken}")
         self.frozen = False  # after a kill switch: no new positions until resumed
         self.kill_real_only = False  # a self-test kill leaves the paper tracks alone
         self._candle_ref: dict[str, tuple[int, Decimal]] = {}  # 15-minute bucket, last mid
@@ -138,6 +176,7 @@ class Executor:
         self._locked_cache: dict[str, dict[str, Any]] = {}
         self.style = style.load()
         self._alerted: set[str] = set()  # risk states already emailed this episode
+        self._left_closed: set[str] = set()  # ledgers nobody runs that just closed a position
 
     @staticmethod
     def decide_mode(cfg: Config) -> str:
@@ -255,6 +294,14 @@ class Executor:
         if snap is None or not snap.total_equity or snap.total_equity <= 0:
             return None
         return Decimal(str(snap.total_equity))
+
+    def tracks(self) -> dict[str, str]:
+        """The ledgers this process runs and the mode their positions are stored with: the
+        mode's own, and the slow books' paper ledgers beside them."""
+        out = dict(TRACKS[self.mode])
+        for track in self.rule_tracks:
+            out[track] = "paper"  # whatever the mode: a slow book never reaches the exchange
+        return out
 
     def ledger(self, session: Session, now: datetime, track: str = "primary") -> PaperAccount:
         track_id = LEDGER_IDS[track]
@@ -405,7 +452,16 @@ class Executor:
             req.result = "applied"
         CONFIG_PATH.write_text(text)
         get_config.cache_clear()
+        before = self.cfg.strategy
         self.cfg = get_config()
+        if self.cfg.strategy != before:
+            # Read at start only (see __init__): the books stay where they were.
+            log.warning(
+                "config.toml [strategy] changed; books and ledgers stay as started (%s) "
+                "until the executor and the scheduler are restarted",
+                self.books,
+            )
+            self.cfg = self.cfg.model_copy(update={"strategy": before})
         session.commit()
         log.info("applied %d parameter change(s)", sum(1 for r in pending if r.result == "applied"))
 
@@ -427,6 +483,7 @@ class Executor:
         take_profit = self._take_profit(session)
         equity_of: dict[str, Decimal] = {}
         goal_reached = self._day_goal_reached(session, now, rows, take_profit)
+        wanted = {} if fast else self._latest_rule_plans(session, rows, now)
         for row in rows:
             quote = self.quotes.get(row.symbol)
             if quote is None:
@@ -436,7 +493,9 @@ class Executor:
             pos = sim.accrue_interest(
                 pos, now, self.borrow_rates.get(row.symbol, HOURLY_BORROW_FALLBACK), quote.mid
             )
-            pos = sim.update_trail(pos, quote)
+            rule = row.book is not None  # a slow book's position: the signal is its exit
+            if not rule:
+                pos = sim.update_trail(pos, quote)
             if row.entry_price:
                 row.mfe_pct, row.mae_pct = sim.excursion(
                     pos.side, row.entry_price, quote, row.mfe_pct, row.mae_pct
@@ -452,9 +511,26 @@ class Executor:
                 reason = ExitReason.RISK
             if reason is None and not fast and self._shock_against(session, row, quote, now):
                 reason = ExitReason.SHOCK
-            if reason is None and row.track in goal_reached:
+            if reason is None and rule and not fast:
+                # v16: the daily rule (or, for the challenger, the managers' daily call) no
+                # longer wants this side. Only a row written after the position opened counts.
+                want = wanted.get((row.book or "", row.asset))
+                if (
+                    want is not None
+                    and row.opened_at is not None
+                    and want.ts > row.opened_at
+                    and want.side != row.direction
+                ):
+                    reason = ExitReason.SIGNAL
+                elif self.books.get(row.book or "") != row.track:
+                    # The book was switched off, or it moved to another ledger (the
+                    # takeover puts the trend book on primary): nothing will ever write a
+                    # row for this position again, so it closes here. On its new ledger
+                    # the book opens again on its next daily plan.
+                    reason = ExitReason.SIGNAL
+            if reason is None and not rule and row.track in goal_reached:
                 reason = ExitReason.TAKE_PROFIT  # the ledger made its day goal: bank it all
-            if reason is None and take_profit is not None:
+            if reason is None and not rule and take_profit is not None:
                 # Aggressive mode: bank a trade once its net profit reaches its share of
                 # the goal, measured on the ledger's equity.
                 if row.track not in equity_of:
@@ -489,6 +565,7 @@ class Executor:
             if reason is None and row.status == "closing":
                 reason = ExitReason(row.close_reason or "risk")  # retry a pending exit
             row.interest, row.trail_stop, row.updated_at = pos.interest, pos.trail_stop, now
+            row.interest_at = pos.last_interest_at  # the hour the interest is booked up to
             row.liquidation_price = pos.liquidation_price
             self._warn_near_liquidation(row, pos, quote)
             if reason is None:
@@ -522,6 +599,26 @@ class Executor:
         if take_profit is not None:
             self._rebase_flat_ledgers(session, now, take_profit)
         session.commit()
+
+    @staticmethod
+    def _latest_rule_plans(
+        session: Session, rows: Sequence[Position], now: datetime
+    ) -> dict[tuple[str, str], RulePlan]:
+        """The newest daily row per book and asset for the slow positions that are open.
+        A book whose rule cycle has been silent for a week keeps its positions: their
+        disaster stops stand, and the next row decides."""
+        books = {r.book for r in rows if r.book is not None}
+        if not books:
+            return {}
+        plans = session.scalars(
+            select(RulePlan)
+            .where(RulePlan.book.in_(books), RulePlan.ts >= now - timedelta(days=7))
+            .order_by(RulePlan.ts.desc(), RulePlan.id.desc())
+        ).all()
+        latest: dict[tuple[str, str], RulePlan] = {}
+        for rp in plans:
+            latest.setdefault((rp.book, rp.asset), rp)
+        return latest
 
     def _exit_pending(self, row: Position, reason: ExitReason, detail: str) -> None:
         """An exit that is not flat yet stays ``closing`` and is retried every pass."""
@@ -625,6 +722,8 @@ class Executor:
             )
         self._alerted.discard(f"exit:{row.id}")
         self._alerted.discard(f"liq:{row.id}")
+        if row.track not in self.tracks():
+            self._left_closed.add(row.track)  # the snapshot writes this ledger's last line
         log.info(
             "closed %s %s %s at %s: %.2f (%s)",
             row.mode,
@@ -654,6 +753,10 @@ class Executor:
         fee_rate = TAKER_FEE.get(self.cfg.exchange.quote, Decimal("0.001"))
         by_track: dict[str, list[Position]] = {}
         for row in rows:
+            if row.book is not None or row.track in self.rule_tracks:
+                # v16: a slow book has no day goal, and neither has the ledger it trades
+                # on: its open gains are not there to be banked by the fast book's rule
+                continue
             by_track.setdefault(row.track, []).append(row)
         reached: set[str] = set()
         for track, mine in by_track.items():
@@ -672,7 +775,7 @@ class Executor:
             if banked >= base * (1 + take_profit):
                 reached.add(track)
                 acct.goal_base = banked
-                if track in STORY_TRACKS:
+                if track in STORY_TRACKS and not self.slow:
                     goal_cycle.request(session, now, track)
                 log.info(
                     "%s: day goal reached, equity %.2f from base %.2f; closing %d trade(s)",
@@ -694,7 +797,8 @@ class Executor:
         single model's word closes anything; the executor does, in code."""
         from app.db.models import XPostRecord
 
-        if not row.atr or row.atr <= 0:
+        rule = row.book is not None
+        if not rule and (not row.atr or row.atr <= 0):
             return False
         against = "bearish" if row.direction == "long" else "bullish"
         post = session.execute(
@@ -724,15 +828,25 @@ class Executor:
         ).scalar_one_or_none()
         if then is None:
             return False
+        atr = row.atr
+        if rule:
+            # A slow position is weeks old and the ATR on its row is the one of its entry
+            # day. The move is measured against the market's range now.
+            from app.decision.evidence import spot_and_atr
+
+            current = spot_and_atr(session, row.symbol)[1]
+            atr = Decimal(str(current)) if current else None
+        if not atr or atr <= 0:
+            return False
         moved = (then - quote.mid) if row.direction == "long" else (quote.mid - then)
-        if moved >= self.SHOCK_ATR * row.atr:
+        if moved >= self.SHOCK_ATR * atr:
             log.warning(
                 "%s %s: news shock against the position, price %.4g -> %.4g (%.1f ATR): closing",
                 row.mode,
                 row.asset,
                 then,
                 quote.mid,
-                moved / row.atr,
+                moved / atr,
             )
             return True
         return False
@@ -763,13 +877,13 @@ class Executor:
             ).all()
         )
         for track in TRACKS[self.mode]:
-            if track in busy:
-                continue
+            if track in busy or track in self.rule_tracks:
+                continue  # a slow book has no day goal
             acct = self.ledger(session, now, track)
             base = acct.goal_base or acct.day_start_equity
             if base > 0 and acct.cash >= base * (1 + take_profit):
                 acct.goal_base = acct.cash
-                if track in STORY_TRACKS:
+                if track in STORY_TRACKS and not self.slow:
                     goal_cycle.request(session, now, track)
 
     def _take_profit(self, session: Session) -> Decimal | None:
@@ -972,8 +1086,12 @@ class Executor:
         if self.frozen or self.quotes_stale:
             return
         take_profit = self._take_profit(session)
-        for track, track_mode in TRACKS[self.mode].items():
-            if take_profit is not None and self._at_day_goal(session, now, track, take_profit):
+        for track, track_mode in self.tracks().items():
+            if (
+                track not in self.rule_tracks
+                and take_profit is not None
+                and self._at_day_goal(session, now, track, take_profit)
+            ):
                 # Owner 2026-10-15: an ENA short lived 18 seconds before the day-goal sweep
                 # closed it for its fees. Nothing opens while the book stands at the goal.
                 continue
@@ -1010,6 +1128,9 @@ class Executor:
         gw = self.gateway_for(track_mode)
         fee = TAKER_FEE.get(self.cfg.exchange.quote, Decimal("0.001"))
         acct = self.ledger(session, now, track)
+        book = self.rule_tracks.get(track)
+        if book is None and self.slow:
+            return  # v16: the trend book is the main book; the fast book opens nothing new
         plan_key = "plan_control" if track == "control" else "plan"
         open_assets = set(
             session.scalars(
@@ -1027,28 +1148,45 @@ class Executor:
             if track == "control"
             else DecisionRecord.action == "open"
         )
-        rows = session.scalars(
-            select(DecisionRecord)
-            .where(approved, DecisionRecord.ts >= recent)
-            .order_by(DecisionRecord.ts.desc())
-        ).all()
+        rows: Sequence[Any]
+        if book is not None:
+            # v16: a slow book opens on its daily rule plan (app/risk/rulebook.py), never on
+            # a managers' decision. The row carries the same instruction a plan does.
+            rows = session.scalars(
+                select(RulePlan)
+                .where(
+                    RulePlan.book == book,
+                    RulePlan.track == track,
+                    RulePlan.action == "open",
+                    RulePlan.ts >= recent,
+                )
+                .order_by(RulePlan.ts.desc(), RulePlan.id.desc())
+            ).all()
+        else:
+            rows = session.scalars(
+                select(DecisionRecord)
+                .where(approved, DecisionRecord.ts >= recent)
+                .order_by(DecisionRecord.ts.desc())
+            ).all()
         seen: set[str] = set()
         locked = self._locked_sleeves(session, now)
         live_sleeves = self._live_sleeves(session)
+        d: Any  # a DecisionRecord, or a RulePlan with the attributes the open path reads
         for d in rows:
             if d.asset in seen:
                 continue
             seen.add(d.asset)
+            executed = (
+                Position.plan_id == d.id if book is not None else Position.decision_id == d.id
+            )
             if session.scalar(
-                select(func.count())
-                .select_from(Position)
-                .where(Position.decision_id == d.id, Position.track == track)
+                select(func.count()).select_from(Position).where(executed, Position.track == track)
             ):
                 continue  # already executed
             if d.asset in open_assets:
                 self._note(d, track, f"already in a {d.asset} trade")
                 continue
-            if self._approved_while_in_trade(session, d, track):
+            if book is None and self._approved_while_in_trade(session, d, track):
                 # Owner 2026-10-15: the plan was approved as "nothing to add" while a
                 # trade in this asset was open; it does not become a fresh entry at the
                 # price that trade just closed on. The next cycle judges the market anew.
@@ -1064,7 +1202,7 @@ class Executor:
                 # this sleeve has not passed its own go-live evaluation yet
                 self._note(d, track, "sleeve not live yet")
                 continue
-            plan = (d.proposal or {}).get(plan_key)
+            plan = d.plan if book is not None else (d.proposal or {}).get(plan_key)
             symbol = self.cfg.symbol(d.asset)
             quote = self.quotes.get(symbol)
             if not plan or quote is None:
@@ -1079,7 +1217,20 @@ class Executor:
             # away, enter here and shift stop and target by the same amount, so the stop
             # distance, the target distance and the risk sizing stay as approved.
             drift = quote.mid / entry_mid - 1
-            if abs(drift) > ENTRY_CLAMP:
+            if abs(drift) > ENTRY_CLAMP and book is not None:
+                # A slow book's levels are shares of its entry (the disaster stop 15% away,
+                # the target out of reach), so they move in proportion. Shifted by the
+                # distance, a short's far target would land below zero.
+                ratio = quote.mid / entry_mid
+                plan = {
+                    **plan,
+                    "entry": str(quote.mid),
+                    "stop": str(Decimal(plan["stop"]) * ratio),
+                    "hard_stop": str(Decimal(plan.get("hard_stop", plan["stop"])) * ratio),
+                    "target": str(Decimal(plan["target"]) * ratio),
+                }
+                log.info("%s (%s): entry at spot, %+.2f%% from plan", d.asset, track, drift * 100)
+            elif abs(drift) > ENTRY_CLAMP:
                 offset = quote.mid - entry_mid
                 plan = {
                     **plan,
@@ -1171,8 +1322,10 @@ class Executor:
                     **{**pos.__dict__, "entry": result.avg_price, "fees": result.fee}
                 )
             row = Position(
-                decision_id=d.id,
-                cycle_id=d.cycle_id,
+                book=book,
+                plan_id=d.id if book is not None else None,
+                decision_id=d.id if book is None else None,
+                cycle_id=d.cycle_id if book is None else None,
                 mode=track_mode,
                 track=track,
                 asset=d.asset,
@@ -1203,7 +1356,8 @@ class Executor:
             if track_mode != "paper":
                 await self._sync_backup_stop(row, gw)
             if track == "primary":
-                await self.post(session, row, "open", self._reason_for(d), now)
+                reason = self._reason_for(d) if book is None else None
+                await self.post(session, row, "open", reason, now)
             # The margin leaves cash now; the entry fee does not: it sits in the position
             # and comes out of the net result at the close (until 2026-10-26 it was taken
             # here as well, so every round trip cost its entry fee twice in the ledger)
@@ -1280,7 +1434,8 @@ class Executor:
             fees=row.fees,
             interest=row.interest,
             trail_stop=row.trail_stop,
-            last_interest_at=row.updated_at,
+            # the row's own clock; never ``updated_at``, which every pass moves
+            last_interest_at=row.interest_at or row.opened_at,
             collateral_ratio=self.collateral_ratios.get(row.symbol, Decimal("0.98")),
             maintenance_rate=self.cfg.risk.maintenance_margin_rate,
         )
@@ -1289,7 +1444,7 @@ class Executor:
 
     def snapshot(self, session: Session, now: datetime) -> None:
         summary = []
-        for track, track_mode in TRACKS[self.mode].items():
+        for track, track_mode in self.tracks().items():
             acct = self.ledger(session, now, track)
             unreal = margin_total = gross = Decimal(0)
             rows = session.scalars(
@@ -1319,10 +1474,53 @@ class Executor:
                 )
             )
             summary.append(f"{track} {len(rows)} open, equity {acct.equity:.2f}")
+        self._settle_left_ledgers(session, now)
         session.merge(
-            Heartbeat(process="executor", ts=now, detail=f"{self.mode}: " + "; ".join(summary))
+            # nine ledgers no longer fit the column: the detail is a glance, not a record
+            Heartbeat(
+                process="executor", ts=now, detail=(f"{self.mode}: " + "; ".join(summary))[:200]
+            )
         )
         session.commit()
+
+    def _settle_left_ledgers(self, session: Session, now: datetime) -> None:
+        """A paper ledger this process no longer runs (a slow book that moved to another
+        ledger or was switched off; the books closed in v11) still has its last positions
+        closed by ``manage_open``, but nothing values it any more. After a close, and
+        whenever its value moved, its equity is written once more, so its record ends on
+        what it banked and not on the last mark it happened to have."""
+        running = self.tracks()
+        for acct in session.scalars(select(PaperAccount)).all():
+            if acct.track in running or acct.track in ("pilot", "live"):
+                continue
+            rows = session.scalars(
+                select(Position).where(
+                    Position.status.in_(["open", "closing"]), Position.track == acct.track
+                )
+            ).all()
+            equity, gross = acct.cash, Decimal(0)
+            for row in rows:
+                quote = self.quotes.get(row.symbol)
+                if quote is None:
+                    break
+                equity += row.margin + sim.unrealized(self._to_sim(row), quote)
+                gross += row.qty * quote.mid
+            else:
+                if equity == acct.equity and acct.track not in self._left_closed:
+                    continue
+                self._left_closed.discard(acct.track)
+                acct.equity, acct.updated_at = equity, now
+                acct.day_high_equity = max(acct.day_high_equity, equity)
+                session.merge(
+                    EquitySnapshot(
+                        ts=now,
+                        mode=f"paper:{acct.track}",
+                        equity=equity,
+                        cash=acct.cash,
+                        open_positions=len(rows),
+                        gross_exposure=gross,
+                    )
+                )
 
     def _warn_near_liquidation(self, row: Position, pos: sim.PaperPosition, quote: Quote) -> None:
         """One mail per position when the price has covered most of the way from the entry
@@ -1410,6 +1608,12 @@ class Executor:
             await self.manage_open(session, now, False, False, fast=True)
 
     async def run(self, once: bool = False) -> None:
+        log.info(
+            "mode %s; main book: %s; slow books: %s",
+            self.mode,
+            "trend (the fast book opens nothing)" if self.slow else "managers",
+            ", ".join(f"{b} on {t}" for b, t in self.books.items()) or "none",
+        )
         if self.ws is not None and not once:
             self.ws.start()
         while True:

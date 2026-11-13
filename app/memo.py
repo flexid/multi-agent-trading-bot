@@ -36,6 +36,8 @@ from app.db.models import (
     XPostOut,
 )
 from app.db.session import new_session
+from app.decision.skill import skill_table
+from app.strategy.books import book_tracks
 from app.version import FROZEN_UNTIL, LOGIC_VERSION
 
 log = logging.getLogger(__name__)
@@ -122,7 +124,10 @@ def pilot_vs_paper(pilot: list[Position], paper: list[Position]) -> list[dict[st
     return out
 
 
-KNOWN_TRACKS = ("primary", "control", "pilot", "live", "max", "inverse")
+KNOWN_TRACKS = ("primary", "control", "pilot", "live", "trend", "short", "seats", "max", "inverse")
+# Owner 2026-11-12, after the review (docs/RETHINK_2026-11.md): the 1%-a-day goal was
+# twelve to twenty times beyond the best-evidenced book and is retired.
+GOAL = "beat cash and beat holding BTC over any twelve months, with a drawdown under a quarter"
 CLOSED_BOOKS = ("max", "inverse")  # v11 (2026-10-19): they open nothing new
 CONSENSUS_RULE = (
     "a trade opens when two of the three managers call the same direction and none calls "
@@ -167,6 +172,71 @@ def logic_facts(active: list[str], closed_books: list[str]) -> dict[str, Any]:
         "Judge the bot on the active books only. The control book (v15) takes the same "
         "decisions as the primary with the old chase limit of 2 ATR; the primary uses 1.",
         "already_decided": decided_log(),
+    }
+
+
+def books_facts(session: Session, cfg: Config) -> dict[str, Any]:
+    """The slow books (v16): which book is on the public record, and for each book its
+    ledger, what it holds and what it has closed. A book that shares the primary ledger
+    with the fast book's history has no return of its own: its realised result is."""
+    books: dict[str, Any] = {}
+    for book, track in book_tracks(cfg).items():
+        acct = session.scalars(select(PaperAccount).where(PaperAccount.track == track)).first()
+        rows = session.scalars(select(Position).where(Position.book == book)).all()
+        closed = [p for p in rows if p.status == "closed"]
+        opened = [p.opened_at for p in rows if p.opened_at]
+        own = track != "primary" and acct is not None and acct.starting_capital > 0
+        books[book] = {
+            "track": track,
+            "since": min(opened).strftime("%Y-%m-%d") if opened else None,
+            "equity": round(float(acct.equity), 2) if acct is not None else None,
+            "return_pct": round(float(acct.equity / acct.starting_capital - 1) * 100, 2)
+            if own and acct is not None
+            else None,
+            "open": [f"{p.asset} {p.direction}" for p in rows if p.status in ("open", "closing")],
+            "closed": len(closed),
+            "wins": sum(1 for p in closed if (p.pnl or 0) > 0),
+            "realized": round(float(sum((p.pnl or 0) for p in closed)), 2),
+            "exits": dict(Counter(p.close_reason or "?" for p in closed)),
+        }
+    return {
+        "main_book": cfg.strategy.main_book if cfg.strategy.enabled else "managers",
+        "books": books,
+        "promotion_rule": "the managers get capital only with positive skill against drift at "
+        "three and seven days over at least a hundred calls on sixty days, and a challenger "
+        "book that beats the champion after costs over three months",
+    }
+
+
+PROMOTION_WINDOW_DAYS = 90  # sixty days of calls do not fit the thirty-day table
+PROMOTION_CALLS, PROMOTION_CALL_DAYS = 100, 60
+
+
+def promotion_facts(session: Session, cfg: Config, now: datetime) -> dict[str, Any]:
+    """Where the managers stand against the first half of their promotion rule: the
+    consensus over the last ninety days needs a hundred calls on sixty days and a skill
+    against drift above zero at three and at seven days. The second half (the challenger
+    book ahead of the champion after costs over three months) is read from the books."""
+    cons = skill_table(session, cfg, now - timedelta(days=PROMOTION_WINDOW_DAYS))[0].as_dict()
+    s3, s7 = cons["3d"]["skill_pct"], cons["7d"]["skill_pct"]
+    missing = []
+    if cons["calls"] < PROMOTION_CALLS:
+        missing.append(f"{cons['calls']} of {PROMOTION_CALLS} calls")
+    if cons["days"] < PROMOTION_CALL_DAYS:
+        missing.append(f"{cons['days']} of {PROMOTION_CALL_DAYS} days")
+    for label, value in (("three", s3), ("seven", s7)):
+        if value is None:
+            missing.append(f"no skill figure at {label} days yet")
+        elif value <= 0:
+            missing.append(f"skill at {label} days not above zero")
+    return {
+        "window_days": PROMOTION_WINDOW_DAYS,
+        "calls": cons["calls"],
+        "days": cons["days"],
+        "skill_3d_pct": s3,
+        "skill_7d_pct": s7,
+        "skill_half_met": not missing,
+        "missing": missing,
     }
 
 
@@ -277,9 +347,28 @@ def facts(session: Session, cfg: Config, now: datetime | None = None) -> dict[st
         if stale:
             stale_cycles += 1
             stale_counts.update(stale)
+    main = session.get(PaperAccount, 1)
+    week_fees = float(sum((p.fees or 0) for p in closed if p.track == "primary"))
+    week_models = float(sum((c or 0) for _, _, c in llm))
     return {
         "week_ending": now.strftime("%Y-%m-%d"),
+        "goal": GOAL,
         "logic": logic_facts(active, closed_books),
+        "books": books_facts(session, cfg),
+        # the managers' scoreboard: the return after their calls minus the same calls at an
+        # average moment, over thirty days
+        "skill_vs_drift": [
+            s.as_dict() for s in skill_table(session, cfg, now - timedelta(days=30))
+        ],
+        "promotion": promotion_facts(session, cfg, now),
+        "costs": {
+            "exchange_fees_usd": round(week_fees, 2),
+            "models_usd": round(week_models, 2),
+            "main_book_equity": round(float(main.equity), 2) if main is not None else None,
+            "share_of_equity_pct": round((week_fees + week_models) / float(main.equity) * 100, 3)
+            if main is not None and main.equity > 0
+            else None,
+        },
         "stale_input_cycles": {
             "full_cycles": len(full_cycles),
             "on_stale_input": stale_cycles,
@@ -435,6 +524,9 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
             + ".",
             "",
         ]
+    bk = f.get("books") or {}
+    if bk.get("books"):
+        lines += [f"Goal: {f.get('goal', GOAL)}. Main book: {bk['main_book']}.", ""]
     c = f["cycles"]
     lines += [
         f"Mode {f['mode']}, pilot {'on' if f['pilot_enabled'] else 'off'}"
@@ -495,7 +587,64 @@ def render(f: dict[str, Any], memo: Memo | None, error: str | None = None) -> st
             f"average {te['avg_target_reached_share']:.0%} of the way), worst "
             f"{te['avg_mae_pct']:+.2f}%, closed at {te['avg_exit_price_pct']:+.2f}% on price"
         )
+    if bk.get("books"):
+        lines += [
+            "",
+            "## The slow books (rule-based; the challenger trades the managers' daily call)",
+        ]
+        for name, b in bk["books"].items():
+            # a book that has not opened anything has no date, and no ledger before its
+            # first pass: say so instead of printing "None"
+            equity = f"equity {b['equity']}" if b["equity"] is not None else "no ledger yet"
+            ret = ""
+            if b["return_pct"] is not None:
+                ret = f", {b['return_pct']:+.2f}%" + (f" since {b['since']}" if b["since"] else "")
+            lines.append(
+                f"- {name} (ledger {b['track']}): {equity}{ret}; holds "
+                f"{', '.join(b['open']) or 'nothing'}; {b['closed']} closed, {b['wins']} won, "
+                f"realised {b['realized']:+.2f}, exits {b['exits'] or 'none'}"
+            )
+        lines.append(f"- promotion rule: {bk['promotion_rule']}")
+    sk = f.get("skill_vs_drift") or []
+    if any(r["calls"] for r in sk):
+        lines += [
+            "",
+            "## Skill against drift, 30 days (the call minus the same call at an average moment)",
+        ]
+        for r in sk:
+            parts = [
+                f"{h} {r[h]['skill_pct']:+.2f} on {r[h]['n']}"
+                for h in ("1d", "3d", "7d")
+                if r[h]["skill_pct"] is not None
+            ]
+            lines.append(
+                f"- {r['who']}: {r['calls']} calls on {r['days']} days; "
+                + ("; ".join(parts) if parts else "no forward prices yet")
+            )
+    pr = f.get("promotion") or {}
+    if pr:
+
+        def signed(x: float | None) -> str:
+            return f"{x:+.2f}" if x is not None else "none yet"
+
+        lines.append(
+            f"- promotion check, consensus over {pr['window_days']} days: {pr['calls']} calls "
+            f"on {pr['days']} days, skill 3d {signed(pr['skill_3d_pct'])}, 7d "
+            f"{signed(pr['skill_7d_pct'])}: "
+            + (
+                "the skill half is met"
+                if pr["skill_half_met"]
+                else "not met (" + "; ".join(pr["missing"]) + ")"
+            )
+        )
     lines += ["", "## Plumbing"]
+    co = f.get("costs") or {}
+    if co.get("share_of_equity_pct") is not None:
+        lines.append(
+            f"- cost of running: exchange fees ${co['exchange_fees_usd']:.2f} + models "
+            f"${co['models_usd']:.2f} this week = {co['share_of_equity_pct']:.2f}% of the main "
+            "book's equity"
+        )
     lines.append(f"- risk rule hits: {f['risk_rule_hits'] or 'none'}")
     lines.append(f"- posts: {f['posts']}")
     lines.append(f"- failed fetches: {f['failed_fetches'] or 'none'}")
@@ -593,10 +742,11 @@ def improvement_prompt(f: dict[str, Any], memo: Memo | None) -> str:
             if lg["closed_books"]
             else "."
         ),
-        "Standing goal: an average of 1% per day on capital, net of every cost, reached by",
-        "tuning parameters as the evidence comes in. The hard risk rules (stops, liquidation",
-        "guard, drawdown pause, day-loss lock, one-PM-flat, kill switch, order idempotency)",
-        "and the non-negotiables in CLAUDE.md are not levers.",
+        f"Standing goal (owner 2026-11-12): {GOAL}. The 1%-a-day goal is retired.",
+        "A rule change to a slow book needs its long-history table (scripts/review_history.py);",
+        "the managers are judged on skill against drift and on the challenger book against the",
+        "champion. The hard risk rules (stops, liquidation guard, emergency brake, kill switch,",
+        "order idempotency) and the non-negotiables in CLAUDE.md are not levers.",
         "",
         "For every ticked proposal: implement the exact change, add or adjust tests, bump the",
         "version of any prompt you touch, record the decision in docs/DECISIONS.md with the",

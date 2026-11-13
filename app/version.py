@@ -1,6 +1,13 @@
 """Logic version: bumped when the decision logic changes in a way that makes earlier
 decisions not comparable. Stored on every cycle row.
 
+16 2026-11-12  the slow books (owner, after the review in docs/RETHINK_2026-11.md): a trend
+              rule (three votes on 14, 28 and 56 days, one whole position per asset sized by
+              volatility, long or cash, no take-profit, no leverage, a 15% disaster stop)
+              runs as the champion on its own paper ledger, its short leg and the managers'
+              daily call (the challenger) on two more. The managers' fast book is unchanged
+              until the takeover switch (strategy.main_book = "trend", planned 2026-11-26).
+              The 1%-a-day goal is retired.
 15 2026-11-04  the chase limit at 1 ATR (owner): a replay of the 58 trades since the record
               line over their candles put entries that followed a move beyond 1 ATR at a
               profit factor of 0.56 against 0.80 without them, while no stop geometry and
@@ -79,6 +86,6 @@ decisions not comparable. Stored on every cycle row.
 1  2026-10-08  initial logic (SPEC §6-§9).
 """
 
-LOGIC_VERSION = 15
+LOGIC_VERSION = 16
 # v10 (owner 2026-10-12): one week untouched, then judge; the 4-week review stays 2026-11-07
-FROZEN_UNTIL = "2026-11-18"
+FROZEN_UNTIL = "2026-11-26"

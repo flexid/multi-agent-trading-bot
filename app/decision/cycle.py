@@ -41,6 +41,7 @@ from app.decision.pm import Proposal, ask_both, ask_three
 from app.decision.tuning import current_weights
 from app.llm import load_prompt
 from app.risk.apply import apply_risk
+from app.strategy.books import slow_main
 from app.version import LOGIC_VERSION
 
 log = logging.getLogger("cycle")
@@ -327,6 +328,12 @@ async def run_cycle(
                 couplings=couplings,
                 now=now,
                 max_hold_hours=hold_limit(session, cfg),
+                # v16: after the takeover the managers' own book is the challenger's ledger
+                **(
+                    {"book_track": cfg.strategy.challenger_track, "book": "challenger"}
+                    if slow_main(cfg) and cfg.strategy.challenger_track
+                    else {}
+                ),
             )
         with new_session() as session:  # the managers' exact input, kept for audits
             row = session.get(Cycle, cycle_id)

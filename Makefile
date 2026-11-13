@@ -1,4 +1,4 @@
-.PHONY: up down deploy deploy-site deploy-arena-site deploy-dex-site snapshot golive costs selftest-live-full test lint migrate fetch-once scheduler cycle executor kill resume indicators backtest selftest selftest-live bybit-authorize
+.PHONY: rule-cycle up down deploy deploy-site deploy-arena-site deploy-dex-site snapshot golive costs selftest-live-full test lint migrate fetch-once scheduler cycle executor kill resume indicators backtest selftest selftest-live bybit-authorize
 
 up:
 	docker compose up -d postgres
@@ -84,3 +84,6 @@ deploy-dex-site:
 
 arena-round:
 	uv run python -m app.control arena-round
+
+rule-cycle:  ## the slow books' daily rule cycle, now (idempotent: one row per book, asset and day)
+	uv run python -m app.risk.rulebook

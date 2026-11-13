@@ -2,6 +2,7 @@
 
 Autonomous multi-agent crypto trading bot on Bybit EU (spot + spot margin), posting every trade to X.
 The full spec is `docs/SPEC.md`. Read it before starting any milestone; it wins over anything you assume.
+Since 2026-11-12 the design has two layers (SPEC §16, `docs/RETHINK_2026-11.md`): a rule-based trend book is the champion, and the LLM managers trade a paper challenger book until they beat it. A change to a slow book's rule needs its long-history table (`scripts/review_history.py`), never a week of trades.
 
 ## Non-negotiables
 

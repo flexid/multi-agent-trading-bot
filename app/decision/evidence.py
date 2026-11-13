@@ -148,21 +148,27 @@ def net_margin_pct(p: Position, spot: float) -> float:
 
 
 def open_positions(
-    session: Session, mode: str, now: datetime, spots: dict[str, float]
+    session: Session,
+    mode: str,
+    now: datetime,
+    spots: dict[str, float],
+    *,
+    track: str = "primary",
+    book: str | None = None,
 ) -> tuple[dict[str, OpenPosition], BookView]:
-    """The open trades of the primary book in this mode, one per asset, and the book's
-    totals (v13). An asset without a spot is listed at a zero result."""
-    rows = (
-        session.execute(
-            select(Position).where(
-                Position.mode == mode,
-                Position.track == "primary",
-                Position.status.in_(("open", "closing")),
-            )
-        )
-        .scalars()
-        .all()
-    )
+    """The open trades of the managers' book, one per asset, and the book's totals (v13).
+    Their book is the primary ledger while the fast book is the main book; once the trend
+    book has taken primary over (v16) it is the challenger's ledger, so they see the
+    positions their own calls opened and not the rule's. An asset without a spot is
+    listed at a zero result."""
+    where = [
+        Position.mode == mode,
+        Position.track == track,
+        Position.status.in_(("open", "closing")),
+    ]
+    if book is not None:
+        where.append(Position.book == book)
+    rows = session.execute(select(Position).where(*where)).scalars().all()
     by_asset: dict[str, OpenPosition] = {}
     margin = net = 0.0
     for p in rows:
@@ -180,13 +186,13 @@ def open_positions(
         )
         margin += float(p.margin)
         net += pct * float(p.margin)
-    book = BookView(
+    view = BookView(
         positions=len(rows),
         long=sorted(a for a, o in by_asset.items() if o.direction == "long"),
         short=sorted(a for a, o in by_asset.items() if o.direction == "short"),
         net_pct=round(net / margin * 100, 2) if margin else 0.0,
     )
-    return by_asset, book
+    return by_asset, view
 
 
 def recent_decisions(
@@ -228,14 +234,23 @@ def build_pack(
     couplings: dict[str, float],
     now: datetime | None = None,
     max_hold_hours: int = 168,
+    book_track: str = "primary",
+    book: str | None = None,
 ) -> EvidencePack:
     now = now or datetime.now(UTC)
     assets = []
     priced = {asset: spot_and_atr(session, symbols[asset]) for asset in outputs}
     # the cycle runs in "shadow" or "live"; the primary book's positions carry "paper" or
     # "live" (v13 fix: the first two v13 cycles matched on "shadow" and saw an empty book)
-    book_mode = "live" if mode == "live" else "paper"
-    held, book = open_positions(session, book_mode, now, {a: s for a, (s, _) in priced.items()})
+    book_mode = "live" if mode == "live" and book is None else "paper"  # a slow book is paper
+    held, book_view = open_positions(
+        session,
+        book_mode,
+        now,
+        {a: s for a, (s, _) in priced.items()},
+        track=book_track,
+        book=book,
+    )
     for asset, outs in outputs.items():
         spot, atr = priced[asset]
         d4 = price_change(session, symbols[asset], spot, now, 4)
@@ -280,7 +295,7 @@ def build_pack(
         mode=mode,
         day_pnl_pct=0.0,
         max_hold_hours=max_hold_hours,
-        book=book,
+        book=book_view,
         assets=assets,
     )
 

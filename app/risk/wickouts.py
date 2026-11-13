@@ -26,6 +26,7 @@ def check(session: Session, now: datetime | None = None) -> int:
             Position.status == "closed",
             Position.close_reason.in_(STOP_REASONS),
             Position.wick_out.is_(None),
+            Position.book.is_(None),  # a slow book's disaster stop has no target to wick to
         )
     ).all()
     done = 0

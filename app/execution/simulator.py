@@ -38,6 +38,7 @@ class ExitReason(StrEnum):
     TAKE_PROFIT = "take_profit"  # aggressive mode: the trade earned its share of the goal
     MANUAL = "manual"  # the owner asked for it to be closed
     SHOCK = "shock"  # v10: a credible fresh news shock against the position, confirmed by price
+    SIGNAL = "signal"  # v16: the slow book's daily rule no longer wants this side
 
 
 @dataclass(frozen=True)

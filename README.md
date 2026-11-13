@@ -22,6 +22,22 @@ data layer (15 min) → 5 agents → PM 1 + PM 2 → leverage agent → risk eng
 | Executor | Separate process; limit orders, stops and time-stops in code on the WebSocket; paper simulator for shadow mode |
 | X poster | Casual post per open and close on @decentradork, cashtag always, amounts never |
 
+## Two layers since November 2026 (logic v16)
+
+A review of the first month ([`docs/RETHINK_2026-11.md`](docs/RETHINK_2026-11.md)) found no timing skill in the managers' calls and an exit structure that destroyed the one signal that earns after fees, a trend of several weeks. The design now has two layers ([SPEC §16](docs/SPEC.md)):
+
+| Book | Who decides | Ledger | Rule |
+| --- | --- | --- | --- |
+| `trend` (the champion) | code, once a day | `trend`, then `primary` after the takeover | three votes per asset (daily close above the close 14, 28 and 56 days earlier), long or cash, sized by volatility, no leverage, no take-profit, one disaster stop 15% away, exit on the signal |
+| `short` | code, once a day | `short`, paper | the same rule, short or cash |
+| `challenger` | the three managers' first call of the day | `seats`, paper | the champion's structure, so only the direction differs |
+
+The managers' fast book stays on the public record until the takeover switch (`strategy.main_book = "trend"` in `config.toml`, on the owner's word). The managers earn capital only by a rule fixed in advance: positive skill against drift at three and seven days over a hundred calls on sixty days, and a challenger book that beats the champion after costs over three months.
+
+- `make rule-cycle` runs the daily rule cycle by hand; it writes one row per book, asset and day to `rule_plans` and is safe to repeat.
+- `uv run python scripts/review_history.py` reruns the rule on public daily candles from 2018. A change to a slow book's rule needs that table, never a week of trades.
+- Code: [`app/strategy/`](app/strategy/), [`app/risk/rulebook.py`](app/risk/rulebook.py), [`app/decision/skill.py`](app/decision/skill.py); tests `tests/test_trend.py`, `tests/test_rulebook.py`, `tests/test_slow_executor.py`, `tests/test_skill.py`.
+
 ## Safety principles
 
 - No LLM ever touches an order.

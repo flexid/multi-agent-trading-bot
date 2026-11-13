@@ -286,14 +286,19 @@ def account_state(
 
 
 def losing_days_in_row(session: Session, now: datetime) -> int:
-    """Consecutive calendar days (before today) with negative realized P&L."""
+    """Consecutive calendar days (before today) with negative realized P&L on the managers'
+    fast book. A slow book's closes (v16) are not this rule's business: a trend position
+    that ends on its signal after a month must not cap the fast book's leverage."""
     day = now.replace(hour=0, minute=0, second=0, microsecond=0)
     streak = 0
     for i in range(1, 8):
         start, end = day - timedelta(days=i), day - timedelta(days=i - 1)
         pnl = session.execute(
             select(func.coalesce(func.sum(Position.pnl), 0)).where(
-                Position.status == "closed", Position.closed_at >= start, Position.closed_at < end
+                Position.status == "closed",
+                Position.book.is_(None),
+                Position.closed_at >= start,
+                Position.closed_at < end,
             )
         ).scalar_one()
         if Decimal(str(pnl)) < 0:

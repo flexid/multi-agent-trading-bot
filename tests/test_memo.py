@@ -173,3 +173,130 @@ def test_excursion_tracks_best_and_worst() -> None:
     assert mfe == D("0.01") and mae == D("-0.03")
     mfe, mae = excursion(Side.SHORT, D(100), Quote(D("98.9"), D(99), now), None, None)
     assert mfe == D("0.01") and mae == D(0)
+
+
+def test_the_brief_states_the_restated_goal_and_not_the_retired_one() -> None:
+    """Owner 2026-11-12: the 1%-a-day goal is retired; the brief and the prompt say what
+    replaced it and how a rule change and the managers are judged."""
+    from app.llm import load_prompt
+    from app.memo import GOAL, improvement_prompt
+
+    brief = improvement_prompt({"week_ending": "2026-11-16"}, None)
+    assert GOAL in brief and "retired" in brief and "skill against drift" in brief
+    assert "an average of 1% per day" not in brief
+    prompt = load_prompt("memo")
+    assert prompt.version == 10 and "`promotion`" in prompt.system
+    assert "1% a day is retired" in prompt.system and "skill_vs_drift" in prompt.system
+    assert "promotion_rule" in prompt.system and "two sleeves" not in prompt.system
+
+
+def test_render_shows_the_slow_books_the_skill_table_and_the_cost_share() -> None:
+    from app.memo import render
+
+    f = {
+        "week_ending": "2026-11-16",
+        "goal": "beat cash",
+        "mode": "shadow",
+        "pilot_enabled": True,
+        "cycles": {"scheduled": 6, "triggered": 1, "failed": 0, "cost_usd": 4.2},
+        "llm_budget_usd": 250.0,
+        "ledgers_equity": {"primary": 9990.0},
+        "closed_trades_by_track": {},
+        "open_positions": [],
+        "pilot_vs_paper": [],
+        "leaderboard": [],
+        "agent_weights": {},
+        "risk_rule_hits": [],
+        "posts": {},
+        "failed_fetches": {},
+        "polymarket_coverage": {},
+        "x_mentions": {},
+        "books": {
+            "main_book": "managers",
+            "promotion_rule": "positive skill and a better book",
+            "books": {
+                "trend": {
+                    "track": "trend",
+                    "since": "2026-11-12",
+                    "equity": 10012.5,
+                    "return_pct": 0.13,
+                    "open": ["BTC long"],
+                    "closed": 2,
+                    "wins": 1,
+                    "realized": 12.5,
+                    "exits": {"signal": 2},
+                },
+                # a book in cash from its first day: a ledger, no position, no date
+                "short": {
+                    "track": "short",
+                    "since": None,
+                    "equity": 10000.0,
+                    "return_pct": 0.0,
+                    "open": [],
+                    "closed": 0,
+                    "wins": 0,
+                    "realized": 0.0,
+                    "exits": {},
+                },
+                # a book whose ledger the executor has not created yet
+                "challenger": {
+                    "track": "seats",
+                    "since": None,
+                    "equity": None,
+                    "return_pct": None,
+                    "open": [],
+                    "closed": 0,
+                    "wins": 0,
+                    "realized": 0.0,
+                    "exits": {},
+                },
+            },
+        },
+        "promotion": {
+            "window_days": 90,
+            "calls": 412,
+            "days": 31,
+            "skill_3d_pct": -0.85,
+            "skill_7d_pct": None,
+            "skill_half_met": False,
+            "missing": ["31 of 60 days", "skill at three days not above zero"],
+        },
+        "skill_vs_drift": [
+            {
+                "who": "consensus (2 of 3)",
+                "calls": 40,
+                "days": 12,
+                "short_share": 0.9,
+                "1d": {"n": 38, "mean_pct": 0.3, "drift_pct": 0.6, "skill_pct": -0.3, "right": 0.5},
+                "3d": {"n": 30, "mean_pct": 1.1, "drift_pct": 1.7, "skill_pct": -0.6, "right": 0.6},
+                "7d": {
+                    "n": 0,
+                    "mean_pct": None,
+                    "drift_pct": None,
+                    "skill_pct": None,
+                    "right": None,
+                },
+            }
+        ],
+        "costs": {
+            "exchange_fees_usd": 12.0,
+            "models_usd": 48.0,
+            "main_book_equity": 9990.0,
+            "share_of_equity_pct": 0.601,
+        },
+    }
+    text = render(f, None, "no model")
+    assert "Goal: beat cash. Main book: managers." in text
+    assert "- trend (ledger trend): equity 10012.5, +0.13% since 2026-11-12; holds BTC long" in text
+    assert "2 closed, 1 won, realised +12.50" in text and "promotion rule: positive skill" in text
+    assert "- short (ledger short): equity 10000.0, +0.00%; holds nothing; 0 closed" in text
+    assert "- challenger (ledger seats): no ledger yet; holds nothing" in text
+    assert "None" not in text
+    assert (
+        "- promotion check, consensus over 90 days: 412 calls on 31 days, skill 3d -0.85, "
+        "7d none yet: not met (31 of 60 days; skill at three days not above zero)" in text
+    )
+    assert "consensus (2 of 3): 40 calls on 12 days; 1d -0.30 on 38; 3d -0.60 on 30" in text
+    assert (
+        "exchange fees $12.00 + models $48.00 this week = 0.60% of the main book's equity" in text
+    )

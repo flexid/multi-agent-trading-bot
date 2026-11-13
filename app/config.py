@@ -7,9 +7,9 @@ from datetime import datetime
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -240,6 +240,51 @@ class DexConfig(_Section):
     record_note: str = ""
 
 
+# Ledgers a slow book may never be pointed at: real money, and the fast book's own books.
+# (The primary is reached by the takeover switch only, never by a track name.)
+NOT_RULE_TRACKS = frozenset({"pilot", "live", "control", "max", "inverse"})
+
+
+class StrategyConfig(_Section):
+    """The slow book (docs/RETHINK_2026-11.md, owner 2026-11-12): a trend rule decides the
+    direction once a day and holds until the signal turns; no take-profit, no leverage.
+    ``main_book`` is the takeover switch: "managers" keeps the managers' fast book on the
+    public record with the slow books on paper beside it; "trend" puts the trend book on
+    the primary ledger, closes the fast book to new trades and cuts the managers to one
+    decision cycle a day for the challenger."""
+
+    enabled: bool = False
+    main_book: Literal["managers", "trend"] = "managers"
+    lookbacks: list[int] = Field(default_factory=lambda: [14, 28, 56])
+    # The asset's share of its slot is vol_target / its own annualised volatility, at most
+    # 1. 0.25 gives the drawdown of about a fifth the nine-year test showed (0.40 ran to a
+    # third); the Sharpe is the same at either.
+    vol_target: Decimal = Field(default=Decimal("0.25"), gt=0, le=2)
+    vol_window_days: int = Field(default=20, ge=5, le=120)
+    # The one stop a slow position has: this far from the entry, on touch. A position
+    # closed by anything but its signal sits out until the signal has turned off and on.
+    disaster_stop: Decimal = Field(default=Decimal("0.15"), gt=0, lt=1)
+    long_track: str = Field(default="trend", max_length=8)  # the champion's paper ledger
+    short_track: str = Field(default="short", max_length=8)  # "" = no short book
+    challenger_track: str = Field(default="seats", max_length=8)  # "" = no challenger
+    min_notional_usdt: Decimal = Decimal(10)
+
+    @model_validator(mode="after")
+    def _own_paper_ledgers(self) -> Self:
+        named = [t for t in (self.long_track, self.short_track, self.challenger_track) if t]
+        if not self.long_track:
+            raise ValueError("strategy.long_track: the trend book needs a ledger")
+        if len(set(named)) != len(named):
+            raise ValueError(f"strategy: every book needs a ledger of its own, got {named}")
+        taken = sorted(set(named) & (NOT_RULE_TRACKS | {"primary"}))
+        if taken:
+            raise ValueError(
+                f"strategy: {taken} is real money or the fast book's; a slow book trades on "
+                'a paper ledger of its own (the primary only through main_book = "trend")'
+            )
+        return self
+
+
 class TriggersConfig(_Section):
     """Cycles outside the four-hour clock (v10: the bot reacts to the market, not to the
     hour). All in code; the managers are only called when something happened."""
@@ -322,6 +367,7 @@ class Config(_Section):
     catalysts: CatalystsConfig = CatalystsConfig()
     site: SiteConfig = SiteConfig()
     triggers: TriggersConfig = TriggersConfig()
+    strategy: StrategyConfig = StrategyConfig()
     arena: ArenaConfig = ArenaConfig()
     dex: DexConfig = DexConfig()
     server: ServerConfig = ServerConfig()

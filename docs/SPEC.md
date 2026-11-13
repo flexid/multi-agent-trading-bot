@@ -359,3 +359,54 @@ Each ends with passing tests and a README section. Shadow mode starts at M6 and 
 - Exact OpenAI model IDs for GPT-5.6 Sol, Terra and Luna.
 - Sources for ETF flows, stablecoin supply and the economic calendar.
 - Subaccount support on Bybit EU. Preferred: a dedicated subaccount holding only the bot's capital.
+
+## 16. The slow books (2026-11-12; wins over the older sections where they differ)
+
+The review in `docs/RETHINK_2026-11.md` found no timing skill in the managers' calls, no
+information in their inputs at a one-to-two-day horizon, and an exit structure (a 2%
+take with a wide stop) that destroys the one kind of signal that earns after fees: a
+trend of several weeks. The owner decided on 2026-11-12 (`docs/DECISIONS.md`):
+
+- **The champion is a rule.** Book `trend`: per asset, three votes (is the last closed
+  daily close above the close 14, 28 and 56 days earlier); the majority decides; long or
+  cash. One whole position per asset, sized at the entry as the ledger's equity over the
+  number of assets times `min(1, vol_target / annualised 20-day volatility)`. No leverage,
+  no take-profit, no time stop; the exit is the signal. One disaster stop, 15% from the
+  entry, on touch; a position closed by a stop or a news shock sits out until its signal
+  has turned off and on again. Decided once a day after the daily close by
+  `app/risk/rulebook.py`, which writes the executor's instruction to `rule_plans`. No
+  model is called. Code: `app/strategy/`, tests `tests/test_trend.py`,
+  `tests/test_rulebook.py`, `tests/test_slow_executor.py`.
+- **The short leg is a separate paper book** (`short`): the same rule, short or cash. Nine
+  years say it earns nothing on its own; it stays on paper until it earns a place.
+- **The managers are the challenger.** Book `challenger` trades the two-of-three consensus
+  of the day's first finished full cycle with the champion's structure (same slot, same
+  volatility scaling, held until the call changes), so the two books differ only in who
+  decides the direction. The managers get capital only by the promotion rule: positive
+  skill against drift (`app/decision/skill.py`) at three and seven days over at least a
+  hundred calls on sixty days, and a challenger book that beats the champion after costs
+  over three months. The weekly memo checks the first half on the consensus over ninety
+  days (`promotion`). Forward returns are measured from the 15-minute close at the
+  decision, never from the decision's own spot, which is up to four hours old.
+- **The takeover switch** is `strategy.main_book`. `"managers"`: the fast book of §7 to §9
+  stays on the public record and the slow books run on their own paper ledgers (`trend`,
+  `short`, `seats`). `"trend"`: the trend book trades on `primary`, the fast book opens
+  nothing new on any ledger (its open positions keep their own exits and run out), the
+  managers run one full cycle a day at 00:02 UTC and the trigger, light-cycle and
+  goal-cycle jobs do not run. Non-negotiables 1 to 9 are unchanged. The executor and the
+  scheduler read the switch and the books' ledgers once, at start: a change takes effect
+  when both are restarted, never on a config reload. A slow book's ledger is its own and
+  always paper: `pilot`, `live`, `control`, `max` and `inverse` are refused as track
+  names, and `primary` is reached through the switch only.
+- **Slow positions and the fast book's rules.** A slow position has no day goal, no
+  trailing stop, no per-trade take and no time stop, and its closes do not count toward
+  the fast book's losing-days leverage cap. Its news-shock exit measures the move against
+  the four-hour ATR of the day, not the one of its entry. When its plan is more than 1%
+  from the market its stop and target move in proportion to the entry. Borrow interest is
+  booked for every whole hour a position is open, on the position's own clock
+  (`positions.interest_at`), for every book.
+- **The goal** is to beat cash and beat holding BTC over any twelve months with a drawdown
+  under a quarter. The 1%-a-day goal is retired.
+- **A rule change needs its long-history table.** `scripts/review_history.py` reruns the
+  rule on public daily candles from 2018 in a minute; `whole_book()` there is the book as
+  built. A week or a month of trades is not evidence for a rule change.

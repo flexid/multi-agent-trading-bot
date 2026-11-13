@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -407,6 +408,11 @@ class Position(Base):
     __table_args__ = (Index("ix_positions_status_asset", "status", "asset"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # The slow books (2026-11-12): which rule book holds the position (trend | short |
+    # challenger) and the rule plan it was opened on. None = the managers' fast book,
+    # which carries a decision instead.
+    book: Mapped[str | None] = mapped_column(String(12))
+    plan_id: Mapped[int | None] = mapped_column(BigInteger)
     decision_id: Mapped[int | None] = mapped_column(BigInteger)
     cycle_id: Mapped[int | None] = mapped_column(BigInteger)
     mode: Mapped[str] = mapped_column(String(8))  # paper | pilot | live
@@ -438,6 +444,10 @@ class Position(Base):
     close_reason: Mapped[str | None] = mapped_column(String(20))
     fees: Mapped[Decimal] = mapped_column(default=0)
     interest: Mapped[Decimal] = mapped_column(default=0)
+    # The hour up to which borrow interest is booked; None = nothing booked yet, count from
+    # the opening. (Until 2026-11-12 the clock was ``updated_at``, which every pass resets,
+    # so no whole hour ever passed and no interest was ever booked.)
+    interest_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pnl: Mapped[Decimal | None]  # net, quote
     pnl_price_pct: Mapped[Decimal | None]
     pnl_margin_pct: Mapped[Decimal | None]
@@ -483,6 +493,41 @@ class OrderRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class RulePlan(Base):
+    """The slow books' daily instruction (docs/RETHINK_2026-11.md): one row per book, asset
+    and day. ``side`` is what the book wants to hold; the executor opens on ``plan`` when
+    nothing is open and closes a position whose side no longer matches. ``basis`` keeps
+    what the decision rested on: the votes, the volatility, or the managers' call."""
+
+    __tablename__ = "rule_plans"
+    __table_args__ = (
+        UniqueConstraint("book", "asset", "day", name="uq_rule_plans_book_asset_day"),
+        Index("ix_rule_plans_book_asset_ts", "book", "asset", "ts"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    day: Mapped[date] = mapped_column(Date)  # the daily candle the decision rests on
+    book: Mapped[str] = mapped_column(String(12))  # trend | short | challenger
+    track: Mapped[str] = mapped_column(String(8))
+    asset: Mapped[str] = mapped_column(String(10))
+    side: Mapped[str] = mapped_column(String(6))  # long | short | flat
+    action: Mapped[str] = mapped_column(String(16))  # open | hold | close | none | blocked
+    weight: Mapped[Decimal | None]
+    plan: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    basis: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    note: Mapped[str | None] = mapped_column(Text)
+    exec_notes: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+    @property
+    def direction(self) -> str:  # the name the executor's open path reads
+        return self.side
+
+    @property
+    def cycle_id(self) -> None:  # a rule plan belongs to no managers' cycle
+        return None
 
 
 class PaperAccount(Base):

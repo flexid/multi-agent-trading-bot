@@ -101,6 +101,94 @@ def take_stop(d: dict[str, pd.DataFrame], lookback: int, take: float, stop: floa
     return pd.DataFrame(ports).mean(axis=1)
 
 
+def whole_book(
+    d: dict[str, pd.DataFrame],
+    ens: pd.DataFrame,
+    weight: pd.DataFrame,
+    side: int,
+    stop: float,
+) -> tuple[pd.Series, float]:
+    """The book as it is built (app/strategy/trend.py, app/risk/rulebook.py): one position
+    per asset, opened whole at a daily close when the majority of the three votes is on
+    ``side``, sized by the volatility weight of that day, closed whole when the majority
+    turns. A disaster stop ``stop`` from the entry fires on the day's low or high; after
+    it the asset sits out until the signal has turned off and on again. Returns the
+    portfolio's daily return (equal weight over what was listed) and orders a year."""
+    ports = {}
+    orders = 0
+    for a, df in d.items():
+        c, h, lo = df["c"].to_numpy(), df["h"].to_numpy(), df["l"].to_numpy()
+        e = ens[a].reindex(df.index).to_numpy() * side
+        ww = weight[a].reindex(df.index).to_numpy()
+        ret = np.zeros(len(c))
+        pos, entry, blocked = 0.0, 0.0, False
+        for i in range(57, len(c)):
+            day = 0.0
+            if pos != 0:
+                px = entry * (1 - side * stop)
+                hit = lo[i] <= px if side > 0 else h[i] >= px
+                if hit:
+                    day += pos * side * (px / c[i - 1] - 1) - pos * FEE
+                    pos, blocked = 0.0, True
+                    orders += 1
+                else:
+                    day += pos * side * (c[i] / c[i - 1] - 1) - (
+                        pos * BORROW_DAY if side < 0 else 0
+                    )
+            on = bool(np.isfinite(e[i]) and e[i] > 0)
+            if not on:
+                blocked = False
+                if pos != 0:
+                    day -= pos * FEE
+                    pos = 0.0
+                    orders += 1
+            elif pos == 0 and not blocked and np.isfinite(ww[i]) and ww[i] > 0:
+                pos, entry = float(ww[i]), c[i]
+                day -= pos * FEE
+                orders += 1
+            ret[i] = day
+        s = pd.Series(ret, index=df.index).iloc[57:]
+        ports[a] = s.where(df["c"].pct_change().reindex(s.index).notna())
+    port = pd.DataFrame(ports).mean(axis=1)["2018-01-01":]
+    return port, orders / (len(port) / 365)
+
+
+def built(d: dict[str, pd.DataFrame], close: pd.DataFrame, r: pd.DataFrame) -> None:
+    print(
+        "\n=== the books as built: whole positions on 2 of 3 votes, 25% volatility target, disaster stop 15%"
+    )
+    vol = r.rolling(20).std() * np.sqrt(365)
+    ens = sum(np.sign(close / close.shift(lb) - 1) for lb in (14, 28, 56)) / 3
+    weight = (0.25 / vol).clip(upper=1.0)
+    rows = []
+    for name, side in (("trend book: long or cash", 1), ("short book: short or cash", -1)):
+        port, orders = whole_book(d, ens, weight, side, 0.15)
+        st, recent = stats(port), stats(port["2022-01-01":])
+        yearly = (1 + port).groupby(port.index.year).prod() - 1
+        monthly = (1 + port).groupby([port.index.year, port.index.month]).prod() - 1
+        rows.append(
+            {
+                "book": name,
+                "sharpe all": st["sharpe"],
+                "sharpe since 2022": recent["sharpe"],
+                "cagr% all": st["cagr%"],
+                "cagr% since 2022": recent["cagr%"],
+                "maxDD%": st["maxDD%"],
+                "worst year %": yearly.min() * 100,
+                "worst month %": monthly.min() * 100,
+                "since 12 Oct 2026 %": ((1 + port["2026-10-12":]).prod() - 1) * 100,
+                "orders/yr": orders,
+            }
+        )
+    print(pd.DataFrame(rows).round(2).to_string(index=False))
+    port, _ = whole_book(d, ens, weight, 1, 0.15)
+    yearly = (1 + port).groupby(port.index.year).prod() - 1
+    print(
+        "trend book, year by year, %: "
+        + ", ".join(f"{y} {v * 100:+.0f}" for y, v in yearly.items())
+    )
+
+
 def main() -> int:
     cache = Path(sys.argv[1] if len(sys.argv) > 1 else "/tmp/dorkbot-history")
     cache.mkdir(parents=True, exist_ok=True)
@@ -170,6 +258,7 @@ def main() -> int:
             f"{label}: mean per day {s.mean() * 100:+.3f}%, t-stat {t:.2f} on {len(s)} days, "
             f"months up {float((monthly > 0).mean()):.0%}, worst month {monthly.min() * 100:.1f}%, best {monthly.max() * 100:.1f}%"
         )
+    built(d, close, r)
     print("\n=== does a big day continue? next day in the move's direction, %, by era (pooled)")
     cont = (np.sign(r) * r.shift(-1)).where(z.abs() > 1)
     rows = []

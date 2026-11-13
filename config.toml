@@ -115,6 +115,18 @@ accounts = [
 search_per_asset = 20           # posts per asset per cycle from recent search
 reads_per_cycle_max = 60        # cap per 4h cycle (v10: the poll keeps the curated accounts fresh between cycles)
 
+[strategy]                      # v16, the slow books (docs/RETHINK_2026-11.md; owner 2026-11-12): a trend rule decides once a day, no take-profit, no leverage
+enabled = true
+main_book = "managers"          # the takeover switch. "trend": the trend book trades on the public record, the managers' fast book opens nothing new, and they run one cycle a day for the challenger
+lookbacks = [14, 28, 56]        # three votes per asset: is the last daily close above the close that many days earlier; the majority decides
+vol_target = 0.25               # position = the asset's slot x min(1, this / its annualised 20-day volatility); 0.25 gave a deepest drawdown of 22% over nine years
+vol_window_days = 20
+disaster_stop = 0.15            # the one stop a slow position has: this far from the entry, on touch; then the asset sits out until the signal has turned off and on
+long_track = "trend"            # the champion's paper ledger until the switch (long or cash)
+short_track = "short"           # the short leg on paper: eight years say it earns nothing on its own; "" = off
+challenger_track = "seats"      # the three managers' daily call with the champion's structure; "" = off
+min_notional_usdt = 10
+
 [triggers]                      # v10 (owner 2026-10-12): react to the market between the four-hour cycles. All code; the managers run only when something happened
 price_atr_1h = 1.5              # a move of this many ATR within an hour starts a full cycle (was 2.0 and checked every 15 min; now every 5)
 max_per_day = 4                 # triggered cycles per day, all sources together (was 2)

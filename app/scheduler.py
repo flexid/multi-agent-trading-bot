@@ -18,6 +18,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.config import Config, Secrets, get_config, get_secrets
 from app.data import fetch
+from app.strategy.books import book_tracks, slow_main
 
 log = logging.getLogger("scheduler")
 
@@ -78,9 +79,38 @@ async def x_poll_job(cfg: Config) -> None:
     except Exception as exc:  # the poll must never stop the scheduler
         log.warning("x poll failed: %s", exc)
         return
-    if reason:
+    if reason and plan(cfg)["x_poll_starts_cycles"]:
         log.info("triggered cycle: %s", reason)
         await cycle_job(cfg, kind="triggered", trigger=reason)
+
+
+async def rule_cycle_job(cfg: Config, secrets: Secrets) -> None:
+    """v16: the slow books' daily rule cycle. It runs a few times after midnight UTC and
+    writes each book's row once; a later run fills in what an earlier one could not (a
+    late candle, a managers' cycle that was still running)."""
+    from app.risk import rulebook
+
+    try:
+        await rulebook.run(cfg, secrets)
+    except Exception:  # the rule cycle must never stop the scheduler
+        log.exception("rule cycle failed")
+
+
+def plan(cfg: Config) -> dict[str, object]:
+    """Which jobs this configuration runs. While the managers' fast book is the main book:
+    a full cycle every ``cycle_hours``, the triggers, the hourly light cycle and the goal
+    cycle. Once the trend book is the main book (``strategy.main_book = "trend"``): one
+    full cycle a day at 00:02 UTC, which the challenger trades, and none of the others;
+    the X poll keeps labelling posts (the news-shock exit reads them) but starts no cycle."""
+    slow = slow_main(cfg)
+    return {
+        "cycle_hour": "0" if slow else f"*/{cfg.trading.cycle_hours}",
+        "triggers": not slow,
+        "light_cycle": cfg.triggers.light_cycle and not slow,
+        "goal_cycle": not slow,
+        "x_poll_starts_cycles": not slow,
+        "rule_cycle": bool(book_tracks(cfg)),
+    }
 
 
 async def light_cycle_job(cfg: Config) -> None:
@@ -113,9 +143,10 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
     if n:
         log.warning("%d cycle(s) left running by the previous process marked aborted", n)
     scheduler = AsyncIOScheduler(timezone="UTC")
+    jobs_on = plan(cfg)
     scheduler.add_job(
         cycle_job,
-        CronTrigger(hour=f"*/{cfg.trading.cycle_hours}", minute="2"),
+        CronTrigger(hour=str(jobs_on["cycle_hour"]), minute="2"),
         args=[cfg],
         id="cycle",
         max_instances=1,
@@ -130,14 +161,26 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
         coalesce=True,
         next_run_time=datetime.now(UTC),
     )
-    scheduler.add_job(
-        trigger_job,
-        CronTrigger(minute="*/5", second="30"),  # v10: every 5 minutes on the live quote
-        args=[cfg],
-        id="triggers",
-        max_instances=1,
-        coalesce=True,
-    )
+    if jobs_on["rule_cycle"]:
+        scheduler.add_job(
+            rule_cycle_job,
+            # after the daily close and the 00:15 candle fetch; three more idempotent tries
+            CronTrigger(hour="0,1", minute="16,46"),
+            args=[cfg, secrets],
+            id="rule_cycle",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=900,
+        )
+    if jobs_on["triggers"]:
+        scheduler.add_job(
+            trigger_job,
+            CronTrigger(minute="*/5", second="30"),  # v10: every 5 minutes on the live quote
+            args=[cfg],
+            id="triggers",
+            max_instances=1,
+            coalesce=True,
+        )
     scheduler.add_job(
         x_poll_job,
         IntervalTrigger(minutes=cfg.triggers.x_poll_minutes),  # v10: the news tripwire
@@ -147,7 +190,7 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
         coalesce=True,
         misfire_grace_time=60,
     )
-    if cfg.triggers.light_cycle:
+    if jobs_on["light_cycle"]:
         scheduler.add_job(
             light_cycle_job,
             CronTrigger(minute="32"),  # v10: hourly, half an hour off the full cycles
@@ -238,15 +281,16 @@ async def serve(cfg: Config, secrets: Secrets) -> None:
         max_instances=1,
         coalesce=True,
     )
-    scheduler.add_job(
-        goal_cycle_job,
-        IntervalTrigger(seconds=30),
-        args=[cfg],
-        id="goal_cycle",
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=20,
-    )
+    if jobs_on["goal_cycle"]:
+        scheduler.add_job(
+            goal_cycle_job,
+            IntervalTrigger(seconds=30),
+            args=[cfg],
+            id="goal_cycle",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=20,
+        )
     scheduler.add_job(
         live_job,
         IntervalTrigger(seconds=cfg.site.live_interval_seconds),

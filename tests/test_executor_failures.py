@@ -396,7 +396,10 @@ async def test_a_confirmed_news_shock_closes_the_position(db: None) -> None:
     (pos,) = [p for p in positions() if p.track == "primary"]
     assert pos.atr == D(1)
     symbol = get_config().symbol(ASSET)
-    posted = NOW - timedelta(minutes=5)
+    # Counted from this moment, not from the module's NOW: the shock window is fifteen
+    # minutes, and a suite run that stalls between collection and this test (a laptop
+    # that slept) would find the post too old to count.
+    posted = datetime.now(UTC).replace(microsecond=0) - timedelta(minutes=5)
     with new_session() as s:
         s.merge(
             Candle(
